@@ -1,4 +1,4 @@
-# Be A Football Manager
+# Crystal Football Manager 1
 
 A 2D+3D football simulation manager game
 - Open-source, free to play & try, currently in Alpha-v0.1.5 Structure
