@@ -39,6 +39,15 @@ public:
     void pause_match(bool p_pause);
     void resolve_manual_scenario(bool p_success, bool p_is_home_team = true);
 
+    // Skip Match & Token API
+    bool can_skip_match() const;
+    bool skip_match();
+    void record_manual_match_completed();
+
+    int get_skip_tokens() const { return skip_tokens; }
+    void set_skip_tokens(int p_tokens);
+    int get_manual_matches_played() const { return manual_matches_played; }
+
     // Formations & Pitch Dimensions API
     bool load_formations_from_csv(const String& p_filepath);
     void set_home_formation(const String& p_formation_name);
@@ -79,6 +88,10 @@ private:
     bool is_paused_for_manual = false;
     bool match_active = false;
     float event_cooldown = 0.0f;
+
+    // Token Management State
+    int manual_matches_played = 0;
+    int skip_tokens = 1; // Starts with 1 initial token
 
     int home_team_ovr = 75;
     int away_team_ovr = 72;

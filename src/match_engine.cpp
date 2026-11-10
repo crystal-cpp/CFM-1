@@ -3,6 +3,7 @@
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <algorithm>
+#include <cmath>
 
 using namespace godot;
 
@@ -11,6 +12,13 @@ void MatchEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("start_match"), &MatchEngine::start_match);
     ClassDB::bind_method(D_METHOD("pause_match", "pause"), &MatchEngine::pause_match);
     ClassDB::bind_method(D_METHOD("resolve_manual_scenario", "success", "is_home_team"), &MatchEngine::resolve_manual_scenario, DEFVAL(true));
+
+    // Skip Match API Methods
+    ClassDB::bind_method(D_METHOD("can_skip_match"), &MatchEngine::can_skip_match);
+    ClassDB::bind_method(D_METHOD("skip_match"), &MatchEngine::skip_match);
+    ClassDB::bind_method(D_METHOD("get_skip_tokens"), &MatchEngine::get_skip_tokens);
+    ClassDB::bind_method(D_METHOD("set_skip_tokens", "tokens"), &MatchEngine::set_skip_tokens);
+    ClassDB::bind_method(D_METHOD("get_manual_matches_played"), &MatchEngine::get_manual_matches_played);
 
     // Formation & Field Methods
     ClassDB::bind_method(D_METHOD("load_formations_from_csv", "filepath"), &MatchEngine::load_formations_from_csv);
@@ -42,9 +50,7 @@ void MatchEngine::_bind_methods() {
     ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "field_size"), "set_field_size", "get_field_size");
     ADD_PROPERTY(PropertyInfo(Variant::INT, "home_team_ovr"), "set_home_team_ovr", "get_home_team_ovr");
     ADD_PROPERTY(PropertyInfo(Variant::INT, "away_team_ovr"), "set_away_team_ovr", "get_away_team_ovr");
-    ADD_PROPERTY(PropertyInfo(Variant::INT, "home_score"), "", "get_home_score");
-    ADD_PROPERTY(PropertyInfo(Variant::INT, "away_score"), "", "get_away_score");
-    ADD_PROPERTY(PropertyInfo(Variant::INT, "current_minute"), "", "get_current_minute");
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "skip_tokens"), "set_skip_tokens", "get_skip_tokens");
 
     // Signals
     ADD_SIGNAL(MethodInfo("interactive_event_triggered", 
@@ -72,6 +78,55 @@ void MatchEngine::_ready() {
     set_physics_process(false);
     load_formations_from_csv("res://../Players_Database/formations.csv");
     _reset_field_positions();
+}
+
+void MatchEngine::set_skip_tokens(int p_tokens) {
+    skip_tokens = std::max(0, p_tokens);
+}
+
+bool MatchEngine::can_skip_match() const {
+    return skip_tokens > 0 && match_active && !is_paused_for_manual;
+}
+
+bool MatchEngine::skip_match() {
+    if (!can_skip_match()) {
+        UtilityFunctions::printerr("Cannot skip match: Insufficient tokens or match in invalid state.");
+        return false;
+    }
+
+    // Deduct token
+    skip_tokens--;
+
+    // Scoreboard Auto-Simulation Engine (OVR Difference + Gaussian Variance)
+    float ovr_diff = static_cast<float>(home_team_ovr - away_team_ovr);
+    float home_exp = 1.35f + (ovr_diff * 0.05f);
+    float away_exp = 1.10f - (ovr_diff * 0.05f);
+
+    float home_luck = UtilityFunctions::randf_range(-1.25f, 1.25f);
+    float away_luck = UtilityFunctions::randf_range(-1.25f, 1.25f);
+
+    home_score = std::max(0, static_cast<int>(std::round(home_exp + home_luck)));
+    away_score = std::max(0, static_cast<int>(std::round(away_exp + away_luck)));
+
+    // Set state directly to full-time
+    current_minute = 90;
+    match_active = false;
+    is_paused_for_manual = false;
+    set_physics_process(false);
+
+    UtilityFunctions::print("Match Skipped! Score: ", home_score, " - ", away_score, " | Remaining Tokens: ", skip_tokens);
+
+    emit_signal("minute_changed", 90);
+    emit_signal("match_ended", home_score, away_score);
+    return true;
+}
+
+void MatchEngine::record_manual_match_completed() {
+    manual_matches_played++;
+    if (manual_matches_played % 5 == 0) {
+        skip_tokens++;
+        UtilityFunctions::print("Reward: Earned +1 Skip Token! Total tokens: ", skip_tokens);
+    }
 }
 
 bool MatchEngine::load_formations_from_csv(const String& p_filepath) {
@@ -132,13 +187,14 @@ void MatchEngine::_physics_process(double delta) {
     if (current_minute >= 90) {
         match_active = false;
         set_physics_process(false);
+        record_manual_match_completed();
         emit_signal("match_ended", home_score, away_score);
         return;
     }
 
     float dt = static_cast<float>(delta);
 
-    // 1. Simulate 2D Player & Ball Drift Movement during match
+    // 1. Simulate 2D Player & Ball Drift Movement
     for (int i = 0; i < player_positions.size(); i++) {
         Vector2 pos = player_positions[i];
         float jitterX = (UtilityFunctions::randf() - 0.5f) * 20.0f * dt;
@@ -153,15 +209,13 @@ void MatchEngine::_physics_process(double delta) {
     } else {
         if (UtilityFunctions::randf() < 0.0020f) {
             is_paused_for_manual = true;
-            event_cooldown = 12.0f; // 12-second cooldown between chances
+            event_cooldown = 12.0f;
             
-            // Calculate attack bias based on OVR difference
             float ovr_diff = static_cast<float>(home_team_ovr - away_team_ovr);
             float home_attack_probability = std::clamp(0.50f + (ovr_diff * 0.015f), 0.20f, 0.80f);
 
             bool is_home_event = UtilityFunctions::randf() < home_attack_probability;
 
-            // Scenario 1-3: Attacking Chances | Scenario 4-5: Defensive Chances
             int scenario_type;
             if (is_home_event) {
                 scenario_type = static_cast<int>(UtilityFunctions::randi_range(1, 3));
@@ -169,7 +223,6 @@ void MatchEngine::_physics_process(double delta) {
                 scenario_type = static_cast<int>(UtilityFunctions::randi_range(4, 5));
             }
             
-            // Map 2D ball position to 3D pitch space (Center 525, 340 -> 3D 0, 0, 0)
             Vector3 ball_3d = Vector3(
                 (ball_position.x - (field_size.x * 0.5f)) * 0.1f, 
                 0.0f, 
@@ -223,7 +276,6 @@ void MatchEngine::_reset_field_positions() {
     bool has_home = formation_db.find(home_str) != formation_db.end();
     bool has_away = formation_db.find(away_str) != formation_db.end();
 
-    // 1. Home Team Positions
     if (has_home) {
         const auto& nodes = formation_db[home_str];
         for (size_t i = 0; i < 11 && i < nodes.size(); i++) {
@@ -237,7 +289,6 @@ void MatchEngine::_reset_field_positions() {
         }
     }
 
-    // 2. Away Team Positions
     if (has_away) {
         const auto& nodes = formation_db[away_str];
         for (size_t i = 0; i < 11 && i < nodes.size(); i++) {
