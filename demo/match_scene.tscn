@@ -3,13 +3,15 @@
 [ext_resource type="Script" uid="uid://wkubeqrbsuwe" path="res://MatchScene.gd" id="1_gymab"]
 [ext_resource type="Script" uid="uid://c2b6akh1quqlr" path="res://MatchPitch.gd" id="2_a4lid"]
 [ext_resource type="Script" uid="uid://dv58in5tvf77y" path="res://Highlight3DManager.gd" id="3_7yec8"]
+[ext_resource type="PackedScene" uid="uid://dpynnm6wjkasu" path="res://Models/Balls/football.glb" id="4_fs81w"]
+[ext_resource type="PackedScene" uid="uid://b60fnwuksfhkw" path="res://Models/Stadium/modern_stadium.glb" id="6_6hlag"]
 
 [node name="MatchScene" type="Node3D" unique_id=1544502285]
 script = ExtResource("1_gymab")
 
 [node name="MatchEngine" type="MatchEngine" parent="." unique_id=1517446699]
 
-[node name="2DOverviewLayer" type="Node2D" parent="." unique_id=1399215114]
+[node name="2DOverviewLayer" type="CanvasLayer" parent="." unique_id=2017253875]
 
 [node name="Pitch2D" type="Node2D" parent="2DOverviewLayer" unique_id=4030976]
 script = ExtResource("2_a4lid")
@@ -30,4 +32,12 @@ current = true
 
 [node name="Ball3D" type="RigidBody3D" parent="3DHighlightLayer" unique_id=529838693]
 
+[node name="Ball" parent="3DHighlightLayer/Ball3D" unique_id=1050729809 instance=ExtResource("4_fs81w")]
+transform = Transform3D(0.073316, 0, 0, 0, 0.073316, 0, 0, 0, 0.073316, 105.9378, -56.050835, -57.111805)
+
 [node name="Players3D" type="Node3D" parent="3DHighlightLayer" unique_id=1217013948]
+
+[node name="Stadium3D" type="Node3D" parent="3DHighlightLayer" unique_id=605945215]
+
+[node name="Stadium" parent="3DHighlightLayer/Stadium3D" unique_id=1963261428 instance=ExtResource("6_6hlag")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.45250487, -0.0495224, 0.9967494)

@@ -49,6 +49,13 @@ public:
     void set_field_size(Vector2 p_size) { field_size = p_size; }
     Vector2 get_field_size() const { return field_size; }
 
+    // Team Overall Ratings (OVR) API
+    void set_home_team_ovr(int p_ovr) { home_team_ovr = p_ovr; }
+    int get_home_team_ovr() const { return home_team_ovr; }
+    void set_away_team_ovr(int p_ovr) { away_team_ovr = p_ovr; }
+    int get_away_team_ovr() const { return away_team_ovr; }
+
+    // Match State Getters
     int get_home_score() const { return home_score; }
     int get_away_score() const { return away_score; }
     int get_current_minute() const { return current_minute; }
@@ -72,6 +79,9 @@ private:
     bool is_paused_for_manual = false;
     bool match_active = false;
     float event_cooldown = 0.0f;
+
+    int home_team_ovr = 75;
+    int away_team_ovr = 72;
 
     String home_formation = "4-3-3";
     String away_formation = "4-4-2";

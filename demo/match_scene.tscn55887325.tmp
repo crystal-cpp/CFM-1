@@ -1,0 +1,33 @@
+[gd_scene format=3 uid="uid://cthguvliskfj6"]
+
+[ext_resource type="Script" uid="uid://wkubeqrbsuwe" path="res://MatchScene.gd" id="1_gymab"]
+[ext_resource type="Script" uid="uid://c2b6akh1quqlr" path="res://MatchPitch.gd" id="2_a4lid"]
+[ext_resource type="Script" uid="uid://dv58in5tvf77y" path="res://Highlight3DManager.gd" id="3_7yec8"]
+
+[node name="MatchScene" type="Node3D" unique_id=1544502285]
+script = ExtResource("1_gymab")
+
+[node name="MatchEngine" type="MatchEngine" parent="." unique_id=1517446699]
+
+[node name="2DOverviewLayer" type="Node2D" parent="." unique_id=1399215114]
+
+[node name="Pitch2D" type="Node2D" parent="2DOverviewLayer" unique_id=4030976]
+script = ExtResource("2_a4lid")
+
+[node name="HUD" type="Control" parent="2DOverviewLayer" unique_id=395918410]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="3DHighlightLayer" type="Node3D" parent="." unique_id=832146791]
+script = ExtResource("3_7yec8")
+
+[node name="Camera3D" type="Camera3D" parent="3DHighlightLayer" unique_id=905201715]
+current = true
+
+[node name="Pitch3D" type="MeshInstance3D" parent="3DHighlightLayer" unique_id=1014995109]
+
+[node name="Ball3D" type="RigidBody3D" parent="3DHighlightLayer" unique_id=529838693]
+
+[node name="Players3D" type="Node3D" parent="3DHighlightLayer" unique_id=1217013948]

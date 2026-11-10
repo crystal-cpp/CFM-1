@@ -1,6 +1,6 @@
 extends Node2D
 
-@onready var match_engine: MatchEngine = $MatchEngine
+@onready var match_engine: MatchEngine = $"../../MatchEngine"
 
 func _ready() -> void:
 	if not match_engine:
@@ -31,31 +31,47 @@ func _draw() -> void:
 		return
 
 	var field_size: Vector2 = match_engine.get_field_size()
+	var viewport_size: Vector2 = get_viewport_rect().size
+	
+	# Calculate dynamic centering offset for any resolution
+	var offset: Vector2 = (viewport_size - field_size) * 0.5
+	offset.x = max(offset.x, 0.0)
+	offset.y = max(offset.y, 0.0)
 
-	# 1. Draw Pitch Green Background & White Lines
-	draw_rect(Rect2(Vector2.ZERO, field_size), Color(0.18, 0.55, 0.22), true)
-	draw_rect(Rect2(Vector2.ZERO, field_size), Color.WHITE, false, 3.0)
+	var default_font: Font = ThemeDB.fallback_font
+
+	# 1. Draw Pitch Green Background & White Lines (Centered)
+	draw_rect(Rect2(offset, field_size), Color(0.18, 0.55, 0.22), true)
+	draw_rect(Rect2(offset, field_size), Color.WHITE, false, 3.0)
 	
 	var half_x: float = field_size.x * 0.5
-	draw_line(Vector2(half_x, 0), Vector2(half_x, field_size.y), Color.WHITE, 2.0)
-	draw_arc(field_size * 0.5, 70.0, 0, TAU, 64, Color.WHITE, 2.0)
+	draw_line(offset + Vector2(half_x, 0), offset + Vector2(half_x, field_size.y), Color.WHITE, 2.0)
+	draw_arc(offset + (field_size * 0.5), 70.0, 0, TAU, 64, Color.WHITE, 2.0)
 
 	var box_w: float = field_size.x * 0.16
 	var box_h: float = field_size.y * 0.55
 	var box_y: float = (field_size.y - box_h) * 0.5
-	draw_rect(Rect2(0, box_y, box_w, box_h), Color.WHITE, false, 2.0)
-	draw_rect(Rect2(field_size.x - box_w, box_y, box_w, box_h), Color.WHITE, false, 2.0)
+	draw_rect(Rect2(offset + Vector2(0, box_y), Vector2(box_w, box_h)), Color.WHITE, false, 2.0)
+	draw_rect(Rect2(offset + Vector2(field_size.x - box_w, box_y), Vector2(box_w, box_h)), Color.WHITE, false, 2.0)
 
-	# 2. Draw 11 Home Players (Red) & 11 Away Players (Blue)
+	# 2. Draw 11 Home Players (Red) & 11 Away Players (Blue) + Player Labels (Centered)
 	var positions: Array = match_engine.get_player_positions()
 	for i in range(positions.size()):
-		var pos: Vector2 = positions[i]
-		var color: Color = Color.RED if i < 11 else Color.BLUE
+		var pos: Vector2 = offset + Vector2(positions[i])
+		var is_home: bool = i < 11
+		var color: Color = Color.RED if is_home else Color.BLUE
+		
+		# Draw Player Circle
 		draw_circle(pos, 9.0, color)
 		draw_arc(pos, 9.0, 0, TAU, 32, Color.BLACK, 1.5)
 
-	# 3. Draw Ball (Yellow)
-	var ball_pos: Vector2 = match_engine.get_ball_position()
+		# Draw Player Label text under dot
+		var label_text: String = "H" + str(i + 1) if is_home else "A" + str(i - 10)
+		var text_offset: Vector2 = pos + Vector2(-20.0, 20.0)
+		draw_string(default_font, text_offset, label_text, HORIZONTAL_ALIGNMENT_CENTER, 40, 10, Color.WHITE)
+
+	# 3. Draw Ball (Yellow) (Centered)
+	var ball_pos: Vector2 = offset + match_engine.get_ball_position()
 	draw_circle(ball_pos, 5.0, Color.YELLOW)
 	draw_arc(ball_pos, 5.0, 0, TAU, 16, Color.BLACK, 1.0)
 

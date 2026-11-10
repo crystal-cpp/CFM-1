@@ -2,6 +2,7 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
+#include <algorithm>
 
 using namespace godot;
 
@@ -20,6 +21,12 @@ void MatchEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_field_size", "size"), &MatchEngine::set_field_size);
     ClassDB::bind_method(D_METHOD("get_field_size"), &MatchEngine::get_field_size);
 
+    // Team OVR Methods
+    ClassDB::bind_method(D_METHOD("set_home_team_ovr", "ovr"), &MatchEngine::set_home_team_ovr);
+    ClassDB::bind_method(D_METHOD("get_home_team_ovr"), &MatchEngine::get_home_team_ovr);
+    ClassDB::bind_method(D_METHOD("set_away_team_ovr", "ovr"), &MatchEngine::set_away_team_ovr);
+    ClassDB::bind_method(D_METHOD("get_away_team_ovr"), &MatchEngine::get_away_team_ovr);
+
     // Getters
     ClassDB::bind_method(D_METHOD("get_home_score"), &MatchEngine::get_home_score);
     ClassDB::bind_method(D_METHOD("get_away_score"), &MatchEngine::get_away_score);
@@ -33,6 +40,8 @@ void MatchEngine::_bind_methods() {
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "home_formation"), "set_home_formation", "get_home_formation");
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "away_formation"), "set_away_formation", "get_away_formation");
     ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "field_size"), "set_field_size", "get_field_size");
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "home_team_ovr"), "set_home_team_ovr", "get_home_team_ovr");
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "away_team_ovr"), "set_away_team_ovr", "get_away_team_ovr");
     ADD_PROPERTY(PropertyInfo(Variant::INT, "home_score"), "", "get_home_score");
     ADD_PROPERTY(PropertyInfo(Variant::INT, "away_score"), "", "get_away_score");
     ADD_PROPERTY(PropertyInfo(Variant::INT, "current_minute"), "", "get_current_minute");
@@ -138,18 +147,29 @@ void MatchEngine::_physics_process(double delta) {
     }
     ball_position += Vector2((UtilityFunctions::randf() - 0.5f) * 15.0f * dt, (UtilityFunctions::randf() - 0.5f) * 10.0f * dt);
 
-    // 2. Cooldown timer & 3D Scenario Trigger Logic
+    // 2. Dynamic Chance Generation System (Team OVR Weighted)
     if (event_cooldown > 0.0f) {
         event_cooldown -= dt;
     } else {
-        if (UtilityFunctions::randf() < 0.0015f) {
+        if (UtilityFunctions::randf() < 0.0020f) {
             is_paused_for_manual = true;
-            event_cooldown = 10.0f; // 10-second gap before next event can trigger
+            event_cooldown = 12.0f; // 12-second cooldown between chances
             
-            bool is_home_event = UtilityFunctions::randf() > 0.5f;
-            int scenario_type = static_cast<int>(UtilityFunctions::randi_range(1, 3));
+            // Calculate attack bias based on OVR difference
+            float ovr_diff = static_cast<float>(home_team_ovr - away_team_ovr);
+            float home_attack_probability = std::clamp(0.50f + (ovr_diff * 0.015f), 0.20f, 0.80f);
+
+            bool is_home_event = UtilityFunctions::randf() < home_attack_probability;
+
+            // Scenario 1-3: Attacking Chances | Scenario 4-5: Defensive Chances
+            int scenario_type;
+            if (is_home_event) {
+                scenario_type = static_cast<int>(UtilityFunctions::randi_range(1, 3));
+            } else {
+                scenario_type = static_cast<int>(UtilityFunctions::randi_range(4, 5));
+            }
             
-            // Map 2D ball position to 3D pitch origin (Center 525, 340 -> 3D 0, 0, 0)
+            // Map 2D ball position to 3D pitch space (Center 525, 340 -> 3D 0, 0, 0)
             Vector3 ball_3d = Vector3(
                 (ball_position.x - (field_size.x * 0.5f)) * 0.1f, 
                 0.0f, 
