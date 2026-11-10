@@ -3,7 +3,51 @@
 #include <vector>
 #include <algorithm>
 
-enum class Position { GK, CB, LB, RB, CM, CDM, CAM, LW, RW, ST };
+enum class Position { 
+    GK, CB, LB, RB, LWB, RWB, 
+    CM, CDM, CAM, LM, RM, 
+    LW, RW, ST, CF, UNKNOWN 
+};
+
+inline std::string position_to_string(Position pos) {
+    switch (pos) {
+        case Position::GK:  return "GK";
+        case Position::CB:  return "CB";
+        case Position::LB:  return "LB";
+        case Position::RB:  return "RB";
+        case Position::LWB: return "LWB";
+        case Position::RWB: return "RWB";
+        case Position::CM:  return "CM";
+        case Position::CDM: return "CDM";
+        case Position::CAM: return "CAM";
+        case Position::LM:  return "LM";
+        case Position::RM:  return "RM";
+        case Position::LW:  return "LW";
+        case Position::RW:  return "RW";
+        case Position::ST:  return "ST";
+        case Position::CF:  return "CF";
+        default:            return "UNKNOWN";
+    }
+}
+
+inline Position string_to_position(const std::string& str) {
+    if (str == "GK")  return Position::GK;
+    if (str == "CB")  return Position::CB;
+    if (str == "LB")  return Position::LB;
+    if (str == "RB")  return Position::RB;
+    if (str == "LWB") return Position::LWB;
+    if (str == "RWB") return Position::RWB;
+    if (str == "CM")  return Position::CM;
+    if (str == "CDM") return Position::CDM;
+    if (str == "CAM") return Position::CAM;
+    if (str == "LM")  return Position::LM;
+    if (str == "RM")  return Position::RM;
+    if (str == "LW")  return Position::LW;
+    if (str == "RW")  return Position::RW;
+    if (str == "ST")  return Position::ST;
+    if (str == "CF")  return Position::CF;
+    return Position::UNKNOWN;
+}
 
 enum class PlayerStatus {
     UnbornProspect, 
@@ -13,7 +57,12 @@ enum class PlayerStatus {
 };
 
 struct PlayerAttributes {
-    int Pace, Shooting, Passing, Dribbling, Defending, Physical;
+    int Pace = 60;
+    int Shooting = 60;
+    int Passing = 60;
+    int Dribbling = 60;
+    int Defending = 60;
+    int Physical = 60;
 };
 
 class Player {
@@ -25,15 +74,16 @@ public:
     }
     
     void CalculateOVR() {
-        if (Pos == Position::ST || Pos == Position::LW || Pos == Position::RW) {
-            OVR = (Attributes.Shooting * 0.4) + (Attributes.Pace * 0.3) + (Attributes.Dribbling * 0.3);
-        } else if (Pos == Position::CM || Pos == Position::CAM || Pos == Position::CDM) {
-            OVR = (Attributes.Passing * 0.5) + (Attributes.Dribbling * 0.3) + (Attributes.Defending * 0.2);
-        } else if (Pos == Position::CB || Pos == Position::LB || Pos == Position::RB) {
-            OVR = (Attributes.Defending * 0.6) + (Attributes.Physical * 0.3) + (Attributes.Pace * 0.1);
+        if (Pos == Position::ST || Pos == Position::CF || Pos == Position::LW || Pos == Position::RW) {
+            OVR = static_cast<int>((Attributes.Shooting * 0.4) + (Attributes.Pace * 0.3) + (Attributes.Dribbling * 0.3));
+        } else if (Pos == Position::CM || Pos == Position::CAM || Pos == Position::CDM || Pos == Position::LM || Pos == Position::RM) {
+            OVR = static_cast<int>((Attributes.Passing * 0.5) + (Attributes.Dribbling * 0.3) + (Attributes.Defending * 0.2));
+        } else if (Pos == Position::CB || Pos == Position::LB || Pos == Position::RB || Pos == Position::LWB || Pos == Position::RWB) {
+            OVR = static_cast<int>((Attributes.Defending * 0.6) + (Attributes.Physical * 0.3) + (Attributes.Pace * 0.1));
         } else {
             OVR = Attributes.Defending; 
         }
+        OVR = std::clamp(OVR, 1, 99);
     }
 
     bool ApplyTrainingXP(int xpAmount) {
@@ -82,6 +132,8 @@ public:
 
     bool IsRetired() const { return Retired; }
     std::string GetName() const { return Name; }
+    Position GetPosition() const { return Pos; }
+    PlayerAttributes GetAttributes() const { return Attributes; }
     int GetOVR() const { return OVR; }
     int GetAge() const { return Age; }
     int GetDebutAge() const { return DebutAge; }
@@ -92,6 +144,7 @@ public:
         if (Retired) return 0.0; 
         return OVR * 1000000.0; 
     }
+
     void AdvanceAge() {
         SimulateYearlyGrowth();
     }

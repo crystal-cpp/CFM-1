@@ -194,7 +194,7 @@ void MatchEngine::_physics_process(double delta) {
 
     float dt = static_cast<float>(delta);
 
-    // 1. Simulate 2D Player & Ball Drift Movement
+    // Simulate 2D Player & Ball Drift Movement
     for (int i = 0; i < player_positions.size(); i++) {
         Vector2 pos = player_positions[i];
         float jitterX = (UtilityFunctions::randf() - 0.5f) * 20.0f * dt;
@@ -203,7 +203,7 @@ void MatchEngine::_physics_process(double delta) {
     }
     ball_position += Vector2((UtilityFunctions::randf() - 0.5f) * 15.0f * dt, (UtilityFunctions::randf() - 0.5f) * 10.0f * dt);
 
-    // 2. Dynamic Chance Generation System (Team OVR Weighted)
+    // Dynamic Chance Generation System (Team OVR Weighted)
     if (event_cooldown > 0.0f) {
         event_cooldown -= dt;
     } else {
