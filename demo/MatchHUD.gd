@@ -36,7 +36,6 @@ func _ready() -> void:
 
 	match_engine.minute_changed.connect(_on_minute_changed)
 	match_engine.goal_scored.connect(_on_goal_scored)
-	match_engine.match_ended.connect(_on_match_ended)
 
 	refresh_all()
 
@@ -218,7 +217,7 @@ func _on_goal_scored(home: int, away: int, is_home: bool) -> void:
 	var scorer_side: String = "HOME" if is_home else "AWAY"
 	show_toast("GOAL! %s SCORES (%d - %d)" % [scorer_side, home, away], 3.0)
 
-func _on_match_ended(final_home: int, final_away: int) -> void:
+func show_fulltime_summary(final_home: int, final_away: int) -> void:
 	refresh_all()
 	if _fulltime_score_label:
 		_fulltime_score_label.text = "HOME %d - %d AWAY" % [final_home, final_away]

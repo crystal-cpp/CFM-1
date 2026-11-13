@@ -121,6 +121,8 @@ func _on_interactive_event_triggered(scenario_type: int, is_home_team: bool, bal
 		return
 
 	current_event_state = EventState.EVENT_TRIGGERED
+	if not match_engine.is_match_paused():
+		match_engine.pause_match(true)
 	print("MatchScene: Event Triggered -> Launching 3D Highlight [Scenario: ", scenario_type, "]")
 
 	# Switch Viewports cleanly
@@ -184,5 +186,5 @@ func _process_final_whistle(final_home: int, final_away: int) -> void:
 	print("MatchScene: FULL TIME! Final Scoreboard: Home ", final_home, " - ", final_away, " Away")
 	print("Manual Matches Played: ", match_engine.get_manual_matches_played(), " | Available Skip Tokens: ", match_engine.get_skip_tokens())
 	pending_match_ended = false
-	if hud and hud.has_method("_on_match_ended"):
-		hud._on_match_ended(final_home, final_away)
+	if hud and hud.has_method("show_fulltime_summary"):
+		hud.show_fulltime_summary(final_home, final_away)

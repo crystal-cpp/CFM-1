@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://dr0bibhnetwcw" path="res://MatchHUD.gd" id="3_fs81w"]
 [ext_resource type="PackedScene" uid="uid://dpynnm6wjkasu" path="res://Models/Balls/football.glb" id="4_fs81w"]
 [ext_resource type="PackedScene" uid="uid://b60fnwuksfhkw" path="res://Models/Stadium/modern_stadium.glb" id="6_6hlag"]
+[ext_resource type="Script" uid="uid://beh8phxuhwa4v" path="res://IntegrationRegressionTest.gd" id="7_osqcl"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.24, 0.48, 0.82, 1)
@@ -95,3 +96,6 @@ transform = Transform3D(0.073316, 0, 0, 0, 0.073316, 0, 0, 0, 0.073316, 0, 0, 0)
 
 [node name="Stadium" parent="3DHighlightLayer/Stadium3D" unique_id=1963261428 instance=ExtResource("6_6hlag")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.45250487, -0.0495224, 0.9967494)
+
+[node name="RegressionTester" type="Node" parent="." unique_id=299231843]
+script = ExtResource("7_osqcl")
