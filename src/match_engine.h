@@ -4,6 +4,7 @@
 #include <godot_cpp/variant/vector3.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <vector>
@@ -29,6 +30,9 @@ class MatchEngine : public Node2D {
     GDCLASS(MatchEngine, Node2D)
 
 public:
+    static constexpr const char* PRIMARY_FORMATIONS_PATH = "res://data/formations.csv";
+    static constexpr const char* FALLBACK_FORMATIONS_PATH = "res://../Players_Database/formations.csv";
+
     MatchEngine();
     ~MatchEngine();
 
@@ -50,18 +54,23 @@ public:
 
     // Formations & Pitch Dimensions API
     bool load_formations_from_csv(const String& p_filepath);
-    void set_home_formation(const String& p_formation_name);
-    void set_away_formation(const String& p_formation_name);
+    bool load_default_formations();
+    bool is_formations_loaded() const { return !formation_db.empty(); }
+    String get_loaded_formations_path() const { return loaded_formations_path; }
+    bool has_formation(const String& p_formation_name) const;
+    PackedStringArray get_available_formations() const;
+    bool set_home_formation(const String& p_formation_name);
+    bool set_away_formation(const String& p_formation_name);
     String get_home_formation() const { return home_formation; }
     String get_away_formation() const { return away_formation; }
 
-    void set_field_size(Vector2 p_size) { field_size = p_size; }
+    void set_field_size(Vector2 p_size);
     Vector2 get_field_size() const { return field_size; }
 
     // Team Overall Ratings (OVR) API
-    void set_home_team_ovr(int p_ovr) { home_team_ovr = p_ovr; }
+    void set_home_team_ovr(int p_ovr);
     int get_home_team_ovr() const { return home_team_ovr; }
-    void set_away_team_ovr(int p_ovr) { away_team_ovr = p_ovr; }
+    void set_away_team_ovr(int p_ovr);
     int get_away_team_ovr() const { return away_team_ovr; }
 
     // Match State Getters
@@ -79,6 +88,9 @@ protected:
 
 private:
     void _reset_field_positions();
+    void _apply_formation_positions(bool p_reset_ball);
+    void _update_bounded_2d_motion(float dt);
+    bool _has_valid_formation(const std::string& p_name) const;
 
     float match_timer = 0.0f;
     int current_minute = 0;
@@ -91,17 +103,20 @@ private:
 
     // Token Management State
     int manual_matches_played = 0;
-    int skip_tokens = 1; // Starts with 1 initial token
+    int skip_tokens = 1;
 
     int home_team_ovr = 75;
     int away_team_ovr = 72;
 
     String home_formation = "4-3-3";
     String away_formation = "4-4-2";
+    String loaded_formations_path = "";
     std::unordered_map<std::string, std::vector<TacticalPosition>> formation_db;
 
     Vector2 field_size = Vector2(1050.0f, 680.0f);
     Vector2 ball_position = Vector2(525.0f, 340.0f);
+    Vector2 ball_velocity = Vector2(45.0f, 30.0f);
+    std::vector<Vector2> base_player_positions;
     Array player_positions;
 };
 
