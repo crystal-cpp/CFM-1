@@ -2,40 +2,8 @@
 
 [ext_resource type="Script" uid="uid://wkubeqrbsuwe" path="res://MatchScene.gd" id="1_gymab"]
 [ext_resource type="Script" uid="uid://c2b6akh1quqlr" path="res://MatchPitch.gd" id="2_a4lid"]
-[ext_resource type="Script" uid="uid://dv58in5tvf77y" path="res://Highlight3DManager.gd" id="3_7yec8"]
 [ext_resource type="Script" uid="uid://dr0bibhnetwcw" path="res://MatchHUD.gd" id="3_fs81w"]
-[ext_resource type="PackedScene" uid="uid://dpynnm6wjkasu" path="res://Models/Balls/football.glb" id="4_fs81w"]
-[ext_resource type="PackedScene" uid="uid://b60fnwuksfhkw" path="res://Models/Stadium/modern_stadium.glb" id="6_6hlag"]
 [ext_resource type="Script" uid="uid://beh8phxuhwa4v" path="res://IntegrationRegressionTest.gd" id="7_osqcl"]
-
-[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
-sky_top_color = Color(0.24, 0.48, 0.82, 1)
-sky_horizon_color = Color(0.68, 0.8, 0.92, 1)
-ground_bottom_color = Color(0.14, 0.24, 0.14, 1)
-ground_horizon_color = Color(0.45, 0.55, 0.45, 1)
-
-[sub_resource type="Sky" id="Sky_highlight"]
-sky_material = SubResource("ProceduralSkyMaterial_sky")
-
-[sub_resource type="Environment" id="Environment_highlight"]
-background_mode = 2
-sky = SubResource("Sky_highlight")
-ambient_light_source = 3
-ambient_light_energy = 0.75
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pitch"]
-albedo_color = Color(0.16, 0.52, 0.2, 1)
-roughness = 0.85
-
-[sub_resource type="PlaneMesh" id="PlaneMesh_pitch"]
-material = SubResource("StandardMaterial3D_pitch")
-size = Vector2(105, 68)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_pitch_floor"]
-size = Vector3(120, 1, 80)
-
-[sub_resource type="SphereShape3D" id="SphereShape3D_ball"]
-radius = 0.11
 
 [node name="MatchScene" type="Node3D" unique_id=1544502285]
 script = ExtResource("1_gymab")
@@ -53,49 +21,6 @@ anchors_preset = 0
 offset_right = 40.0
 offset_bottom = 40.0
 script = ExtResource("3_fs81w")
-
-[node name="3DHighlightLayer" type="Node3D" parent="." unique_id=832146791]
-visible = false
-script = ExtResource("3_7yec8")
-
-[node name="WorldEnvironment" type="WorldEnvironment" parent="3DHighlightLayer" unique_id=912001101]
-environment = SubResource("Environment_highlight")
-
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="3DHighlightLayer" unique_id=912001102]
-transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 35, 0)
-light_energy = 1.2
-shadow_enabled = true
-
-[node name="Camera3D" type="Camera3D" parent="3DHighlightLayer" unique_id=905201715]
-transform = Transform3D(1, 0, 0, 0, 0.894427, 0.447214, 0, -0.447214, 0.894427, 0, 4, 7)
-
-[node name="Pitch3D" type="MeshInstance3D" parent="3DHighlightLayer" unique_id=1014995109]
-mesh = SubResource("PlaneMesh_pitch")
-
-[node name="PitchFloorBody" type="StaticBody3D" parent="3DHighlightLayer/Pitch3D" unique_id=1014995110]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
-
-[node name="PitchFloorCollision" type="CollisionShape3D" parent="3DHighlightLayer/Pitch3D/PitchFloorBody" unique_id=1014995111]
-shape = SubResource("BoxShape3D_pitch_floor")
-
-[node name="Ball3D" type="RigidBody3D" parent="3DHighlightLayer" unique_id=529838693]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.11, 0)
-freeze = true
-freeze_mode = 1
-continuous_cd = true
-
-[node name="BallCollision" type="CollisionShape3D" parent="3DHighlightLayer/Ball3D" unique_id=529838694]
-shape = SubResource("SphereShape3D_ball")
-
-[node name="Ball" parent="3DHighlightLayer/Ball3D" unique_id=1050729809 instance=ExtResource("4_fs81w")]
-transform = Transform3D(0.073316, 0, 0, 0, 0.073316, 0, 0, 0, 0.073316, 0, 0, 0)
-
-[node name="Players3D" type="Node3D" parent="3DHighlightLayer" unique_id=1217013948]
-
-[node name="Stadium3D" type="Node3D" parent="3DHighlightLayer" unique_id=605945215]
-
-[node name="Stadium" parent="3DHighlightLayer/Stadium3D" unique_id=1963261428 instance=ExtResource("6_6hlag")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.45250487, -0.0495224, 0.9967494)
 
 [node name="RegressionTester" type="Node" parent="." unique_id=299231843]
 script = ExtResource("7_osqcl")
