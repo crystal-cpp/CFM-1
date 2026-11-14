@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://wkubeqrbsuwe" path="res://MatchScene.gd" id="1_gymab"]
 [ext_resource type="Script" uid="uid://c2b6akh1quqlr" path="res://MatchPitch.gd" id="2_a4lid"]
 [ext_resource type="Script" uid="uid://dr0bibhnetwcw" path="res://MatchHUD.gd" id="3_fs81w"]
+[ext_resource type="Script" uid="uid://ctlba31j86bwi" path="res://TacticalScreen.gd" id="4_7yec8"]
 [ext_resource type="Script" uid="uid://beh8phxuhwa4v" path="res://IntegrationRegressionTest.gd" id="7_osqcl"]
 
 [node name="MatchScene" type="Node3D" unique_id=1544502285]
@@ -21,6 +22,12 @@ anchors_preset = 0
 offset_right = 40.0
 offset_bottom = 40.0
 script = ExtResource("3_fs81w")
+
+[node name="TacticalScreen" type="PanelContainer" parent="2DOverviewLayer/HUD" unique_id=1885420657]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("4_7yec8")
 
 [node name="RegressionTester" type="Node" parent="." unique_id=299231843]
 script = ExtResource("7_osqcl")

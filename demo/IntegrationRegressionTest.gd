@@ -1,6 +1,6 @@
 extends Node
 
-@onready var match_scene: Node3D = get_parent()
+@onready var match_scene: Node = get_parent()
 @onready var match_engine: MatchEngine = $"../MatchEngine"
 @onready var overview_2d: CanvasLayer = $"../2DOverviewLayer"
 @onready var hud: Control = $"../2DOverviewLayer/HUD"
@@ -24,25 +24,28 @@ func run_all_tests() -> void:
 	_failed = 0
 
 	print("\n========================================================")
-	print("  PHASE 1: 2D MATCH ENGINE & REGRESSION SUITE")
+	print("  PHASE 2A + 2B: DIRECT CONTROL, TACTICS & UI SUITE")
 	print("========================================================")
 
 	_test_scene_hierarchy_and_no_3d()
 	_test_formations_and_kickoff_bounds()
 	await _test_coordinated_2d_simulation()
 	_test_ovr_and_tactics_validation()
-	await _test_2d_chance_lifecycle()
+	await _test_no_scoring_outside_active_chances()
+	await _test_chance_scoring_and_defensive_safety()
+	await _test_direct_player_control_commands()
+	await _test_mentality_pressing_and_stamina_effects()
+	await _test_fullscreen_tactical_screen()
 	await _test_deferred_fulltime_whistle()
 	_test_pause_and_resume()
 	_test_skip_match_economy()
 
-	# Restore clean playable match state after tests
 	match_engine.set_home_formation("4-3-3")
 	match_engine.set_away_formation("4-4-2")
 	match_engine.set_home_team_ovr(75)
 	match_engine.set_away_team_ovr(72)
-	match_engine.set_home_mentality(1)
-	match_engine.set_away_mentality(1)
+	match_engine.set_home_mentality(2)
+	match_engine.set_away_mentality(2)
 	match_engine.set_home_pressing(1)
 	match_engine.set_away_pressing(1)
 	match_engine.set_skip_tokens(1)
@@ -54,7 +57,7 @@ func run_all_tests() -> void:
 	print("  RESULTS: %d PASSED | %d FAILED" % [_passed, _failed])
 	print("========================================================\n")
 	if hud and hud.has_method("show_toast"):
-		hud.show_toast("Phase 1 Suite: %d Passed, %d Failed" % [_passed, _failed], 4.0)
+		hud.show_toast("Phase 2 Suite: %d Passed, %d Failed" % [_passed, _failed], 4.0)
 
 	_is_running = false
 
@@ -83,11 +86,14 @@ func _test_formations_and_kickoff_bounds() -> void:
 	var rejected: bool = match_engine.set_home_formation("9-9-9")
 	_assert(not rejected and match_engine.get_home_formation() == "4-3-3", "Invalid formation '9-9-9' rejected safely")
 
+	var names_before: PackedStringArray = match_engine.get_player_names()
 	var ball_before: Vector2 = match_engine.get_ball_position()
 	var swapped: bool = match_engine.set_home_formation("3-5-2")
+	var names_after: PackedStringArray = match_engine.get_player_names()
 	var ball_after: Vector2 = match_engine.get_ball_position()
 	_assert(swapped and match_engine.get_home_formation() == "3-5-2", "Valid formation '3-5-2' applied")
 	_assert(ball_before.is_equal_approx(ball_after), "Mid-match formation swap preserves live ball position")
+	_assert(names_before == names_after and names_after.size() == 22, "Formation swap preserves starting XI player identities without duplicates")
 
 	var field_size: Vector2 = match_engine.get_field_size()
 	var half_x: float = field_size.x * 0.5
@@ -109,8 +115,9 @@ func _test_coordinated_2d_simulation() -> void:
 	match_engine.start_match()
 	_assert(match_engine.get_possession_team() == 0 and match_engine.get_ball_carrier_index() >= 0, "Kickoff assigns initial possession & ball carrier")
 
-	# Step 1.2s of live physics simulation
 	for _f in range(72):
+		if match_engine.is_chance_active():
+			match_engine.resolve_manual_scenario(false, match_engine.get_chance_state() == 1)
 		await get_tree().physics_frame
 
 	var field_size: Vector2 = match_engine.get_field_size()
@@ -139,45 +146,120 @@ func _test_ovr_and_tactics_validation() -> void:
 
 	match_engine.set_home_mentality(99)
 	match_engine.set_home_pressing(-4)
-	_assert(match_engine.get_home_mentality() == 2 and match_engine.get_home_pressing() == 0, "Mentality & pressing clamped safely")
+	_assert(match_engine.get_home_mentality() == 4 and match_engine.get_home_pressing() == 0, "5-tier Mentality [0..4] & 3-tier Pressing [0..2] clamped safely")
 
-func _test_2d_chance_lifecycle() -> void:
+func _test_no_scoring_outside_active_chances() -> void:
+	match_engine.start_match()
+	match_engine.set_home_team_ovr(99)
+	match_engine.set_away_team_ovr(1)
+
+	for _f in range(90):
+		if match_engine.is_chance_active():
+			match_engine.resolve_manual_scenario(false, match_engine.get_chance_state() == 1)
+		await get_tree().physics_frame
+
+	_assert(match_engine.get_home_score() == 0 and match_engine.get_away_score() == 0, "Zero goals awarded outside active ATTACK CHANCE")
+
+func _test_chance_scoring_and_defensive_safety() -> void:
 	match_engine.start_match()
 	await get_tree().process_frame
 
-	match_scene._on_interactive_event_triggered(1, true, Vector3(12.0, 0.0, -5.0))
+	match_engine.begin_chance(true, 9, 0.35)
+	_assert(match_engine.get_chance_state() == 1 and match_engine.is_chance_active(), "Home ATTACK CHANCE activated (chance_state == 1)")
+	match_engine.resolve_manual_scenario(true, true)
+	_assert(match_engine.get_home_score() == 1 and match_engine.get_away_score() == 0, "Home ATTACK CHANCE conversion awarded goal exclusively to Home")
+	_assert(match_engine.get_chance_state() == 0 and not match_engine.is_chance_active(), "Chance state reset to CHANCE_NONE after conversion")
+
+	match_engine.begin_chance(false, 20, 0.35)
+	_assert(match_engine.get_chance_state() == 2, "Away ATTACK CHANCE / Home DEFEND CHANCE activated (chance_state == 2)")
+	match_engine.resolve_manual_scenario(false, false)
+	_assert(match_engine.get_home_score() == 1 and match_engine.get_away_score() == 0, "Defensive stop prevented Away goal and awarded zero accidental goals")
+	_assert(match_engine.get_chance_state() == 0, "Chance state reset to CHANCE_NONE after defensive stop")
+
+func _test_direct_player_control_commands() -> void:
+	match_engine.start_match()
+	match_engine.begin_chance(true, 9, 0.30)
 	await get_tree().process_frame
 
-	_assert(overview_2d.visible, "2DOverviewLayer stays visible during attacking chance")
-	_assert(match_scene._chance_banner_label.text == "ATTACK CHANCE", "HUD chance banner displays 'ATTACK CHANCE' without scenario ID")
-	_assert(match_engine.is_match_paused(), "MatchEngine paused while 2D chance banner is active")
+	var ctrl_idx: int = match_engine.get_controlled_player_index()
+	_assert(ctrl_idx == 9 and match_engine.is_manual_control_active(), "Controlled attacker assigned on ATTACK CHANCE")
 
-	match_scene.resolve_active_2d_chance(1)
-	match_scene.resolve_active_2d_chance(1)
+	var pos_before := Vector2(match_engine.get_player_positions()[ctrl_idx])
+	var target_move := pos_before + Vector2(30.0, 20.0)
+	var moved_ok: bool = match_engine.command_move_player(target_move)
+	await get_tree().physics_frame
+	var pos_after := Vector2(match_engine.get_player_positions()[ctrl_idx])
+	_assert(moved_ok and pos_after.distance_to(pos_before) > 0.1 and not pos_after.is_equal_approx(target_move), "command_move_player moves player smoothly without teleporting")
+
+	var valid_targets: Array = match_engine.get_valid_pass_targets()
+	_assert(valid_targets.size() > 0, "get_valid_pass_targets() returns available teammates")
+
+	var target_tm: int = int(valid_targets[0])
+	var pass_ok: bool = match_engine.command_pass(target_tm)
+	_assert(pass_ok and match_engine.get_controlled_player_index() == target_tm, "command_pass executes pass and switches control to receiver")
+
+	match_engine.begin_chance(false, 20, 0.30)
+	var def_idx: int = match_engine.select_nearest_defender()
+	_assert(def_idx >= 1 and def_idx < 11 and match_engine.get_controlled_player_index() == def_idx, "select_nearest_defender() selects closest Home defender")
+	match_engine.resolve_manual_scenario(false, false)
+
+func _test_mentality_pressing_and_stamina_effects() -> void:
+	match_engine.set_home_mentality(0)
+	match_engine.set_home_pressing(0)
+	match_engine.start_match()
+	for _f in range(60):
+		if match_engine.is_chance_active():
+			match_engine.resolve_manual_scenario(false, match_engine.get_chance_state() == 1)
+		await get_tree().physics_frame
+	var low_intensity_stamina: float = match_engine.get_player_stamina()[8]
+
+	match_engine.set_home_mentality(4)
+	match_engine.set_home_pressing(2)
+	match_engine.start_match()
+	for _f in range(60):
+		if match_engine.is_chance_active():
+			match_engine.resolve_manual_scenario(false, match_engine.get_chance_state() == 1)
+		await get_tree().physics_frame
+	var high_intensity_stamina: float = match_engine.get_player_stamina()[8]
+
+	_assert(high_intensity_stamina < low_intensity_stamina,
+		"High Pressing + Very Attacking drains more stamina (%.2f) than Low Pressing + Very Defensive (%.2f)" % [high_intensity_stamina, low_intensity_stamina])
+
+func _test_fullscreen_tactical_screen() -> void:
+	match_engine.set_home_formation("4-3-3")
+	match_engine.set_home_mentality(2)
+	match_engine.start_match()
 	await get_tree().process_frame
 
-	_assert(not match_engine.is_match_paused(), "2D simulation resumed cleanly after chance resolution")
-	_assert(match_engine.get_home_score() == 1, "Attacking chance resolved once and incremented Home score to 1")
-
-	match_scene._on_interactive_event_triggered(4, false, Vector3(-10.0, 0.0, 3.0))
-	await get_tree().process_frame
-	_assert(match_scene._chance_banner_label.text == "DEFEND CHANCE", "HUD chance banner displays 'DEFEND CHANCE' without scenario ID")
-	match_scene.resolve_active_2d_chance(0)
+	var min_before: int = match_engine.get_current_minute()
+	hud.open_tactical_screen()
 	await get_tree().process_frame
 
-	_assert(match_engine.get_away_score() == 0, "Successful defensive stop prevented Away goal")
+	_assert(hud.is_tactical_screen_open() and match_engine.is_match_paused(), "TACTIC button pauses match and opens full-screen tactical UI")
+
+	for _f in range(15):
+		await get_tree().physics_frame
+	_assert(match_engine.get_current_minute() == min_before, "Match simulation remains frozen while TacticalScreen is open")
+
+	match_engine.set_home_formation("4-2-3-1")
+	match_engine.set_home_mentality(4)
+	hud.close_tactical_screen()
+	await get_tree().process_frame
+
+	_assert(not hud.is_tactical_screen_open() and not match_engine.is_match_paused(), "RESUME MATCH closes TacticalScreen and unpauses match")
+	_assert(match_engine.get_home_formation() == "4-2-3-1" and match_engine.get_home_mentality() == 4, "Tactical changes persist after resuming match")
 
 func _test_deferred_fulltime_whistle() -> void:
 	match_engine.start_match()
 	await get_tree().process_frame
 
-	match_scene._on_interactive_event_triggered(4, false, Vector3(-8.0, 0.0, 4.0))
+	match_engine.begin_chance(false, 20, 0.30)
 	await get_tree().process_frame
 	match_scene._on_match_ended(2, 1)
 
 	_assert(match_scene.pending_match_ended, "Full-time whistle deferred while 2D chance is active")
 
-	match_scene.resolve_active_2d_chance(0)
+	match_engine.resolve_manual_scenario(false, false)
 	await get_tree().process_frame
 
 	_assert(not match_scene.pending_match_ended, "Deferred full-time whistle processed immediately after 2D chance")

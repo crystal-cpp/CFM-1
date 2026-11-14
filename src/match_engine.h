@@ -5,6 +5,7 @@
 #include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <vector>
@@ -40,6 +41,7 @@ struct SimPlayer {
     int defending = 70;
     int physical = 70;
     float stamina = 100.0f;
+    float recovery_timer = 0.0f;
 
     Vector2 anchor;
     Vector2 position;
@@ -76,17 +78,30 @@ public:
     static constexpr const char* PRIMARY_FORMATIONS_PATH = "res://data/formations.csv";
     static constexpr const char* FALLBACK_FORMATIONS_PATH = "res://../Players_Database/formations.csv";
 
+    enum ChanceState {
+        CHANCE_NONE = 0,
+        CHANCE_HOME_ATTACK = 1,
+        CHANCE_AWAY_ATTACK = 2
+    };
+
     enum Mentality {
-        MENTALITY_DEFENSIVE = 0,
-        MENTALITY_BALANCED = 1,
-        MENTALITY_ATTACKING = 2
+        MENTALITY_VERY_DEFENSIVE = 0,
+        MENTALITY_DEFENSIVE = 1,
+        MENTALITY_BALANCED = 2,
+        MENTALITY_ATTACKING = 3,
+        MENTALITY_VERY_ATTACKING = 4
     };
 
     enum PressingIntensity {
         PRESSING_LOW = 0,
-        PRESSING_MEDIUM = 1,
-        PRESSING_HIGH = 2,
-        PRESSING_EXTREME = 3
+        PRESSING_NORMAL = 1,
+        PRESSING_HIGH = 2
+    };
+
+    enum TacticalTier {
+        TIER_LOW = 0,
+        TIER_NORMAL = 1,
+        TIER_HIGH = 2
     };
 
     MatchEngine();
@@ -99,6 +114,22 @@ public:
     void start_match();
     void pause_match(bool p_pause);
     void resolve_manual_scenario(bool p_success, bool p_is_home_team = true);
+    bool begin_chance(bool p_is_home_attacking, int p_attacker_idx = -1, float p_xg = 0.25f);
+
+    // Direct Player Control API (World Soccer Champs Style)
+    int get_chance_state() const { return chance_state; }
+    bool is_chance_active() const { return chance_state != CHANCE_NONE; }
+    bool is_manual_control_active() const { return manual_control_active; }
+    int get_controlled_player_index() const { return user_controlled_index; }
+    bool set_controlled_player(int p_player_idx);
+    int select_nearest_defender();
+    Array get_valid_pass_targets() const;
+
+    bool command_move_player(Vector2 p_target_pos);
+    bool command_pass(int p_target_player_idx);
+    bool command_through_ball(Vector2 p_direction_or_target);
+    bool command_shot(Vector2 p_aim_target, float p_power_ratio = 0.75f);
+    bool command_tackle();
 
     // Skip Match & Token API
     bool can_skip_match() const;
@@ -132,15 +163,41 @@ public:
     void set_home_lineup(const Array& p_players);
     void set_away_lineup(const Array& p_players);
 
-    // Tactical Instructions API (Phase 2 Ready)
+    // Tactical Instructions API
     void set_home_mentality(int p_mentality);
     int get_home_mentality() const { return home_mentality; }
     void set_away_mentality(int p_mentality);
     int get_away_mentality() const { return away_mentality; }
+
     void set_home_pressing(int p_pressing);
     int get_home_pressing() const { return home_pressing; }
     void set_away_pressing(int p_pressing);
     int get_away_pressing() const { return away_pressing; }
+
+    void set_home_defensive_line(int p_line);
+    int get_home_defensive_line() const { return home_defensive_line; }
+    void set_away_defensive_line(int p_line);
+    int get_away_defensive_line() const { return away_defensive_line; }
+
+    void set_home_passing_style(int p_style);
+    int get_home_passing_style() const { return home_passing_style; }
+    void set_away_passing_style(int p_style);
+    int get_away_passing_style() const { return away_passing_style; }
+
+    void set_home_attacking_width(int p_width);
+    int get_home_attacking_width() const { return home_attacking_width; }
+    void set_away_attacking_width(int p_width);
+    int get_away_attacking_width() const { return away_attacking_width; }
+
+    void set_home_tempo(int p_tempo);
+    int get_home_tempo() const { return home_tempo; }
+    void set_away_tempo(int p_tempo);
+    int get_away_tempo() const { return away_tempo; }
+
+    void set_home_defensive_approach(int p_approach);
+    int get_home_defensive_approach() const { return home_defensive_approach; }
+    void set_away_defensive_approach(int p_approach);
+    int get_away_defensive_approach() const { return away_defensive_approach; }
 
     // Match State & Live Telemetry Getters
     int get_home_score() const { return home_score; }
@@ -154,6 +211,7 @@ public:
     Array get_player_positions() const;
     PackedStringArray get_player_roles() const;
     PackedStringArray get_player_names() const;
+    PackedFloat32Array get_player_stamina() const;
     Vector2 get_ball_position() const;
     Dictionary get_match_stats() const;
 
@@ -174,6 +232,7 @@ private:
     void _apply_formation_positions(bool p_reset_ball);
     void _sync_player_positions_array();
     bool _has_valid_formation(const std::string& p_name) const;
+    float _get_fatigue_multiplier(const SimPlayer& p_player) const;
 
     // Coordinated 2D Football Simulation
     void _step_simulation(float dt);
@@ -182,8 +241,9 @@ private:
     void _update_ball_and_actions(float dt);
     void _evaluate_carrier_action(int p_carrier_idx);
     void _execute_pass(int p_passer_idx, int p_receiver_idx, bool p_is_through_ball);
-    void _execute_shot(int p_shooter_idx, float p_xg);
+    void _execute_shot(int p_shooter_idx, float p_xg, Vector2 p_custom_target = Vector2(-1.0f, -1.0f), float p_power_ratio = 0.75f);
     void _trigger_key_chance(int p_scenario_type, bool p_is_home_attacking, int p_attacker_idx, float p_xg);
+    void _end_active_chance(bool p_goal_scored);
     void _give_kickoff(bool p_home_kickoff);
     void _give_gk_possession(bool p_home_gk);
     void _log_event(const String& p_type, bool p_is_home, const String& p_player_name, const String& p_desc);
@@ -193,10 +253,18 @@ private:
     int current_minute = 0;
     int home_score = 0;
     int away_score = 0;
-    
+
     bool is_paused_for_manual = false;
     bool match_active = false;
     float event_cooldown = 0.0f;
+
+    // Authoritative Chance & Direct Control State
+    int chance_state = CHANCE_NONE;
+    bool manual_control_active = false;
+    int user_controlled_index = -1;
+    bool has_user_move_target = false;
+    Vector2 user_move_target = Vector2(-1.0f, -1.0f);
+    float active_chance_timer = 0.0f;
 
     // Token Management State
     int manual_matches_played = 0;
@@ -207,8 +275,18 @@ private:
 
     int home_mentality = MENTALITY_BALANCED;
     int away_mentality = MENTALITY_BALANCED;
-    int home_pressing = PRESSING_MEDIUM;
-    int away_pressing = PRESSING_MEDIUM;
+    int home_pressing = PRESSING_NORMAL;
+    int away_pressing = PRESSING_NORMAL;
+    int home_defensive_line = TIER_NORMAL;
+    int away_defensive_line = TIER_NORMAL;
+    int home_passing_style = TIER_NORMAL;
+    int away_passing_style = TIER_NORMAL;
+    int home_attacking_width = TIER_NORMAL;
+    int away_attacking_width = TIER_NORMAL;
+    int home_tempo = TIER_NORMAL;
+    int away_tempo = TIER_NORMAL;
+    int home_defensive_approach = TIER_NORMAL;
+    int away_defensive_approach = TIER_NORMAL;
 
     String home_formation = "4-3-3";
     String away_formation = "4-4-2";
@@ -232,6 +310,15 @@ private:
     Array player_positions;
     MatchStats stats;
     Scenario3DData last_scenario_3d;
+
+private:
+    bool home_auto_shoot_enabled = false;
+    void _spawn_wide_range_chance(bool p_is_home_attacking);
+
+public:
+    void set_home_auto_shoot_enabled(bool p_enabled);
+    bool is_home_auto_shoot_enabled() const;
+    void trigger_wide_range_chance(bool p_is_home_attacking);
 };
 
 } // namespace godot
