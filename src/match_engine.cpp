@@ -146,6 +146,8 @@ void MatchEngine::_bind_methods() {
     ADD_SIGNAL(MethodInfo("chance_state_changed",
         PropertyInfo(Variant::INT, "chance_state"),
         PropertyInfo(Variant::INT, "controlled_player_index")));
+    ADD_SIGNAL(MethodInfo("controlled_player_changed",
+        PropertyInfo(Variant::INT, "controlled_player_index")));
 
     ADD_SIGNAL(MethodInfo("goal_scored",
         PropertyInfo(Variant::INT, "home_score"),
@@ -947,13 +949,17 @@ bool MatchEngine::is_manual_dribble_active() const {
     return has_user_move_target;
 }
 
+
 bool MatchEngine::set_controlled_player(int p_player_idx) {
-    if (p_player_idx <= 0 || p_player_idx >= 11) {
+    if (p_player_idx < 0 || p_player_idx >= 11) {
         return false;
+    }
+    if (user_controlled_index == p_player_idx) {
+        return true;
     }
     user_controlled_index = p_player_idx;
     has_user_move_target = false;
-    emit_signal("chance_state_changed", chance_state, user_controlled_index);
+    emit_signal("controlled_player_changed", user_controlled_index);
     return true;
 }
 
@@ -973,9 +979,11 @@ int MatchEngine::select_nearest_defender() {
             best_idx = i;
         }
     }
-    user_controlled_index = best_idx;
-    has_user_move_target = false;
-    emit_signal("chance_state_changed", chance_state, user_controlled_index);
+    if (user_controlled_index != best_idx) {
+        user_controlled_index = best_idx;
+        has_user_move_target = false;
+        emit_signal("controlled_player_changed", user_controlled_index);
+    }
     return best_idx;
 }
 
@@ -1107,47 +1115,39 @@ Array MatchEngine::get_valid_pass_targets() const {
 
     const SimPlayer& passer = sim_players[passer_idx];
     float fatigue = _get_fatigue_multiplier(passer);
-    float max_range = (195.0f + (passer.passing * 2.2f)) * fatigue;
-    float lane_threshold = (chance_state == CHANCE_HOME_ATTACK) ? 7.5f : 11.0f;
+    float max_range = (240.0f + (passer.passing * 2.6f)) * fatigue;
 
     for (int t = 1; t < 11; t++) {
         if (t == passer_idx) continue;
         Vector2 pass_vec = sim_players[t].position - passer.position;
         float dist = pass_vec.length();
-        if (dist < 22.0f || dist > max_range) continue;
-
-        Vector2 seg_dir = pass_vec / dist;
-        float min_clearance = 100.0f;
-        for (int j = 11; j < 22; j++) {
-            Vector2 to_opp = sim_players[j].position - passer.position;
-            float proj = to_opp.dot(seg_dir);
-            if (proj > 10.0f && proj < dist - 8.0f) {
-                min_clearance = std::min(min_clearance, std::abs(to_opp.cross(seg_dir)));
-            }
-        }
-        if (min_clearance >= lane_threshold) {
-            targets.append(t);
-        }
+        if (dist < 16.0f || dist > max_range) continue;
+        targets.append(t);
     }
     return targets;
 }
 
 bool MatchEngine::command_move_player(Vector2 p_target_pos) {
-    if (!match_active || waiting_for_kickoff_resume || !manual_control_active) {
+    if (!match_active || waiting_for_kickoff_resume) {
+        return false;
+    }
+    if (!manual_control_active && chance_state != CHANCE_NONE) {
+        manual_control_active = true;
+    }
+    if (!manual_control_active) {
         return false;
     }
 
-    // During an attacking chance, always ensure the ball carrier receives the dribble command
     if (chance_state == CHANCE_HOME_ATTACK && ball_state == BALL_CARRIED &&
-        ball_carrier_index >= 1 && ball_carrier_index < 11) {
+        ball_carrier_index >= 0 && ball_carrier_index < 11 &&
+        user_controlled_index != ball_carrier_index) {
         user_controlled_index = ball_carrier_index;
+        emit_signal("controlled_player_changed", user_controlled_index);
     }
 
-    if (user_controlled_index < 1 || user_controlled_index >= 11) {
+    if (user_controlled_index < 0 || user_controlled_index >= 11) {
         return false;
     }
-
-    is_paused_for_manual = false;
 
     SimPlayer& player = sim_players[user_controlled_index];
     const float margin = 14.0f;
@@ -1155,7 +1155,6 @@ bool MatchEngine::command_move_player(Vector2 p_target_pos) {
     Vector2 resolved_target = p_target_pos;
     Vector2 raw_delta = resolved_target - player.position;
 
-    // If user tapped directly on or very close to the ball carrier, dribble forward toward goal
     if (chance_state == CHANCE_HOME_ATTACK && raw_delta.length() < 16.0f) {
         Vector2 forward_dir(1.0f, 0.0f);
         if (player.velocity.length() > 10.0f) {
@@ -1168,8 +1167,8 @@ bool MatchEngine::command_move_player(Vector2 p_target_pos) {
     user_move_target.x = std::clamp(resolved_target.x, margin, field_size.x - margin);
     user_move_target.y = std::clamp(resolved_target.y, margin, field_size.y - margin);
     has_user_move_target = true;
+    is_paused_for_manual = false;
 
-    // Immediate first-touch acceleration burst when dribbling with the ball
     if (chance_state == CHANCE_HOME_ATTACK && ball_state == BALL_CARRIED && ball_carrier_index == user_controlled_index) {
         Vector2 move_vec = user_move_target - player.position;
         float move_dist = move_vec.length();
@@ -1189,7 +1188,7 @@ bool MatchEngine::command_pass(int p_target_player_idx) {
     if (!match_active || waiting_for_kickoff_resume || chance_state != CHANCE_HOME_ATTACK) {
         return false;
     }
-    if (p_target_player_idx < 1 || p_target_player_idx >= 11) {
+    if (p_target_player_idx < 0 || p_target_player_idx >= 11) {
         return false;
     }
 
@@ -1198,35 +1197,31 @@ bool MatchEngine::command_pass(int p_target_player_idx) {
         return false;
     }
 
-    Array valid_targets = get_valid_pass_targets();
-    bool is_valid = false;
-    for (int i = 0; i < valid_targets.size(); i++) {
-        if (static_cast<int>(valid_targets[i]) == p_target_player_idx) {
-            is_valid = true;
-            break;
-        }
-    }
-    if (!is_valid) {
+    Vector2 to_rec = sim_players[p_target_player_idx].position - sim_players[passer_idx].position;
+    float dist = to_rec.length();
+    float fatigue = _get_fatigue_multiplier(sim_players[passer_idx]);
+    float max_range = (260.0f + sim_players[passer_idx].passing * 2.8f) * fatigue;
+    if (dist < 12.0f || dist > max_range) {
         return false;
     }
 
-    Vector2 to_rec = sim_players[p_target_player_idx].position - sim_players[passer_idx].position;
-    Vector2 pass_dir = (to_rec.length() > 1.0f) ? to_rec.normalized() : Vector2(1.0f, 0.0f);
+    Vector2 pass_dir = (dist > 1.0f) ? (to_rec / dist) : Vector2(1.0f, 0.0f);
 
     sim_players[passer_idx].dribble_boost_timer = 0.0f;
     ball_position = sim_players[passer_idx].position + pass_dir * 10.0f;
     ball_position.x = std::clamp(ball_position.x, 10.0f, field_size.x - 10.0f);
     ball_position.y = std::clamp(ball_position.y, 10.0f, field_size.y - 10.0f);
 
+    has_user_move_target = false;
     is_paused_for_manual = false;
-
     _execute_pass(passer_idx, p_target_player_idx, false);
     _log_event("pass", true, sim_players[passer_idx].name,
         sim_players[passer_idx].name + String(" passes to ") + sim_players[p_target_player_idx].name);
 
-    user_controlled_index = p_target_player_idx;
-    has_user_move_target = false;
-    emit_signal("chance_state_changed", chance_state, user_controlled_index);
+    if (user_controlled_index != p_target_player_idx) {
+        user_controlled_index = p_target_player_idx;
+        emit_signal("controlled_player_changed", user_controlled_index);
+    }
     return true;
 }
 
@@ -1239,8 +1234,6 @@ bool MatchEngine::command_through_ball(Vector2 p_direction_or_target) {
     if (passer_idx < 0 || passer_idx >= 11) {
         return false;
     }
-
-    is_paused_for_manual = false;
 
     SimPlayer& passer = sim_players[passer_idx];
     bool is_unit_dir = (p_direction_or_target.length() > 0.01f && p_direction_or_target.length() <= 1.5f);
@@ -1261,7 +1254,6 @@ bool MatchEngine::command_through_ball(Vector2 p_direction_or_target) {
     ball_position.x = std::clamp(ball_position.x, 10.0f, field_size.x - 10.0f);
     ball_position.y = std::clamp(ball_position.y, 10.0f, field_size.y - 10.0f);
 
-    // Choose the teammate best positioned to sprint onto the dragged through-ball destination
     Vector2 desired_space = is_explicit_target_point
         ? p_direction_or_target
         : (passer.position + aim_dir * std::clamp(aim_vec.length(), 70.0f, 185.0f));
@@ -1307,7 +1299,6 @@ bool MatchEngine::command_through_ball(Vector2 p_direction_or_target) {
         float lead_dist = std::clamp(64.0f + aim_vec.length() * 0.25f, 60.0f, 130.0f);
         space_target = runner.position + Vector2(std::max(0.35f, aim_dir.x), aim_dir.y * 0.75f).normalized() * lead_dist;
     } else if (runner.position.distance_to(desired_space) < 95.0f) {
-        // Blend slightly ahead of the runner's stride so the ball leads them into space
         Vector2 lead_point = runner.position + aim_dir * 42.0f;
         space_target = desired_space.lerp(lead_point, 0.35f);
     }
@@ -1335,14 +1326,18 @@ bool MatchEngine::command_through_ball(Vector2 p_direction_or_target) {
 
     passer.recovery_timer = 0.25f;
     runner.sprint_boost_timer = 1.85f;
+    bool ctrl_changed = (user_controlled_index != best_runner);
     user_controlled_index = best_runner;
     user_move_target = space_target;
     has_user_move_target = true;
+    is_paused_for_manual = false;
 
     _log_event("through_ball", true, passer.name,
         passer.name + String(" threads a through ball into space for ") + runner.name);
 
-    emit_signal("chance_state_changed", chance_state, user_controlled_index);
+    if (ctrl_changed) {
+        emit_signal("controlled_player_changed", user_controlled_index);
+    }
     return true;
 }
 
@@ -2074,7 +2069,7 @@ void MatchEngine::_update_player_movement(float dt) {
         bool is_user_controlled = (manual_control_active && i == user_controlled_index);
         bool is_user_ball_carrier = (is_user_controlled && ball_carrier_index == i && ball_state == BALL_CARRIED);
 
-        if (is_user_controlled && has_user_move_target && dist < 4.5f) {
+        if (is_user_controlled && has_user_move_target && dist < 8.0f) {
             has_user_move_target = false;
         }
 
@@ -2675,16 +2670,20 @@ void MatchEngine::_update_ball_and_actions(float dt) {
             float dist_to_receiver = ball_position.distance_to(sim_players[pass_target_index].position);
             float dist_to_target = ball_position.distance_to(ball_target);
 
-            if (is_through_ball_in_flight && dist_to_target < 12.0f && dist_to_receiver >= 18.0f) {
-                // Hold the ball rolling gently in the target space so the runner sprints onto it
-                ball_position = ball_target;
-                ball_velocity *= 0.15f;
-                return;
-            }
-
             bool arrived = is_through_ball_in_flight
-                ? (dist_to_receiver < 18.0f)
+                ? (dist_to_receiver < 22.0f)
                 : (dist_to_receiver < 16.0f || dist_to_target < 12.0f);
+
+            if (!arrived && is_through_ball_in_flight && dist_to_target < 24.0f) {
+                ball_velocity *= std::exp(-3.6f * dt);
+                if (ball_velocity.length() < 18.0f) {
+                    ball_state = BALL_LOOSE;
+                    possession_team = -1;
+                    pass_target_index = -1;
+                    is_through_ball_in_flight = false;
+                    return;
+                }
+            }
 
             if (arrived) {
                 if (passer_is_home) {

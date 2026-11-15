@@ -16,6 +16,7 @@ var _cam_focus_logical: Vector2 = Vector2(525.0, 340.0)
 var _waiting_for_kickoff: bool = false
 var _waiting_for_goal_resume: bool = false
 var _last_goal_banner_text: String = "GOAL!"
+var _hidden_hud_nodes: Array[CanvasItem] = []
 
 # Attack Chance Stop-and-Go Decision State Machine
 enum AttackPhase {
@@ -32,6 +33,8 @@ var _atk_expected_receiver: int = -1
 var _atk_dribble_target: Vector2 = Vector2.ZERO
 var _atk_decision_paused: bool = false
 var _open_play_chance_timer: float = 0.0
+var _atk_dribble_start: Vector2 = Vector2.ZERO
+var _last_known_chance_state: int = 0
 
 # Through-Ball Preview State (while dragging)
 var _preview_through_runner: int = -1
@@ -68,14 +71,16 @@ const PITCH_APRONS_LOGICAL: Vector2 = Vector2(22.0, 10.0)
 # Mutually Exclusive Gesture Thresholds (Desktop Mouse & Android Touch)
 const DRAG_THRESHOLD_PX: float = 18.0
 const CARRIER_ORIGIN_RADIUS_LOGICAL: float = 28.0
-const SHOT_SWIPE_SPEED_PX: float = 240.0
-const SHOT_BOX_SWIPE_SPEED_PX: float = 195.0
-const SHOT_MAX_HOLD_SEC: float = 1.25
+const SHOT_SWIPE_SPEED_PX: float = 225.0
+const SHOT_BOX_SWIPE_SPEED_PX: float = 180.0
+const SHOT_MAX_HOLD_SEC: float = 1.35
 
 func _ready() -> void:
 	var child_cam: Node = get_node_or_null("Camera2D")
 	if child_cam is Camera2D:
 		(child_cam as Camera2D).enabled = false
+
+	process_mode = Node.PROCESS_MODE_ALWAYS
 
 	_backdrop_canvas = Control.new()
 	_backdrop_canvas.name = "StadiumBackdrop"
@@ -100,6 +105,7 @@ func _ready() -> void:
 	_pitch_canvas.name = "PitchCanvas"
 	_pitch_canvas.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_pitch_canvas.mouse_filter = Control.MOUSE_FILTER_STOP
+	_pitch_canvas.process_mode = Node.PROCESS_MODE_ALWAYS
 	_pitch_canvas.draw.connect(_draw_pitch_scene)
 	_pitch_canvas.gui_input.connect(_on_pitch_gui_input)
 	_viewport_clip.add_child(_pitch_canvas)
@@ -131,6 +137,8 @@ func _ready() -> void:
 	match_engine.goal_scored.connect(_on_goal_scored)
 	match_engine.match_ended.connect(_on_match_ended)
 	match_engine.chance_state_changed.connect(_on_chance_state_changed)
+	if match_engine.has_signal("controlled_player_changed"):
+		match_engine.controlled_player_changed.connect(_on_controlled_player_changed)
 	if match_engine.has_signal("goal_kickoff_resumed"):
 		match_engine.goal_kickoff_resumed.connect(_on_goal_kickoff_resumed)
 
@@ -150,17 +158,50 @@ func _resolve_match_engine() -> MatchEngine:
 func _get_hud() -> Node:
 	return get_node_or_null("../HUD")
 
+func _hide_duplicate_hud_kickoff_prompt() -> void:
+	var hud_node: Node = _get_hud()
+	if hud_node == null:
+		return
+	var vp_size: Vector2 = get_viewport_rect().size
+	for sub in hud_node.find_children("*", "Label", true, false):
+		var lbl := sub as Label
+		if not lbl.is_visible_in_tree():
+			continue
+		var txt: String = lbl.text.to_upper()
+		if "KICKOFF" in txt or "CLICK TO RESUME" in txt or "CLICK TO START" in txt:
+			var target: CanvasItem = lbl
+			var p: Node = lbl.get_parent()
+			while p != null and p != hud_node and p is CanvasItem:
+				var ci := p as CanvasItem
+				if ci is Control:
+					var ctrl_sz: Vector2 = (ci as Control).size
+					if ctrl_sz.x > vp_size.x * 0.65 or ctrl_sz.y > vp_size.y * 0.45:
+						break
+				target = ci
+				if ci is Panel or ci is PanelContainer:
+					break
+				p = p.get_parent()
+			if target.visible:
+				target.visible = false
+				if not _hidden_hud_nodes.has(target):
+					_hidden_hud_nodes.append(target)
+
+func _restore_hidden_hud_nodes() -> void:
+	for item in _hidden_hud_nodes:
+		if is_instance_valid(item):
+			item.visible = true
+	_hidden_hud_nodes.clear()
+
 func _show_hud_toast(msg: String, duration: float = 1.4) -> void:
 	var hud_node: Node = _get_hud()
 	if hud_node != null and hud_node.has_method("show_toast"):
 		hud_node.show_toast(msg, duration)
 
 func _is_regression_test_running() -> bool:
+	if get_tree() and not get_tree().get_nodes_in_group("regression_test_running").is_empty():
+		return true
 	var test_node: Node = get_node_or_null("../../IntegrationRegressionTest")
 	if test_node != null and bool(test_node.get("_is_running")):
-		return true
-	var alt_node: Node = get_node_or_null("../../RegressionTester")
-	if alt_node != null and bool(alt_node.get("_is_running")):
 		return true
 	return false
 
@@ -206,6 +247,7 @@ func reset_for_new_match() -> void:
 	_atk_decision_paused = false
 	_open_play_chance_timer = 0.0
 	_waiting_for_goal_resume = false
+	_restore_hidden_hud_nodes()
 	_set_tempo_factor(1.0)
 
 	if is_instance_valid(match_engine):
@@ -239,11 +281,13 @@ func confirm_kickoff_or_resume() -> bool:
 	if not is_instance_valid(match_engine) or not match_engine.is_match_active():
 		_waiting_for_kickoff = false
 		_waiting_for_goal_resume = false
+		_restore_hidden_hud_nodes()
 		return false
 
 	var was_kickoff: bool = _waiting_for_kickoff
 	_waiting_for_kickoff = false
 	_waiting_for_goal_resume = false
+	_restore_hidden_hud_nodes()
 	_open_play_chance_timer = 0.0
 	_set_tempo_factor(1.0)
 
@@ -263,6 +307,7 @@ func confirm_kickoff_or_resume() -> bool:
 func _on_goal_kickoff_resumed(_kickoff_team: int) -> void:
 	_waiting_for_kickoff = false
 	_waiting_for_goal_resume = false
+	_restore_hidden_hud_nodes()
 	_open_play_chance_timer = 0.0
 	_set_tempo_factor(1.0)
 	_sync_engine_pause_state()
@@ -323,6 +368,7 @@ func continue_attack_play() -> void:
 			match_engine.pause_match(false)
 			if match_engine.command_move_player(advance_target):
 				_atk_dribble_target = advance_target
+				_atk_dribble_start = p
 				_show_marker(advance_target, Color(0.95, 0.88, 0.30), "DRIBBLE")
 				_set_attack_decision_paused(false)
 				_atk_phase = AttackPhase.EXECUTING_DRIBBLE
@@ -338,7 +384,15 @@ func _set_attack_decision_paused(should_pause: bool) -> void:
 	_atk_decision_paused = should_pause
 	_sync_engine_pause_state()
 
+func _on_controlled_player_changed(_ctrl_idx: int) -> void:
+	if _pitch_canvas:
+		_pitch_canvas.queue_redraw()
+
 func _on_chance_state_changed(new_state: int, _ctrl_idx: int) -> void:
+	if new_state == _last_known_chance_state:
+		return
+	_last_known_chance_state = new_state
+
 	_pointer_down = false
 	_pointer_index = -1
 	_drag_started_on_carrier = false
@@ -378,6 +432,13 @@ func _process(delta: float) -> void:
 		_waiting_for_kickoff = false
 		_waiting_for_goal_resume = false
 		_set_tempo_factor(1.0)
+		if is_instance_valid(match_engine):
+			if match_engine.has_method("is_waiting_for_kickoff_resume") and match_engine.is_waiting_for_kickoff_resume():
+				match_engine.resume_from_goal_kickoff()
+			match_engine.pause_match(false)
+
+	if is_waiting_for_kickoff_or_resume():
+		_hide_duplicate_hud_kickoff_prompt()
 
 	var vp_size: Vector2 = get_viewport_rect().size
 	if _backdrop_canvas:
@@ -391,17 +452,16 @@ func _process(delta: float) -> void:
 		_viewport_clip.size = base_rect.size
 
 	if is_instance_valid(match_engine) and match_engine.is_match_active():
+		var c_state: int = match_engine.get_chance_state()
+		if c_state == 1 and _atk_decision_paused and not match_engine.is_match_paused():
+			_atk_decision_paused = false
+			if _atk_phase == AttackPhase.DECIDING:
+				_atk_phase = AttackPhase.EXECUTING_PASS if match_engine.get_ball_carrier_index() == -1 else AttackPhase.EXECUTING_DRIBBLE
+				_atk_phase_timer = 0.0
+
 		_sync_engine_pause_state()
 
 		if not is_waiting_for_kickoff_or_resume():
-			var c_state: int = match_engine.get_chance_state()
-
-			if c_state == 1 and _atk_decision_paused and not match_engine.is_match_paused():
-				_atk_decision_paused = false
-				if _atk_phase == AttackPhase.DECIDING:
-					_atk_phase = AttackPhase.EXECUTING_PASS if match_engine.get_ball_carrier_index() == -1 else AttackPhase.EXECUTING_DRIBBLE
-					_atk_phase_timer = 0.0
-
 			if not match_engine.is_match_paused():
 				var ball_pos: Vector2 = match_engine.get_ball_position()
 				if _ball_trail.is_empty() or _ball_trail[_ball_trail.size() - 1].distance_to(ball_pos) > 3.0:
@@ -471,13 +531,17 @@ func _ensure_home_ball_control() -> int:
 	if not is_instance_valid(match_engine):
 		return -1
 	var carrier_idx: int = match_engine.get_ball_carrier_index()
+	var current_ctrl: int = match_engine.get_controlled_player_index()
 	if carrier_idx >= 0 and carrier_idx < 11:
-		match_engine.set_controlled_player(carrier_idx)
+		if current_ctrl != carrier_idx and not _pointer_down:
+			match_engine.set_controlled_player(carrier_idx)
 		return carrier_idx
-	return match_engine.get_controlled_player_index()
+	return current_ctrl
 
 func _update_attack_stop_and_go(delta: float) -> void:
-	if _is_regression_test_running() or _is_tactical_overlay_open():
+	if _is_tactical_overlay_open():
+		return
+	if _is_regression_test_running() and _atk_phase == AttackPhase.SETTLING:
 		return
 
 	_atk_phase_timer += delta
@@ -512,20 +576,28 @@ func _update_attack_stop_and_go(delta: float) -> void:
 				_set_attack_decision_paused(true)
 
 		AttackPhase.EXECUTING_DRIBBLE:
-			var reached := false
-			if ctrl_idx >= 0 and ctrl_idx < positions.size():
+			var done_dribble := false
+			if not _has_confirmed_home_possession() and _atk_phase_timer >= 0.25:
+				done_dribble = true
+			elif ctrl_idx >= 0 and ctrl_idx < positions.size():
 				var p_pos := Vector2(positions[ctrl_idx])
+				var moved_dist: float = p_pos.distance_to(_atk_dribble_start)
 				var engine_dribbling: bool = match_engine.has_method("is_manual_dribble_active") and match_engine.is_manual_dribble_active()
-				if p_pos.distance_to(_atk_dribble_target) <= 10.0 or (_atk_phase_timer >= 0.14 and not engine_dribbling):
-					reached = true
-			if reached or _atk_phase_timer >= 0.95:
+				if p_pos.distance_to(_atk_dribble_target) <= 12.0:
+					done_dribble = true
+				elif not engine_dribbling and (_atk_phase_timer >= 0.30 or moved_dist >= 18.0):
+					done_dribble = true
+			if done_dribble or _atk_phase_timer >= 1.45:
 				_ensure_home_ball_control()
 				_atk_phase = AttackPhase.DECIDING
 				_atk_phase_timer = 0.0
 				_set_attack_decision_paused(true)
 
 		AttackPhase.EXECUTING_SHOT:
-			if _atk_phase_timer >= 2.2:
+			if match_engine.get_chance_state() != 1:
+				_atk_phase = AttackPhase.INACTIVE
+				_atk_decision_paused = false
+			elif (_atk_phase_timer >= 0.45 and _has_confirmed_home_possession()) or _atk_phase_timer >= 4.5:
 				_ensure_home_ball_control()
 				_atk_phase = AttackPhase.DECIDING
 				_atk_phase_timer = 0.0
@@ -640,16 +712,22 @@ func _is_goal_directed_shot(carrier_pos: Vector2, drag_vec_pitch: Vector2, effec
 		return false
 
 	var goal_center := Vector2(field_sz.x, field_sz.y * 0.5)
-	if carrier_pos.distance_to(goal_center) > 600.0:
+	if carrier_pos.distance_to(goal_center) > 640.0:
 		return false
 
 	var to_goal_dir: Vector2 = (goal_center - carrier_pos).normalized()
 	var drag_dir: Vector2 = drag_vec_pitch.normalized()
 	var alignment: float = drag_dir.dot(to_goal_dir)
 
-	var in_box: bool = carrier_pos.x >= (field_sz.x * 0.80)
+	var intersects_goal_mouth := false
+	if drag_dir.x >= 0.25:
+		var t: float = (field_sz.x - carrier_pos.x) / drag_dir.x
+		var projected_y: float = carrier_pos.y + drag_dir.y * t
+		intersects_goal_mouth = absf(projected_y - goal_center.y) <= 115.0
+
+	var in_box: bool = carrier_pos.x >= (field_sz.x * 0.78)
 	var required_speed: float = SHOT_BOX_SWIPE_SPEED_PX if in_box else SHOT_SWIPE_SPEED_PX
-	return hold_sec <= SHOT_MAX_HOLD_SEC and effective_speed >= required_speed and alignment >= 0.35
+	return hold_sec <= SHOT_MAX_HOLD_SEC and effective_speed >= required_speed and (alignment >= 0.30 or intersects_goal_mouth)
 
 func _project_shot_to_goal_line(ball_pos: Vector2, drag_vec_pitch: Vector2) -> Vector2:
 	var field_sz: Vector2 = match_engine.get_field_size()
@@ -711,7 +789,6 @@ func _on_pitch_gui_input(event: InputEvent) -> void:
 		_pitch_canvas.accept_event()
 
 func _unhandled_input(event: InputEvent) -> void:
-	# Only handle margin clicks when a drag is not already active inside _pitch_canvas
 	if not _pointer_down and _handle_pitch_pointer_event(event, Vector2.ZERO):
 		get_viewport().set_input_as_handled()
 
@@ -753,11 +830,8 @@ func _handle_pitch_pointer_event(event: InputEvent, screen_offset: Vector2) -> b
 		_pointer_down = false
 		_pointer_index = -1
 		return false
-
-	# Always allow an active pointer release to finish cleanly instead of deadlocking _pointer_down
 	var is_release_event: bool = (event is InputEventMouseButton and not (event as InputEventMouseButton).pressed) \
 		or (event is InputEventScreenTouch and not (event as InputEventScreenTouch).pressed)
-
 	if match_engine.is_match_paused() and not is_attack_decision_paused() and not is_release_event:
 		return false
 
@@ -766,7 +840,7 @@ func _handle_pitch_pointer_event(event: InputEvent, screen_offset: Vector2) -> b
 		var pos: Vector2 = touch.position + screen_offset
 		if touch.pressed:
 			if _pointer_down:
-				_pointer_down = false
+				return false
 			return _on_pointer_pressed(pos, touch.index)
 		elif _pointer_down and touch.index == _pointer_index:
 			_on_pointer_released(pos)
@@ -782,7 +856,7 @@ func _handle_pitch_pointer_event(event: InputEvent, screen_offset: Vector2) -> b
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			if mb.pressed:
 				if _pointer_down:
-					_pointer_down = false
+					return false
 				return _on_pointer_pressed(pos, -1)
 			elif _pointer_down and _pointer_index == -1:
 				_on_pointer_released(pos)
@@ -796,6 +870,8 @@ func _handle_pitch_pointer_event(event: InputEvent, screen_offset: Vector2) -> b
 	return false
 
 func _on_pointer_pressed(screen_pos: Vector2, ptr_idx: int) -> bool:
+	if _pointer_down:
+		return false
 	if not get_base_pitch_rect().grow(10.0).has_point(screen_pos):
 		return false
 
@@ -813,7 +889,8 @@ func _on_pointer_pressed(screen_pos: Vector2, ptr_idx: int) -> bool:
 
 	if is_instance_valid(match_engine) and match_engine.get_chance_state() == 1:
 		var start_pitch: Vector2 = _screen_to_pitch(screen_pos)
-		var ctrl_idx: int = _ensure_home_ball_control()
+		var carrier_idx: int = match_engine.get_ball_carrier_index()
+		var ctrl_idx: int = carrier_idx if (carrier_idx >= 0 and carrier_idx < 11) else match_engine.get_controlled_player_index()
 		var positions: Array = match_engine.get_player_positions()
 		var ball_pos: Vector2 = match_engine.get_ball_position()
 		if ctrl_idx >= 0 and ctrl_idx < positions.size():
@@ -841,7 +918,8 @@ func _on_pointer_moved(screen_pos: Vector2) -> void:
 	var c_state: int = match_engine.get_chance_state()
 
 	if c_state == 1 and drag_dist >= DRAG_THRESHOLD_PX:
-		var ctrl_idx: int = _ensure_home_ball_control()
+		var carrier_idx: int = match_engine.get_ball_carrier_index()
+		var ctrl_idx: int = carrier_idx if (carrier_idx >= 0 and carrier_idx < 11) else match_engine.get_controlled_player_index()
 		var positions: Array = match_engine.get_player_positions()
 		var carrier_pos: Vector2 = Vector2(positions[ctrl_idx]) if (ctrl_idx >= 0 and ctrl_idx < positions.size()) else match_engine.get_ball_position()
 		var start_pitch: Vector2 = _screen_to_pitch(_drag_start_screen)
@@ -881,12 +959,16 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 
 	# MODE A: ATTACK CHANCE — STOP-AND-GO DECISION GAMEPLAY
 	if chance_state == 1:
+		var was_decision_paused: bool = _atk_decision_paused
+		if was_decision_paused and _atk_phase != AttackPhase.DECIDING:
+			_gesture_mode = "NONE"
+			_preview_through_runner = -1
+			return
+
 		var ctrl_idx: int = _ensure_home_ball_control()
 		var carrier_pos: Vector2 = Vector2(positions[ctrl_idx]) if (ctrl_idx >= 0 and ctrl_idx < positions.size()) else match_engine.get_ball_position()
 		var ball_pos: Vector2 = match_engine.get_ball_position()
 
-		# Unpause engine temporarily so C++ command_* methods accept input
-		var was_decision_paused: bool = _atk_decision_paused
 		if was_decision_paused:
 			match_engine.pause_match(false)
 
@@ -894,7 +976,6 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 		if drag_dist_screen >= DRAG_THRESHOLD_PX:
 			var is_shot: bool = _is_goal_directed_shot(carrier_pos, drag_vec_pitch, eff_speed, hold_sec)
 			if is_shot:
-				# GESTURE 3: Fast Swipe -> Shot
 				var aim_target: Vector2 = _project_shot_to_goal_line(ball_pos, drag_vec_pitch)
 				var power_ratio: float = clampf(remap(eff_speed, SHOT_SWIPE_SPEED_PX, 2100.0, 0.78, 1.35), 0.70, 1.35)
 				if match_engine.command_shot(aim_target, power_ratio):
@@ -906,7 +987,6 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 					_show_hud_toast("Shot unavailable (no ball possession)")
 					_sync_engine_pause_state()
 			else:
-				# GESTURE 2: Slow / Deliberate Drag -> Through Ball
 				var tb_info: Dictionary = _compute_smart_through_ball(ctrl_idx, carrier_pos, start_pitch, end_pitch)
 				var runner_idx: int = int(tb_info["runner"])
 				var lead_target: Vector2 = Vector2(tb_info["target"])
@@ -931,7 +1011,6 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 			return
 
 		# GESTURE 1: Quick Tap (drag_dist_screen < DRAG_THRESHOLD_PX)
-		# 1a. Tap Valid Highlighted Teammate -> Direct Pass
 		var valid_targets: Array = match_engine.get_valid_pass_targets()
 		var clicked_tm: int = -1
 		var best_tm_dist: float = 34.0
@@ -957,13 +1036,13 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 			_preview_through_runner = -1
 			return
 
-		# 1b. Tap Open Pitch (or directly on carrier for forward step) -> Dribble
 		var move_dest: Vector2 = ball_pos if (ctrl_idx >= 0 and ctrl_idx < 11 and ball_pos.distance_to(carrier_pos) > 22.0) else end_pitch
 		if move_dest.distance_to(carrier_pos) < 18.0:
 			move_dest = Vector2(minf(match_engine.get_field_size().x - 24.0, carrier_pos.x + 76.0), carrier_pos.y)
 
 		if match_engine.command_move_player(move_dest):
 			_show_marker(move_dest, Color(0.95, 0.88, 0.30), "DRIBBLE")
+			_atk_dribble_start = carrier_pos
 			_atk_dribble_target = move_dest
 			_set_attack_decision_paused(false)
 			_atk_phase = AttackPhase.EXECUTING_DRIBBLE

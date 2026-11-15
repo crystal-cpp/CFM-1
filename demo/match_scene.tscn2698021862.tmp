@@ -1,0 +1,37 @@
+[gd_scene format=3 uid="uid://cthguvliskfj6"]
+
+[ext_resource type="Script" uid="uid://wkubeqrbsuwe" path="res://MatchScene.gd" id="1_gymab"]
+[ext_resource type="Script" uid="uid://c2b6akh1quqlr" path="res://MatchPitch.gd" id="2_a4lid"]
+[ext_resource type="Script" uid="uid://dr0bibhnetwcw" path="res://MatchHUD.gd" id="3_fs81w"]
+[ext_resource type="Script" uid="uid://d0std7va81x6i" path="res://camera_2d.gd" id="4_6hlag"]
+[ext_resource type="Script" uid="uid://ctlba31j86bwi" path="res://TacticalScreen.gd" id="4_7yec8"]
+[ext_resource type="Script" uid="uid://beh8phxuhwa4v" path="res://IntegrationRegressionTest.gd" id="7_osqcl"]
+
+[node name="MatchScene" type="Node3D" unique_id=1544502285]
+script = ExtResource("1_gymab")
+
+[node name="MatchEngine" type="MatchEngine" parent="." unique_id=1517446699]
+
+[node name="2DOverviewLayer" type="CanvasLayer" parent="." unique_id=2017253875]
+
+[node name="Pitch2D" type="Node2D" parent="2DOverviewLayer" unique_id=4030976]
+script = ExtResource("2_a4lid")
+
+[node name="Camera2D" type="Camera2D" parent="2DOverviewLayer/Pitch2D" unique_id=1092055375]
+script = ExtResource("4_6hlag")
+
+[node name="HUD" type="Control" parent="2DOverviewLayer" unique_id=395918410]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("3_fs81w")
+
+[node name="TacticalScreen" type="PanelContainer" parent="2DOverviewLayer/HUD" unique_id=1885420657]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("4_7yec8")
+
+[node name="RegressionTester" type="Node" parent="." unique_id=299231843]
+script = ExtResource("7_osqcl")
