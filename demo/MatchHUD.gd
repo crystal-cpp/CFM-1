@@ -44,6 +44,10 @@ var _toast_timer: Timer
 
 var _tactical_screen: TacticalScreen
 
+# Post-Goal Kickoff Resume Overlay
+var _kickoff_overlay: Control
+var _kickoff_label: Label
+
 var _fulltime_panel: PanelContainer
 var _fulltime_score_label: Label
 var _fulltime_stats_label: Label
@@ -52,6 +56,7 @@ var _next_match_button: Button
 
 var _commentary_history: PackedStringArray = PackedStringArray()
 var _paused_by_tactics: bool = false
+var _manual_paused: bool = false
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -81,11 +86,14 @@ func _ready() -> void:
 	_tactical_screen.bind_match_engine(match_engine)
 	if not _tactical_screen.resume_requested.is_connected(close_tactical_screen):
 		_tactical_screen.resume_requested.connect(close_tactical_screen)
+	_tactical_screen.visible = false
 
 	match_engine.minute_changed.connect(_on_minute_changed)
 	match_engine.goal_scored.connect(_on_goal_scored)
 	match_engine.match_event_logged.connect(_on_match_event_logged)
 	match_engine.chance_state_changed.connect(_on_chance_state_changed)
+	match_engine.goal_kickoff_ready.connect(_on_goal_kickoff_ready)
+	match_engine.goal_kickoff_resumed.connect(_on_goal_kickoff_resumed)
 
 	_set_sim_speed(1.0)
 	refresh_all()
@@ -93,6 +101,21 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	_sync_right_panel_geometry()
 	_update_chance_controls()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if is_instance_valid(match_engine) and match_engine.is_waiting_for_kickoff_resume():
+		if (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT) \
+		or (event is InputEventScreenTouch and event.pressed) \
+		or event.is_action_pressed("ui_accept"):
+			_resume_kickoff_from_hud()
+			get_viewport().set_input_as_handled()
+
+func _resume_kickoff_from_hud() -> void:
+	var pitch_node: Node = _get_match_pitch()
+	if pitch_node != null and pitch_node.has_method("confirm_kickoff_or_resume"):
+		pitch_node.confirm_kickoff_or_resume()
+	elif is_instance_valid(match_engine) and match_engine.is_waiting_for_kickoff_resume():
+		match_engine.resume_from_goal_kickoff()
 
 func _resolve_match_engine() -> MatchEngine:
 	var candidate: Node = get_node_or_null("../../MatchEngine")
@@ -105,7 +128,16 @@ func _resolve_match_engine() -> MatchEngine:
 	return null
 
 func _get_match_pitch() -> Node:
+	var p: Node = get_node_or_null("../Pitch2D")
+	if p != null:
+		return p
 	return get_node_or_null("../MatchPitch")
+
+func _get_camera_2d() -> Camera2D:
+	var cam: Node = get_node_or_null("../Pitch2D/Camera2D")
+	if cam is Camera2D:
+		return cam as Camera2D
+	return null
 
 func _sync_right_panel_geometry() -> void:
 	if not _right_panel:
@@ -268,30 +300,23 @@ func _build_ui() -> void:
 	rp_title.add_theme_font_size_override("font_size", 14)
 	rp_vbox.add_child(rp_title)
 
-	# Stat Bar 1: Possession
 	var poss_pair := _add_stat_bar(rp_vbox, "POSSESSION", "50%  -  50%")
 	_poss_val_label = poss_pair[0]
 	_poss_bar_home = poss_pair[1]
 
-	# Stat Bar 2: Expected Goals (Goal Predicted / xG)
 	var xg_pair := _add_stat_bar(rp_vbox, "GOAL PREDICTED (xG)", "0.00  -  0.00")
 	_xg_val_label = xg_pair[0]
 	_xg_bar_home = xg_pair[1]
 
-	# Stat Bar 3: Shots (On Target)
 	var shots_pair := _add_stat_bar(rp_vbox, "SHOTS (ON TARGET)", "0 (0)  -  0 (0)")
 	_shots_val_label = shots_pair[0]
 	_shots_bar_home = shots_pair[1]
 
-	# Stat Row 4: Passes Completed
 	_passes_val_label = _add_stat_text_row(rp_vbox, "PASSES COMPLETED", "0/0  -  0/0")
-
-	# Stat Row 5: Tackles / Interceptions / Saves
 	_def_actions_label = _add_stat_text_row(rp_vbox, "TACKLES / INT / SAVES", "0/0/0  -  0/0/0")
 
 	rp_vbox.add_child(HSeparator.new())
 
-	# Chance Contextual Action Area inside Right Panel
 	var chance_hdr := Label.new()
 	chance_hdr.text = "LIVE CHANCE CONTROL"
 	chance_hdr.add_theme_color_override("font_color", Color(0.88, 0.94, 1.0))
@@ -434,7 +459,40 @@ func _build_ui() -> void:
 	_toast_label.visible = false
 	add_child(_toast_label)
 
-	# 5. FULL-TIME REPORT CARD
+	# 5. POST-GOAL KICKOFF RESUME OVERLAY (Click anywhere to resume)
+	_kickoff_overlay = Control.new()
+	_kickoff_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_kickoff_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_kickoff_overlay.visible = false
+	_kickoff_overlay.gui_input.connect(_on_kickoff_overlay_gui_input)
+	add_child(_kickoff_overlay)
+
+	var ko_center := CenterContainer.new()
+	ko_center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ko_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_kickoff_overlay.add_child(ko_center)
+
+	var ko_card := PanelContainer.new()
+	ko_card.custom_minimum_size = Vector2(340, 88)
+	ko_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ko_style := StyleBoxFlat.new()
+	ko_style.bg_color = Color(0.06, 0.09, 0.15, 0.92)
+	ko_style.border_color = Color(0.12, 0.90, 0.55, 0.95)
+	ko_style.set_border_width_all(2)
+	ko_style.set_corner_radius_all(12)
+	ko_style.set_content_margin_all(16)
+	ko_card.add_theme_stylebox_override("panel", ko_style)
+	ko_center.add_child(ko_card)
+
+	_kickoff_label = Label.new()
+	_kickoff_label.text = "HOME KICKOFF\nCLICK TO RESUME"
+	_kickoff_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_kickoff_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_kickoff_label.add_theme_color_override("font_color", Color(0.95, 0.98, 1.0))
+	_kickoff_label.add_theme_font_size_override("font_size", 18)
+	ko_card.add_child(_kickoff_label)
+
+	# 6. FULL-TIME REPORT CARD
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -515,7 +573,7 @@ func _add_stat_bar(parent: VBoxContainer, title_text: String, initial_val: Strin
 
 	var track := ColorRect.new()
 	track.custom_minimum_size = Vector2(0, 7)
-	track.color = Color(0.90, 0.26, 0.32, 0.88) # Away red background
+	track.color = Color(0.90, 0.26, 0.32, 0.88)
 	box.add_child(track)
 
 	var home_fill := ColorRect.new()
@@ -523,7 +581,7 @@ func _add_stat_bar(parent: VBoxContainer, title_text: String, initial_val: Strin
 	home_fill.anchor_top = 0.0
 	home_fill.anchor_bottom = 1.0
 	home_fill.anchor_right = 0.50
-	home_fill.color = Color(0.10, 0.82, 0.50, 0.95) # Home emerald fill
+	home_fill.color = Color(0.10, 0.82, 0.50, 0.95)
 	track.add_child(home_fill)
 
 	return [val_lbl, home_fill]
@@ -565,9 +623,12 @@ func _update_chance_controls() -> void:
 		_gk_rush_btn.text = "Cancel GK Rush [G]" if gk_rushing else "GK Rush Out [G]"
 
 	if _chance_status_label:
-		if c_state == 1:
+		if match_engine.is_waiting_for_kickoff_resume():
+			_chance_status_label.text = "Players lined up for kickoff. Click anywhere on the pitch to resume."
+			_chance_status_label.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
+		elif c_state == 1:
 			if decision_paused:
-				_chance_status_label.text = "DECISION PAUSED: Tap teammate to pass, drag for through ball, tap pitch to dribble, or swipe to shoot."
+				_chance_status_label.text = "DECISION PAUSED: Tap teammate to pass, drag slow for through ball, tap pitch to dribble, or swipe fast to shoot."
 				_chance_status_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.30))
 			else:
 				_chance_status_label.text = "Executing action in real time..."
@@ -611,7 +672,7 @@ func close_tactical_screen() -> void:
 	var pitch_node: Node = _get_match_pitch()
 	var keep_decision_paused: bool = pitch_node != null and pitch_node.has_method("is_attack_decision_paused") and bool(pitch_node.is_attack_decision_paused())
 
-	if is_instance_valid(match_engine) and _paused_by_tactics and not keep_decision_paused:
+	if is_instance_valid(match_engine) and _paused_by_tactics and not keep_decision_paused and not _manual_paused:
 		match_engine.pause_match(false)
 	_paused_by_tactics = false
 	refresh_all()
@@ -620,10 +681,14 @@ func close_tactical_screen() -> void:
 func is_tactical_screen_open() -> bool:
 	return _tactical_screen != null and _tactical_screen.visible
 
+func is_manual_pause_active() -> bool:
+	return _manual_paused
+
 func _on_pause_btn_pressed() -> void:
 	if not is_instance_valid(match_engine) or not match_engine.is_match_active() or is_tactical_screen_open():
 		return
-	match_engine.pause_match(not match_engine.is_match_paused())
+	_manual_paused = not _manual_paused
+	match_engine.pause_match(_manual_paused)
 	refresh_all()
 
 func _set_sim_speed(scale: float) -> void:
@@ -645,7 +710,10 @@ func refresh_all() -> void:
 	_minute_label.text = "%02d'" % match_engine.get_current_minute()
 
 	var c_state: int = match_engine.get_chance_state()
-	if is_tactical_screen_open() or match_engine.is_match_paused():
+	if match_engine.is_waiting_for_kickoff_resume():
+		_status_pill.text = "KICKOFF"
+		_status_pill.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
+	elif is_tactical_screen_open() or _manual_paused or match_engine.is_match_paused():
 		_status_pill.text = "PAUSED"
 		_status_pill.add_theme_color_override("font_color", Color(1.0, 0.82, 0.30))
 	elif c_state == 1:
@@ -714,8 +782,11 @@ func show_toast(message: String, duration: float = 2.5) -> void:
 	_toast_timer.start(duration)
 
 func hide_fulltime_summary() -> void:
+	_manual_paused = false
 	if _fulltime_panel:
 		_fulltime_panel.visible = false
+	if _kickoff_overlay:
+		_kickoff_overlay.visible = false
 	if _tactical_screen:
 		_tactical_screen.reset_match_substitutions()
 	_commentary_history.clear()
@@ -742,6 +813,30 @@ func _on_goal_scored(home: int, away: int, is_home: bool) -> void:
 	var scorer_side: String = "HOME FC" if is_home else "AWAY FC"
 	show_toast("GOAL! %s SCORES (%d : %d)" % [scorer_side, home, away], 3.0)
 
+func _on_goal_kickoff_ready(kickoff_team: int, prompt_text: String) -> void:
+	var team_tag: String = "HOME KICKOFF" if kickoff_team == 0 else "AWAY KICKOFF"
+	if _kickoff_label:
+		_kickoff_label.text = "%s\n%s" % [team_tag, prompt_text]
+	if _kickoff_overlay:
+		_kickoff_overlay.visible = true
+	var cam := _get_camera_2d()
+	if cam and is_instance_valid(match_engine):
+		cam.position = match_engine.get_field_size() * 0.5
+		cam.zoom = Vector2.ONE
+	refresh_all()
+
+func _on_goal_kickoff_resumed(_kickoff_team: int) -> void:
+	if _kickoff_overlay:
+		_kickoff_overlay.visible = false
+	refresh_all()
+
+func _on_kickoff_overlay_gui_input(event: InputEvent) -> void:
+	if is_instance_valid(match_engine) and match_engine.is_waiting_for_kickoff_resume():
+		if (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT) \
+		or (event is InputEventScreenTouch and event.pressed):
+			_resume_kickoff_from_hud()
+			accept_event()
+
 func _on_match_event_logged(minute: int, _event_type: String, is_home_team: bool, _player_name: String, description: String) -> void:
 	var side_tag: String = "[HOME]" if is_home_team else "[AWAY]"
 	var entry: String = "%02d'  %s %s" % [minute, side_tag, description]
@@ -753,7 +848,10 @@ func _on_match_event_logged(minute: int, _event_type: String, is_home_team: bool
 	refresh_all()
 
 func show_fulltime_summary(final_home: int, final_away: int) -> void:
+	_manual_paused = false
 	_set_sim_speed(1.0)
+	if _kickoff_overlay:
+		_kickoff_overlay.visible = false
 	if is_tactical_screen_open():
 		close_tactical_screen()
 	refresh_all()

@@ -3,6 +3,7 @@
 #include <godot_cpp/classes/node2d.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 #include <godot_cpp/variant/vector2.hpp>
+#include <godot_cpp/variant/rect2.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
@@ -20,7 +21,6 @@ struct TacticalPosition {
     float norm_y = 0.0f;
 };
 
-// Preserved for future Phase 10 3D highlight compatibility
 struct Scenario3DData {
     Vector3 ball_pos_3d;
     Vector3 attacker_pos_3d;
@@ -42,6 +42,8 @@ struct SimPlayer {
     int physical = 70;
     float stamina = 100.0f;
     float recovery_timer = 0.0f;
+    float sprint_boost_timer = 0.0f;
+    float dribble_boost_timer = 0.0f;
 
     Vector2 anchor;
     Vector2 position;
@@ -116,14 +118,26 @@ public:
     void resolve_manual_scenario(bool p_success, bool p_is_home_team = true);
     bool begin_chance(bool p_is_home_attacking, int p_attacker_idx = -1, float p_xg = 0.25f);
 
-    // Direct Player Control API (World Soccer Champs Style)
+    // Post-Goal Kickoff Resume API
+    bool is_waiting_for_kickoff_resume() const { return waiting_for_kickoff_resume; }
+    int get_kickoff_team() const { return kickoff_team; }
+    void resume_from_goal_kickoff();
+
+    // Direct Player Control & Defensive Chance Pacing/Camera API
     int get_chance_state() const { return chance_state; }
     bool is_chance_active() const { return chance_state != CHANCE_NONE; }
     bool is_manual_control_active() const { return manual_control_active; }
+    bool is_manual_dribble_active() const;
     int get_controlled_player_index() const { return user_controlled_index; }
     bool set_controlled_player(int p_player_idx);
     int select_nearest_defender();
     Array get_valid_pass_targets() const;
+
+    void set_defensive_chance_time_scale(float p_scale);
+    float get_defensive_chance_time_scale() const { return defensive_chance_time_scale; }
+    float get_recommended_camera_zoom() const;
+    Vector2 get_chance_camera_focus() const;
+    Rect2 get_chance_framing_rect() const;
 
     bool command_move_player(Vector2 p_target_pos);
     bool command_pass(int p_target_player_idx);
@@ -203,17 +217,21 @@ public:
     int get_home_score() const { return home_score; }
     int get_away_score() const { return away_score; }
     int get_current_minute() const { return current_minute; }
-    bool is_match_paused() const { return is_paused_for_manual; }
+    bool is_match_paused() const { return is_paused_for_manual || waiting_for_kickoff_resume; }
     bool is_match_active() const { return match_active; }
-
     int get_possession_team() const { return possession_team; }
     int get_ball_carrier_index() const { return ball_carrier_index; }
+    int get_pass_target_index() const { return pass_target_index; }
     Array get_player_positions() const;
     PackedStringArray get_player_roles() const;
     PackedStringArray get_player_names() const;
     PackedFloat32Array get_player_stamina() const;
     Vector2 get_ball_position() const;
     Dictionary get_match_stats() const;
+
+    void set_home_auto_shoot_enabled(bool p_enabled);
+    bool is_home_auto_shoot_enabled() const;
+    void trigger_wide_range_chance(bool p_is_home_attacking);
 
 protected:
     static void _bind_methods();
@@ -229,15 +247,25 @@ private:
     void _initialize_default_squads();
     void _apply_role_profile(SimPlayer& p_player, int p_base_ovr) const;
     void _reset_field_positions();
-    void _apply_formation_positions(bool p_reset_ball);
+    void _apply_formation_positions(bool p_reset_ball, bool p_force_snap_all = false);
+    void _reset_after_goal(bool p_conceding_is_home);
     void _sync_player_positions_array();
     bool _has_valid_formation(const std::string& p_name) const;
     float _get_fatigue_multiplier(const SimPlayer& p_player) const;
+    int _resolve_home_action_player() const;
+    bool _is_backline_role(const String& p_role) const;
+
+    // Organized Defensive & Attacking Run Coordination Helpers
+    int _select_smart_presser(bool p_is_home, int p_exclude_idx = -1) const;
+    float _compute_organized_backline_x(bool p_is_home) const;
+    Vector2 _compute_lane_cover_target(bool p_is_home, const SimPlayer& p_defender) const;
+    Vector2 _compute_runner_tracking_offset(bool p_is_home, const SimPlayer& p_defender, float p_line_x, float p_base_y) const;
+    Vector2 _compute_smart_attacking_run_target(const SimPlayer& p_player, int p_index, float p_widened_anchor_y, float p_ball_prog) const;
 
     // Coordinated 2D Football Simulation
     void _step_simulation(float dt);
     void _update_player_movement(float dt);
-    Vector2 _compute_tactical_target(const SimPlayer& p_player, int p_index, int p_primary_presser, int p_secondary_presser) const;
+    Vector2 _compute_tactical_target(const SimPlayer& p_player, int p_index, int p_primary_presser, int p_secondary_presser, float p_team_backline_x) const;
     void _update_ball_and_actions(float dt);
     void _evaluate_carrier_action(int p_carrier_idx);
     void _execute_pass(int p_passer_idx, int p_receiver_idx, bool p_is_through_ball);
@@ -248,6 +276,7 @@ private:
     void _give_gk_possession(bool p_home_gk);
     void _log_event(const String& p_type, bool p_is_home, const String& p_player_name, const String& p_desc);
     Vector3 _to_3d_coords(Vector2 p_pos_2d) const;
+    void _spawn_wide_range_chance(bool p_is_home_attacking);
 
     float match_timer = 0.0f;
     int current_minute = 0;
@@ -258,6 +287,10 @@ private:
     bool match_active = false;
     float event_cooldown = 0.0f;
 
+    // Post-Goal Kickoff Reset & Pause State
+    bool waiting_for_kickoff_resume = false;
+    int kickoff_team = -1; // 0 = home kickoff, 1 = away kickoff, -1 = none
+
     // Authoritative Chance & Direct Control State
     int chance_state = CHANCE_NONE;
     bool manual_control_active = false;
@@ -265,6 +298,7 @@ private:
     bool has_user_move_target = false;
     Vector2 user_move_target = Vector2(-1.0f, -1.0f);
     float active_chance_timer = 0.0f;
+    float defensive_chance_time_scale = 0.65f;
 
     // Token Management State
     int manual_matches_played = 0;
@@ -302,23 +336,18 @@ private:
     int possession_team = 0;      // -1 = loose, 0 = home, 1 = away
     int ball_carrier_index = 9;   // 0..10 home, 11..21 away, -1 none
     int pass_target_index = -1;
+    bool is_through_ball_in_flight = false;
     int last_touch_index = 9;
     float action_decision_timer = 0.25f;
     float pending_chance_xg = 0.0f;
+    bool home_auto_shoot_enabled = false;
+    bool shot_hits_crossbar = false;
+    float last_shot_power_ratio = 0.75f;
 
     std::vector<SimPlayer> sim_players;
     Array player_positions;
     MatchStats stats;
     Scenario3DData last_scenario_3d;
-
-private:
-    bool home_auto_shoot_enabled = false;
-    void _spawn_wide_range_chance(bool p_is_home_attacking);
-
-public:
-    void set_home_auto_shoot_enabled(bool p_enabled);
-    bool is_home_auto_shoot_enabled() const;
-    void trigger_wide_range_chance(bool p_is_home_attacking);
 };
 
 } // namespace godot

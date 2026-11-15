@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://wkubeqrbsuwe" path="res://MatchScene.gd" id="1_gymab"]
 [ext_resource type="Script" uid="uid://c2b6akh1quqlr" path="res://MatchPitch.gd" id="2_a4lid"]
 [ext_resource type="Script" uid="uid://dr0bibhnetwcw" path="res://MatchHUD.gd" id="3_fs81w"]
+[ext_resource type="Script" uid="uid://d0std7va81x6i" path="res://camera_2d.gd" id="4_6hlag"]
 [ext_resource type="Script" uid="uid://ctlba31j86bwi" path="res://TacticalScreen.gd" id="4_7yec8"]
 [ext_resource type="Script" uid="uid://beh8phxuhwa4v" path="res://IntegrationRegressionTest.gd" id="7_osqcl"]
 
@@ -15,6 +16,9 @@ script = ExtResource("1_gymab")
 
 [node name="Pitch2D" type="Node2D" parent="2DOverviewLayer" unique_id=4030976]
 script = ExtResource("2_a4lid")
+
+[node name="Camera2D" type="Camera2D" parent="2DOverviewLayer/Pitch2D" unique_id=1092055375]
+script = ExtResource("4_6hlag")
 
 [node name="HUD" type="Control" parent="2DOverviewLayer" unique_id=395918410]
 layout_mode = 3

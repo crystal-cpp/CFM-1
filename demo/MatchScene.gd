@@ -15,8 +15,9 @@ func _ready() -> void:
 		match_engine = find_child("MatchEngine", true, false) as MatchEngine
 
 	overview_2d = get_node_or_null("2DOverviewLayer") as CanvasLayer
-	match_pitch = get_node_or_null("2DOverviewLayer/MatchPitch")
-	hud = get_node_or_null("2DOverviewLayer/HUD") as Control
+	match_pitch = get_node_or_null("2DOverviewLayer/Pitch2D")
+	if not is_instance_valid(match_pitch):
+		match_pitch = get_node_or_null("2DOverviewLayer/MatchPitch")
 
 	if not is_instance_valid(match_engine) or not is_instance_valid(overview_2d):
 		push_error("MatchScene: Missing MatchEngine or 2DOverviewLayer child nodes!")
