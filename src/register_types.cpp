@@ -8,6 +8,7 @@
 #include "team.h"
 #include "player_database.h"
 #include "match_engine.h"
+#include "CareerState.h"
 
 using namespace godot;
 
@@ -18,6 +19,7 @@ void initialize_game_module(ModuleInitializationLevel p_level) {
 
     ClassDB::register_class<PlayerDatabase>();
     ClassDB::register_class<MatchEngine>();
+    ClassDB::register_class<CareerState>();
 }
 
 void uninitialize_game_module(ModuleInitializationLevel p_level) {

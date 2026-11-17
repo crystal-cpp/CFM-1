@@ -14,10 +14,10 @@
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/typed_array.hpp>
 
-// Forward declarations for existing C++23 core subsystems
-class PlayerDatabase;
-class Team;
-class YouthAcademy;
+#include "mainplayer.h"
+#include "team.h"
+#include "youth_academy.h"
+#include "player_database.h"
 
 namespace godot {
 
@@ -62,7 +62,7 @@ struct InboxMessage {
 	std::string title;
 	std::string body;
 	bool is_read = false;
-	std::string action_route;      // e.g., "squad", "youth", "transfers", "pre_match"
+	std::string action_route;      // e.g., "squad", "youth", "transfers", "club"
 	int32_t target_entity_id = -1; // player_id, club_id, or fixture_id
 };
 
@@ -70,7 +70,7 @@ struct FixtureRecord {
 	int32_t fixture_id = 0;
 	int32_t matchday = 1;
 	std::string date_iso;
-	std::string competition;       // e.g., "V-League 1", "National Cup"
+	std::string competition;       // e.g., "Premier Division", "National Cup"
 	int32_t home_club_id = -1;
 	int32_t away_club_id = -1;
 	int32_t home_goals = -1;
@@ -119,9 +119,12 @@ private:
 	std::vector<LeagueStandingRow> _standings;
 
 	// Owned C++23 Subsystems (Single Source of Truth)
-	std::unique_ptr<PlayerDatabase> _player_db;
+	Ref<PlayerDatabase> _player_db;
 	std::unique_ptr<YouthAcademy> _youth_academy;
 	std::unordered_map<int32_t, std::unique_ptr<Team>> _clubs;
+	std::unordered_map<int32_t, int32_t> _captain_by_club;
+	std::unordered_map<int32_t, std::shared_ptr<Player>> _players_by_id;
+	int32_t _next_player_id = 1;
 
 	// Internal Helpers
 	std::string _format_date_iso() const;
@@ -129,7 +132,10 @@ private:
 	void _advance_single_day();
 	void _recalculate_standings();
 	void _seed_default_objectives();
-	bool _write_atomic_file(const String &p_target_path, const PackedByteArray &p_bytes) const;
+	void _simulate_ai_fixtures_for_current_date();
+	void _process_weekly_progression();
+	void _process_annual_rollover();
+	Dictionary _player_to_dict(const std::shared_ptr<Player> &p) const;
 
 protected:
 	static void _bind_methods();
@@ -154,12 +160,41 @@ public:
 	TypedArray<Dictionary> get_board_objectives() const;
 	TypedArray<Dictionary> get_league_standings() const;
 	Dictionary get_next_fixture() const;
+	Dictionary get_club_info(int32_t p_club_id) const;
 
 	// --- Subsystem Read/Write Bridges (Zero Duplicate State) ---
 	TypedArray<Dictionary> get_club_squad(int32_t p_club_id) const;
 	Dictionary get_player_profile(int32_t p_player_id) const;
 	TypedArray<Dictionary> get_youth_prospects() const;
 	bool promote_youth_player(int32_t p_prospect_id);
+	PackedInt32Array get_club_player_ids(int32_t p_club_id) const;
+	int32_t get_player_count() const;
+
+	// --- Phase 4: Squad Management, Permanent Tactics & Youth Academy ---
+	bool set_starting_xi(int32_t p_club_id, const PackedInt32Array &p_xi_ids);
+	bool swap_squad_players(int32_t p_club_id, int32_t p_player_a_id, int32_t p_player_b_id);
+	bool set_club_captain(int32_t p_club_id, int32_t p_player_id);
+	int32_t get_club_captain(int32_t p_club_id) const;
+
+	Dictionary get_club_tactics(int32_t p_club_id) const;
+	bool set_club_tactics(int32_t p_club_id, const Dictionary &p_tactics);
+
+	Dictionary get_youth_academy_info() const;
+	bool upgrade_youth_facility();
+	bool upgrade_youth_academy();
+	bool hire_youth_coach(const String &p_name, int32_t p_skill, double p_salary, const String &p_specialty);
+	bool fire_youth_coach(int32_t p_coach_index);
+	Dictionary scout_youth_prospect();
+
+	// Mutation / State testing helpers
+	void set_player_condition(int32_t p_player_id, int32_t p_condition);
+	int32_t get_player_condition(int32_t p_player_id) const;
+	void set_total_balance(int64_t p_balance);
+	int64_t get_total_balance() const;
+	void set_transfer_budget(int64_t p_budget);
+	int64_t get_transfer_budget() const;
+	void set_wage_budget(int64_t p_budget);
+	int64_t get_wage_budget() const;
 
 	// --- MatchEngine Handoff & Post-Match Commit ---
 	bool prepare_next_match_payload(MatchEngine *p_engine) const;
@@ -179,5 +214,71 @@ public:
 	TypedArray<Dictionary> list_save_slots() const;
 	bool delete_save_slot(const String &p_slot_name);
 };
+
+void CareerState::auto_pick_best_xi(Team& team, const Formation& formation) {
+    std::vector<int> pool = team.player_ids;
+    std::unordered_set<int> used;
+    team.starting_xi.assign(11, -1);
+    team.bench.clear();
+    team.reserves.clear();
+
+    auto pick_best_for_slot = [&](int slot_idx, bool exact_only) {
+        const std::string& target_pos = formation.slots[slot_idx].position;
+        int best_id = -1;
+        int best_score = -1;
+
+        for (int pid : pool) {
+            if (used.count(pid)) continue;
+            const Player& p = player_db_.at(pid);
+
+            // Enforce strict GK-only rule on Slot 0
+            if (slot_idx == 0 && p.position != "GK") continue;
+            if (slot_idx != 0 && p.position == "GK") continue;
+
+            int fit = evaluate_position_fit(p.position, target_pos); // 100 = exact, 95 = compatible, 85 = OOP
+            if (exact_only && fit < 100) continue;
+            if (!exact_only && fit < 95) continue;
+
+            int effective_ovr = (p.ovr * fit) / 100;
+            if (effective_ovr > best_score) {
+                best_score = effective_ovr;
+                best_id = pid;
+            }
+        }
+        if (best_id != -1) {
+            team.starting_xi[slot_idx] = best_id;
+            used.insert(best_id);
+        }
+    };
+
+    // Pass 1: Exact position matches (GK -> GK, CB -> CB, ST -> ST, etc.)
+    for (int i = 0; i < 11; ++i) pick_best_for_slot(i, true);
+    // Pass 2: Compatible secondary positions (LM -> LW, CAM -> CM, CF -> ST)
+    for (int i = 0; i < 11; ++i) {
+        if (team.starting_xi[i] == -1) pick_best_for_slot(i, false);
+    }
+    // Pass 3: Fallback to highest remaining OVR (still blocking outfielders from Slot 0)
+    for (int i = 0; i < 11; ++i) {
+        if (team.starting_xi[i] != -1) continue;
+        int best_id = -1, best_ovr = -1;
+        for (int pid : pool) {
+            if (used.count(pid)) continue;
+            const Player& p = player_db_.at(pid);
+            if (i == 0 && p.position != "GK") continue;
+            if (p.ovr > best_ovr) { best_ovr = p.ovr; best_id = pid; }
+        }
+        if (best_id != -1) {
+            team.starting_xi[i] = best_id;
+            used.insert(best_id);
+        }
+    }
+
+    // Fill Bench (up to 7, prioritizing 1 backup GK + best remaining) then Reserves
+    for (int pid : pool) {
+        if (used.count(pid)) continue;
+        if (team.bench.size() < 7) team.bench.push_back(pid);
+        else team.reserves.push_back(pid);
+    }
+}
 
 } // namespace godot

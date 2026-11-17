@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://cp86lwwp6hrff"
+
+[deps]
+
+files=["res://data/players.Age.translation", "res://data/players.DebutAge.translation", "res://data/players.Potential.translation", "res://data/players.Position.translation", "res://data/players.Pace.translation", "res://data/players.Shooting.translation", "res://data/players.Passing.translation", "res://data/players.Dribbling.translation", "res://data/players.Defending.translation", "res://data/players.Physical.translation"]
+
+source_file="res://data/players.csv"
+dest_files=["res://data/players.Age.translation", "res://data/players.DebutAge.translation", "res://data/players.Potential.translation", "res://data/players.Position.translation", "res://data/players.Pace.translation", "res://data/players.Shooting.translation", "res://data/players.Passing.translation", "res://data/players.Dribbling.translation", "res://data/players.Defending.translation", "res://data/players.Physical.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

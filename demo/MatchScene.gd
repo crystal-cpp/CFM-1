@@ -4,6 +4,7 @@ var match_engine: MatchEngine
 var overview_2d: CanvasLayer
 var hud: Control
 var match_pitch: Node
+var career_shell: CareerShell
 
 var pending_match_ended: bool = false
 var cached_final_home: int = 0
@@ -49,6 +50,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif hud.has_method("open_tactical_screen"):
 				hud.open_tactical_screen()
 		get_viewport().set_input_as_handled()
+	elif key_event.keycode == KEY_C:
+		_toggle_career_shell()
+		get_viewport().set_input_as_handled()
 	elif key_event.keycode == KEY_Q:
 		if is_instance_valid(match_engine) and match_engine.get_chance_state() == 2:
 			match_engine.select_nearest_defender()
@@ -67,6 +71,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif key_event.keycode == KEY_R:
 		_request_next_match()
+		get_viewport().set_input_as_handled()
+	elif key_event.keycode == KEY_F10:
+		var career_test = CareerRegressionTest.new()
+		add_child(career_test)
+		career_test.run_all_career_tests()
+		career_test.queue_free()
 		get_viewport().set_input_as_handled()
 	elif key_event.keycode == KEY_SPACE:
 		if match_pitch and match_pitch.has_method("is_attack_decision_paused") and match_pitch.is_attack_decision_paused():
@@ -126,5 +136,19 @@ func _on_match_ended(final_home: int, final_away: int) -> void:
 
 func _process_final_whistle(final_home: int, final_away: int) -> void:
 	pending_match_ended = false
+	# Commit result to CareerState (updates standings, finances, inbox)
+	if is_instance_valid(career_shell) and is_instance_valid(career_shell.career_state):
+		if career_shell.career_state.has_method("commit_match_result"):
+			career_shell.career_state.commit_match_result(match_engine)
+			career_shell.refresh_all_views()
 	if hud and hud.has_method("show_fulltime_summary"):
 		hud.show_fulltime_summary(final_home, final_away)
+
+func _toggle_career_shell() -> void:
+	if not is_instance_valid(career_shell):
+		career_shell = CareerShell.new()
+		career_shell.name = "CareerShell"
+		add_child(career_shell)
+		career_shell.visible = true
+	else:
+		career_shell.visible = not career_shell.visible

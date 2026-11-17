@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://se1iwuspqjkk"]
+
+[ext_resource type="Script" uid="uid://pjxsimj6hcil" path="res://TacticsView.gd" id="1_mdblo"]
+
+[node name="TacticsView" type="Control" unique_id=1357186158]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_mdblo")

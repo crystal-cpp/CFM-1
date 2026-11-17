@@ -35,6 +35,9 @@ public:
     // Position Validator
     static bool is_valid_position(const String& p_pos);
 
+    // Raw Access
+    const std::vector<Player>& get_raw_players() const { return player_objects; }
+
 protected:
     static void _bind_methods();
 

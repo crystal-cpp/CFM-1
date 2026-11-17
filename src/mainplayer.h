@@ -1,13 +1,81 @@
 #pragma once
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <CareerState.h>
 
 enum class Position { 
     GK, CB, LB, RB, LWB, RWB, 
     CM, CDM, CAM, LM, RM, 
     LW, RW, ST, CF, UNKNOWN 
 };
+
+void CareerState::auto_pick_best_xi(Team& team, const Formation& formation) {
+    std::vector<int> pool = team.player_ids;
+    std::unordered_set<int> used;
+    team.starting_xi.assign(11, -1);
+    team.bench.clear();
+    team.reserves.clear();
+
+    auto pick_best_for_slot = [&](int slot_idx, bool exact_only) {
+        const std::string& target_pos = formation.slots[slot_idx].position;
+        int best_id = -1;
+        int best_score = -1;
+
+        for (int pid : pool) {
+            if (used.count(pid)) continue;
+            const Player& p = player_db_.at(pid);
+
+            // Enforce strict GK-only rule on Slot 0
+            if (slot_idx == 0 && p.position != "GK") continue;
+            if (slot_idx != 0 && p.position == "GK") continue;
+
+            int fit = evaluate_position_fit(p.position, target_pos); // 100 = exact, 95 = compatible, 85 = OOP
+            if (exact_only && fit < 100) continue;
+            if (!exact_only && fit < 95) continue;
+
+            int effective_ovr = (p.ovr * fit) / 100;
+            if (effective_ovr > best_score) {
+                best_score = effective_ovr;
+                best_id = pid;
+            }
+        }
+        if (best_id != -1) {
+            team.starting_xi[slot_idx] = best_id;
+            used.insert(best_id);
+        }
+    };
+
+    // Pass 1: Exact position matches (GK -> GK, CB -> CB, ST -> ST, etc.)
+    for (int i = 0; i < 11; ++i) pick_best_for_slot(i, true);
+    // Pass 2: Compatible secondary positions (LM -> LW, CAM -> CM, CF -> ST)
+    for (int i = 0; i < 11; ++i) {
+        if (team.starting_xi[i] == -1) pick_best_for_slot(i, false);
+    }
+    // Pass 3: Fallback to highest remaining OVR (still blocking outfielders from Slot 0)
+    for (int i = 0; i < 11; ++i) {
+        if (team.starting_xi[i] != -1) continue;
+        int best_id = -1, best_ovr = -1;
+        for (int pid : pool) {
+            if (used.count(pid)) continue;
+            const Player& p = player_db_.at(pid);
+            if (i == 0 && p.position != "GK") continue;
+            if (p.ovr > best_ovr) { best_ovr = p.ovr; best_id = pid; }
+        }
+        if (best_id != -1) {
+            team.starting_xi[i] = best_id;
+            used.insert(best_id);
+        }
+    }
+
+    // Fill Bench (up to 7, prioritizing 1 backup GK + best remaining) then Reserves
+    for (int pid : pool) {
+        if (used.count(pid)) continue;
+        if (team.bench.size() < 7) team.bench.push_back(pid);
+        else team.reserves.push_back(pid);
+    }
+}
 
 inline std::string position_to_string(Position pos) {
     switch (pos) {
@@ -140,21 +208,73 @@ public:
     int GetRetirementAge() const { return RetirementAge; }
     int GetPotential() const { return Potential; }
     
+    int GetId() const { return Id; }
+    void SetId(int p_id) { Id = p_id; }
+
+    int GetClubId() const { return ClubId; }
+    void SetClubId(int p_club_id) { ClubId = p_club_id; }
+
+    int GetCondition() const { return Condition; }
+    void SetCondition(int p_cond) { Condition = std::clamp(p_cond, 0, 100); }
+
+    int GetMorale() const { return Morale; }
+    void SetMorale(int p_mor) { Morale = std::clamp(p_mor, 0, 100); }
+
+    int64_t GetWage() const { return Wage; }
+    void SetWage(int64_t p_wage) { Wage = p_wage; }
+
+    int GetContractYears() const { return ContractYears; }
+    void SetContractYears(int p_years) { ContractYears = p_years; }
+
+    int GetAppearances() const { return Appearances; }
+    void SetAppearances(int p_app) { Appearances = p_app; }
+    void RecordAppearance() { Appearances++; }
+
+    int GetGoals() const { return Goals; }
+    void SetGoals(int p_goals) { Goals = p_goals; }
+    void RecordGoals(int p_g) { Goals += p_g; }
+
+    int GetAssists() const { return Assists; }
+    void SetAssists(int p_assists) { Assists = p_assists; }
+    void RecordAssists(int p_a) { Assists += p_a; }
+
+    bool GetIsStartingXI() const { return IsStartingXI; }
+    void SetIsStartingXI(bool p_val) { IsStartingXI = p_val; }
+
+    void SetAttributes(const PlayerAttributes& p_attrs) { Attributes = p_attrs; CalculateOVR(); }
+    void SetPosition(Position p_pos) { Pos = p_pos; CalculateOVR(); }
+    void SetAge(int p_age) { Age = p_age; CheckRetirement(); }
+    void SetPotential(int p_pot) { Potential = p_pot; }
+    void SetMarketValue(double p_val) { CustomMarketValue = p_val; }
+    void SetRetired(bool p_ret) { Retired = p_ret; }
+
     double GetMarketValue() const { 
         if (Retired) return 0.0; 
+        if (CustomMarketValue > 0.0) return CustomMarketValue;
         return OVR * 1000000.0; 
     }
 
     void AdvanceAge() {
         SimulateYearlyGrowth();
     }
-
 private:
     std::string Name;
     Position Pos;
     PlayerAttributes Attributes;
     int OVR, Age, Potential, DebutAge, RetirementAge, CurrentXP;
     bool Retired;
+
+    int Id = 0;
+    int ClubId = -1;
+    int Condition = 100;
+    int Morale = 80;
+    int64_t Wage = 5000;
+    int ContractYears = 3;
+    int Appearances = 0;
+    int Goals = 0;
+    int Assists = 0;
+    double CustomMarketValue = 0.0;
+    bool IsStartingXI = false;
 
     void CheckRetirement() {
         if (Age >= RetirementAge) {

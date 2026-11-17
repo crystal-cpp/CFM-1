@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://b7v8k9q1m20dl"]
+
+[ext_resource type="Script" path="res://DashboardView.gd" id="1_dash"]
+
+[node name="DashboardView" type="PanelContainer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_dash")

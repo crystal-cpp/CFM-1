@@ -1,0 +1,17 @@
+[gd_scene format=3 uid="uid://c5k8v2q9m10al"]
+
+[ext_resource type="Script" path="res://PlayerProfileModal.gd" id="1_modal"]
+
+[node name="PlayerProfileModal" type="PanelContainer"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -290.0
+offset_top = -250.0
+offset_right = 290.0
+offset_bottom = 250.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_modal")

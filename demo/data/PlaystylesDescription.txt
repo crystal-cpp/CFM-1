@@ -1,0 +1,24 @@
+Playstyles  Description
+
+Finesse Expert	Chooses curled shots more intelligently
+Clinical Finisher	Better shot selection and execution
+Power Shot	More likely to attempt powerful shots
+Chip Shot	Recognises advancing goalkeeper
+Penalty Expert	Better penalty execution
+Dead Ball	Specialised free-kick execution
+Tiki Taka	Prefers short combinations
+Bullet Pass	Better driven pass execution
+Whipped Cross	Uses fast, dangerous crosses
+Incisive Through Pass	Detects passing lanes behind defence
+Driven Lob Through	Recognises opportunities for lofted passes
+Anticipate	Better defensive positioning and interception decisions
+Guardian	More effective physical challenges
+Slide Tackle	More likely to use sliding challenges
+Rapid	Better sprint dribbling
+Trickster	More frequent and effective skill moves
+Bruiser	Better shielding and physical duels
+Accelerator	More explosive off-ball runs
+Relentless	Maintains work rate and movement intensity
+Precision Header	Better aerial execution
+Deflector	Better save direction
+Rush Out	Better decisions when leaving the goal
