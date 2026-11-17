@@ -34,5 +34,5 @@ Follow these steps to get your local environment running:
 1. **Fork the repository** on GitHub.
 2. **Clone your fork** locally:
    ```bash
-   git clone [https://github.com/YOUR-USERNAME/PROJECT-NAME.git](https://github.com/YOUR-USERNAME/PROJECT-NAME.git)
-   cd PROJECT-NAME
+   git clone [https://github.com/crystal-cpp/CFM-1.git](https://github.com/crystal-cpp/CFM-1.git)
+   cd CFM-1
