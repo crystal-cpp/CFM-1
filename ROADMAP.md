@@ -288,7 +288,7 @@
 
   * **5. Custom Player & Classmate Roster Addition Workflow**:
 
-    * Supports adding custom real-world legends and user-created players (such as the user's classmates in `11A7`) directly into `Players_Database/players_2006_with_price.csv` (in the runtime dataset `demo/data/players_2006_with_price.csv`; the `Players_Database/` copy is maintained separately):
+    * Supports adding custom real-world legends and user-created players (such as the user's classmates in `11A7`) to the runtime dataset `demo/data/players_2006_with_price.csv`; the `Players_Database/` copy is maintained separately as a preventive/source copy:
 
       * Populate `Club = "11A7"`, `League = "Tuesday League"`, and `Nationality` (matching the `11A7` / `Tuesday League` entry in `res://data/clubs.csv`) so they remain exclusively protected behind code `NHHA72528` and load deterministically onto `11A7`'s roster once unlocked.
 
