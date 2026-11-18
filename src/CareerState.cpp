@@ -1870,7 +1870,7 @@ bool CareerState::load_career(const String &p_slot_name) {
 			player_ptr->SetAssists(pd.get("assists", 0));
 			player_ptr->SetIsStartingXI(pd.get("is_starting_xi", false));
 			player_ptr->SetMarketValue(pd.get("market_value", 0.0));
-			player_ptr->SetRetired(pd.get("is_retired", false));
+			player_ptr->SetRetired(pd.get("is_retired", false) || age >= 37);
 
 			_players_by_id[pid] = player_ptr;
 		}
