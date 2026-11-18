@@ -140,6 +140,15 @@ public:
     int GetDebutAge() const { return DebutAge; }
     int GetRetirementAge() const { return RetirementAge; }
     int GetPotential() const { return Potential; }
+
+    const std::string& GetClubName() const { return ClubName; }
+    const std::string& GetLeagueName() const { return LeagueName; }
+    const std::string& GetNationality() const { return Nationality; }
+    const std::vector<std::string>& GetPlaystyles() const { return Playstyles; }
+    void SetClubName(const std::string& value) { ClubName = value.empty() ? "Free Agent" : value; }
+    void SetLeagueName(const std::string& value) { LeagueName = value.empty() ? "Free Agent" : value; }
+    void SetNationality(const std::string& value) { Nationality = value.empty() ? "Unknown" : value; }
+    void SetPlaystyles(const std::vector<std::string>& value) { Playstyles = value; }
     
     int GetId() const { return Id; }
     void SetId(int p_id) { Id = p_id; }
@@ -196,6 +205,10 @@ private:
     PlayerAttributes Attributes;
     int OVR, Age, Potential, DebutAge, RetirementAge, CurrentXP;
     bool Retired;
+    std::string ClubName = "Free Agent";
+    std::string LeagueName = "Free Agent";
+    std::string Nationality = "Unknown";
+    std::vector<std::string> Playstyles;
 
     int Id = 0;
     int ClubId = -1;
