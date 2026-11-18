@@ -23,11 +23,15 @@
 | **Phase 4B: `SquadView`, `TacticsView`, `YouthView` & GK UI** | GDScript | **Complete** | **Pending Phase 4C** | Procedural views wired into `CareerShell.gd`, `SquadView` drag-and-drop/click-swap GK-only Slot `0` lock, and `PlayerProfileModal.gd` 6-stat GK display. |
 | **Phase 4C: Phase 4 Build & Acceptance Suite** | Both | **Ready to Run** | **Active (Next)** | Recompile DLL + run Suites 1–12 + manual cross-viewport QA + `*_2` cleanup. |
 | **Phase 5A–5C: Schedule, Competitions & Pre-Match** | Both | Placeholder Views | Scheduled | Scaffolded as route cards inside `CareerShell.gd`. |
-| **Phase 5D: Player Metadata, Club Registry & Codes** | Both | **Partially Implemented** | **Build Verification Pending** | Runtime CSV loader now reads `Club`, `League`, `Nationality`, and `Playstyle 1..3`; metadata is included in player dictionaries and career saves. `res://data/players_2006_with_price.csv` remains the runtime dataset. `Players_Database/players_2006_with_price.csv` is intentionally retained as a separate preventive/source copy. `clubs.csv`, New Career selection, access lock, and code redemption remain planned. |
-| **Phase 6: Club Management, Finances & Board** | Both | Placeholder Views | Scheduled | Separated financial ledgers, board confidence, stadium/facility upgrades. |
+| **Phase 5D: Historical 15 July 2006 `clubs.csv`, Player Metadata & Codes** | Both | **Partially Implemented** | **Build Verification Pending** | Runtime CSV loader now reads `Club`, `League`, `Nationality`, and `Playstyle 1..3`, and normalizes `RetirementAge = 37` in CSV import and career saves (`res://data/players_2006_with_price.csv` is the runtime dataset; `Players_Database/players_2006_with_price.csv` is retained as a separate preventive/source copy). Historical **15 July 2006** `clubs.csv` + kit colours, existing CSV `Stamina` attribute binding, New Career `League -> Club` selection, `Tuesday League` / `11A7` lock, and `NHHA72528` Codes modal remain planned. |
+| **Phase 5E: `MatchEngine` Realism, Stamina Drain & Controls Cleanup** | Both | **Spec Ready** | **Scheduled (Phase 5)** | CSV `Stamina`-driven match drain, attribute-coupled attack/defense chances, scaled opponent defensive AI, balanced chance probability, real-time steering movement, and removal of Advanced Dribbling (`R`). |
+| **Phase 5F: Stamina Persistence, $\approx 30\%$/Day Recovery & Injury System** | Both | **Spec Ready** | **Scheduled (Phase 5)** | Post-match stamina preservation, configurable $\approx 30\%$/day calendar recovery, and World Soccer Champs-inspired injury generation & calendar recovery. |
+| **Phase 6A: Club Management, Finances & Board** | Both | Placeholder Views | Scheduled | Separated financial ledgers, board confidence, stadium/facility upgrades. |
+| **Phase 6B: Senior Squad Training Mechanism & `Training` Tab** | Both | **Spec Ready** | **Scheduled (Phase 6)** | Dedicated `Training` tab with 4 positional group focus programs (Attackers, Midfielders, Defenders, Goalkeepers) and potential/age-aware OVR growth. |
+| **Phase 6C: Global UI & Typography Design System** | GDScript | **Spec Ready** | **Scheduled (Phase 6)** | Custom typography hierarchy, redesigned high-clarity player cards, and disciplined non-AI-slop dark-navy aesthetic. |
 | **Phase 7A–7D: Transfers, Search & Reputation** | Both | Placeholder Views | Scheduled | Valuation, fee/wage negotiations, transfer windows, six-field player search, AI transfers, loyalty, and reputation. |
 | **Phase 7E: Exclusive $> 96$ Base OVR Playstyles** | Both | **Spec Ready** | **Scheduled (Phase 7)** | 22 Playstyles (`PlaystylesDescription.txt`) gated strictly to `BaseOVR > 96` non-academy players. |
-| **Phase 7F: Mandatory Age-37 Retirement Pipeline** | Both | **Spec Ready** | **Scheduled (Phase 7)** | Universal `RetirementAge = 37` cap, contract clamping, July 1 rollover removal + Best-XI rebalance, and Board retirement report. |
+| **Phase 7F: Mandatory Age-37 Retirement Pipeline** | Both | **Partially Implemented (Data/Save)** | **Scheduled (Phase 7)** | `RetirementAge = 37` normalization committed in CSV loader & saves; contract length clamping, `Age == 36` badge, July 1 rollover removal + Best-XI rebalance, and Board retirement report remain scheduled. |
 
 ---
 
@@ -74,77 +78,93 @@
 
 ---
 
-## 3. Upcoming Engineering Blueprints: Phase 5D, Phase 7E & Phase 7F
+## 3. Upcoming Engineering Blueprints & Technical Dependencies (Phases 5–7)
 
-> The items in this section are specifications for future work unless their implementation is explicitly marked complete in the status matrix. Their presence here does not mean the systems are already implemented or tested.
+> **Status Note**: Except for the Phase 5D CSV metadata loader and Age-37 save normalization committed at `4aa3a2a4b227006758f2421c1042657c921b3fe6` (marked *Build Verification Pending*), every feature in Section 3 is **Planned / Not Started**. None of these remaining systems have been implemented, compiled, or verified yet.
 
-### Phase 5D — Player Metadata Integration, `clubs.csv`, New Career League Selection & Codes (`NHHA72528`)
-1. **Files to Create / Update**:
-   * **`demo/data/clubs.csv` (`res://data/clubs.csv`)**: Canonical club registry (`ClubID,Club,League,ShortCode,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor`). Replaces hardcoded `DEFAULT_CLUB_NAMES[16]` and prevents random club creation.
-   * **Runtime player data (`demo/data/players_2006_with_price.csv`, loaded as `res://data/players_2006_with_price.csv`)**: Contains `Club`, `League`, `Nationality`, and `Playstyle 1..3`. `Players_Database/players_2006_with_price.csv` is a deliberately retained separate preventive/source copy; it is not required to mirror the runtime dataset row-for-row.
-   * **`src/mainplayer.h` & `src/mainplayer.cpp`**: Add `ClubName`, `LeagueName`, `Nationality`, `BaseOVR`, `IsAcademyProduct`, `IsRetired`, `RetirementAge = 37`, and `Playstyles` fields and accessors.
-   * **`src/team.h` & `src/team.cpp`**: Store `ShortCode`, `LeagueName`, `Country`, `Reputation`, `TransferBudget`, `WageBudget`, and kit colors loaded from `clubs.csv`.
-   * **`Players_Database/player_database.h` & `Players_Database/player_database.cpp`**:
-     * **Implemented, build verification pending:** `load_from_csv()` resolves core and optional columns by header name, reads `Club`, `League`, `Nationality`, `Playstyle 1..3`, and optional `Price`, and preserves metadata on each `Player`.
-     * **Remaining:** add `load_clubs_from_csv()` for the future `res://data/clubs.csv` registry.
-     * Imported players are normalized to `RetirementAge = 37`; legacy save loading also defaults and normalizes retirement age to `37`.
-   * **`src/CareerState.h` & `src/CareerState.cpp`**:
-     * In `start_new_career()`: Load `res://data/clubs.csv` first to create exact `Team` records, implement the New Career `League -> Club -> Manager Name` selection flow, map players by their CSV `Club` value (routing unmatched/empty rows to Free Agents), run positional Best-XI sorting (`GK` locked to Slot `0`), and serialize `"csv_club_name"`, `"base_ovr"`, `"is_academy_product"`, `"retirement_age"`, `"is_retired"`, `"league"`, `"nationality"`, `"short_code"`, `"playstyles"`, and `"redeemed_codes"` in `save_career()` / `load_career()`.
-     * Implement `redeem_promo_code("NHHA72528")` to permanently unlock `Tuesday League` and `11A7` Club (and all `11A7` players) across New Career setup and Transfer Market searches while awarding `+$50.0M` Club Balance, `+$35.0M` Transfer Budget, `+$250K/wk` Wage Budget, `+5` Skip Tokens, and `+10` Club Reputation.
-   * **GDScript Views (`NewCareerView.gd`, `RedeemCodeModal.gd`, `CareerShell.gd`, `DashboardView.gd`, `SquadView.gd`, `CompetitionsView.gd`, `TransfersView.gd`, `PlayerProfileModal.gd`)**: Consume `clubs.csv` short codes, league names, `Tuesday League` / `11A7` unlock state, and merged player `club_name`, `league`, and `nationality` metadata.
-2. **Adding Custom Players & Classmates**:
-   * Append custom player rows with `Club = "11A7"`, `League = "Tuesday League"` (or another canonical club/league from `res://data/clubs.csv`), plus the player's `Nationality`.
-   * Any custom player authored with base attributes yielding $\text{BaseOVR} > 96$ (`97–99` OVR) automatically qualifies for **Phase 7E Playstyles**.
+### Phase 5D — Historical 15 July 2006 `res://data/clubs.csv`, Player CSV Metadata (`Stamina` + `Club`/`League`/`Nationality`) & Codes (`NHHA72528`)
+1. **Current Implementation vs. Remaining Dependencies**:
+   * **Committed (`4aa3a2a4b227006758f2421c1042657c921b3fe6` — Build Verification Pending)**:
+     * `PlayerDatabase::load_from_csv()` now resolves core and optional columns by header name, reads `Club`, `League`, `Nationality`, `Playstyle 1..3`, and optional `Price`, preserves metadata on each `Player`, and normalizes `RetirementAge = 37`.
+     * `CareerState` exports player metadata in `_player_to_dict()` and persists/normalizes `RetirementAge = 37` in `save_career()` / `load_career()`.
+     * `res://data/players_2006_with_price.csv` (`demo/data/players_2006_with_price.csv`) is the runtime dataset; `Players_Database/players_2006_with_price.csv` is intentionally retained as a separate preventive/source copy and does not need to mirror the runtime file row-for-row.
+   * **Remaining Data-Preparation Requirement (Blocking Phase 5D)**:
+     * `demo/data/clubs.csv` (`res://data/clubs.csv`) does not yet exist in the repository and must be authored and audited for **15 July 2006** pre-season accuracy (`ClubID,Club,League,ShortCode,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor`), including balanced historical budgets/reputations, valid `formations.csv` formations, and primary/secondary kit colours.
+   * **Existing CSV `Stamina` Column Mapping**:
+     * `res://data/players_2006_with_price.csv` already contains a `Stamina` column; `PlayerDatabase::load_from_csv()` must bind that existing `Stamina` column directly onto `Player::Stamina` (`1–99`) without adding a duplicate CSV column.
+2. **Remaining Planned Deliverables**:
+   * **Historical 15 July 2006 Start (`NewCareerView.gd` & `CareerState::start_new_career()`)**: Anchors new career saves to **`2006-07-15` (Season `2006/07`)**, renders the `League -> Club -> Manager Name` selector strictly from `res://data/clubs.csv` (eliminating `DEFAULT_CLUB_NAMES[16]` and preventing random club creation), routes CSV players into their matching `Team` (unmatched rows to Free Agents `club_id = 0`), and passes `PrimaryColor` / `SecondaryColor` kit colours into `MatchEngine` match presentation (with automatic away clash-kit switching).
+   * **Codes Mechanism (`NHHA72528`) & `Tuesday League` / `11A7` Lock**: Adds `Codes` button in `CareerShell` + `RedeemCodeModal` backed by `CareerState::redeem_promo_code("NHHA72528")` to unlock `Tuesday League -> 11A7` globally and credit `+$50.0M` Club Balance, `+$35.0M` Transfer Budget, `+$250K/wk` Wage Budget, `+5` Skip Tokens, and `+10` Club Reputation.
+   * **Custom Players & Classmates**: Supports appending custom player rows in `res://data/players_2006_with_price.csv` (`Club = "11A7"`, `League = "Tuesday League"`, or any canonical `clubs.csv` club/league), with $\text{BaseOVR} > 96$ players qualifying for Phase 7E Playstyles.
 
-### Phase 7E — Exclusive $> 96$ Base OVR Playstyles System (`PlaystylesDescription.txt`)
-1. **Strict Eligibility Gate**:
-   * Playstyles are granted **exclusively** when `player.GetBaseOVR() > 96 && !player.GetIsAcademyProduct()`.
-   * Academy players promoted from `YouthAcademy` (`IsAcademyProduct == true`) or normal players whose initial $\text{BaseOVR} \le 96$ never receive Playstyles even if trained past $96$ OVR.
-2. **22 Supported Playstyles (`PlaystylesDescription.txt`)**:
-   * *Scoring & Set Pieces*: `Finesse Expert`, `Clinical Finisher`, `Power Shot`, `Chip Shot`, `Penalty Expert`, `Dead Ball`.
-   * *Passing & Vision*: `Tiki Taka`, `Bullet Pass`, `Whipped Cross`, `Incisive Through Pass`, `Driven Lob Through`.
-   * *Defending*: `Anticipate`, `Guardian`, `Slide Tackle`.
-   * *Dribbling & Physical*: `Rapid`, `Trickster`, `Bruiser`, `Accelerator`, `Relentless`.
-   * *Aerial*: `Precision Header`.
-   * *Goalkeeping*: `Deflector`, `Rush Out`.
-3. **Files to Update in Phase 7E**:
-   * `src/mainplayer.h` / `.cpp`: `uint32_t PlaystyleMask` + `std::vector<std::string> Playstyles` with `BaseOVR > 96 && !IsAcademyProduct` guard.
-   * `Players_Database/player_database.cpp`: Parse `Playstyle 1..3` columns (or auto-assign 2–3 role-matched Playstyles for `BaseOVR > 96` players when omitted).
-   * `src/MatchEngine.h` / `.cpp`: Apply Playstyle decision weights, shot curves, pass lane detection, tackle selection, sprint dribbling, and GK rush-out/deflection modifiers during match simulation.
-   * `src/CareerState.cpp`: Include `"playstyles"`, `"base_ovr"`, and `"is_academy_product"` in `prepare_next_match_payload()`, `_player_to_dict()`, `save_career()`, and `load_career()`.
-   * `demo/PlayerProfileModal.gd` & `demo/SquadView.gd`: Render Playstyle badges and descriptions from `PlaystylesDescription.txt` on eligible $> 96$ Base OVR players.
+### Phase 5E — `MatchEngine` Simulation Realism, Attribute-Coupled Chances & Controls Cleanup
+1. **Dependencies & Partial Support**:
+   * Depends on Phase 5D loading the CSV `Stamina` attribute and club kit colours onto `Team` / `Player`.
+   * Partially supported by Phase 2A's chance-gated state machine (`CHANCE_NONE` / `HOME_ATTACK` / `AWAY_ATTACK`), stamina/tactics coupling, and direct control bindings in `MatchEngine.cpp`.
+2. **Planned Deliverables**:
+   * **CSV `Stamina`-Coupled Match Drain (`MatchEngine.cpp`)**: Scales per-tick sprint/pressing stamina depletion inversely with each player's imported CSV `Stamina` value ($1\text{--}99$) and exports exact ending `current_stamina` at full-time.
+   * **Attribute & OVR-Driven Attack/Defense Chances (`MatchEngine.cpp`)**: Evaluates `Shooting`, `Pace`, `Dribbling`, `Passing`, `Defending`, `Physical`, and positional sub-weights alongside `OVR` so individual attributes shape shot selection, dribbling, interceptions, and tackles without making `OVR` deterministic.
+   * **Scaled Opponent Defensive AI & Balanced Chance Probability**: Scales defensive compactness, pressing triggers, and lane coverage with opponent `OVR` and tactics while keeping weaker teams competitive.
+   * **Real-Time Believable Movement**: Replaces instant point-to-point movement with continuous 2D acceleration, deceleration, turn-rate inertia, and `Pace`/stamina-scaled top speed across mouse and touchscreen inputs.
+   * **Remove Advanced Dribbling (`R`)**: Strips `KEY_R` Advanced Dribbling bindings and HUD hints while preserving standard dribbling and match gestures.
 
-### Phase 7F — Mandatory Age-37 Retirement & Squad Turnover Pipeline
-1. **Universal Age-37 Retirement Rule (`src/mainplayer.h`, `Players_Database/player_database.cpp`, `src/CareerState.cpp`)**:
-   * Every player in the database (CSV imports from `players_2006_with_price.csv`, custom classmates/icons, Youth Academy graduates, and fallback/generated players) has a fixed mandatory retirement age of **`37`** (`retirement_age = 37`), overriding any legacy `36` defaults or per-row CSV `RetirementAge` variance.
-   * Players at `Age == 36` display a `"Retiring at End of Season"` status badge in `PlayerProfileModal` and `SquadView` and are blocked from incoming transfer bids during their final season.
-2. **Contract Length Cap (`NegotiationModal` & `CareerState`)**:
-   * Maximum contract duration during transfer negotiations and contract renewals is clamped to $\min(5, \max(1, 37 - \text{Age}))$ years so every player's contract terminates at or before age `37`.
-3. **Annual Rollover Retirement Execution (`CareerState::_process_annual_rollover()` on July 1)**:
-   * During the July 1 season boundary (`_month == 7 && _day == 1`), after incrementing every player's age (`Age + 1`), any player reaching **`Age >= 37`** immediately triggers retirement (`player->SetRetired(true)`):
-     * **Roster Removal & Best-XI Rebalance**: Automatically removes all retired players from every club's `Starting XI`, `Bench`, and `Reserves` (`Team::GetRoster()`), reassigns captaincy (`_captain_by_club`) if the retiring player was captain, and runs positional Best-XI sorting (`auto_pick_best_xi`) to fill vacated starting spots (ensuring Slot `0` remains a `GK`).
-     * **Wage Bill Relief**: Deducts retired players' weekly wages from `_finances.weekly_wage_bill`.
-     * **Market & Match Exclusion**: Filters `IsRetired() == true` players out of `TransfersView` search queries, AI transfer activity, and `MatchEngine` matchday payloads while keeping their historical profile records in `_players_by_id` for career stats lookup.
-     * **Inbox Retirement Report**: Dispatches a `"BOARD"` Inbox summary listing every retiring player at the managed club alongside their final OVR and career appearances/goals/assists.
-4. **Save/Load Normalization (`save_career` / `load_career`)**:
-   * Serializes `"retirement_age": 37` and `"is_retired"` inside `<slot>.json` and normalizes legacy saves to `retirement_age = 37` on load.
+### Phase 5F — Post-Match Stamina Persistence, $\approx 30\%$/Day Recovery & Injury System
+1. **Dependencies & Partial Support**:
+   * Depends on Phase 5E exporting post-match `current_stamina` and match injury events, and integrates with `CareerState::advance_day()`, `SquadView`, `PreMatchView`, `InboxView` (which already has an `"INJURY"` filter chip), and `save_career()` / `load_career()`.
+2. **Planned Deliverables**:
+   * **Stamina Persistence & Configurable Calendar Recovery**: Preserves post-match stamina without automatic full resets and recovers `stamina_recovery_rate_per_day` (default `0.30` / $30\%$ of max stamina per in-game calendar day, tunable in `0.25–0.30` range, capped at $100\%$).
+   * **World Soccer Champs-Inspired Injury System**: Match-sustained injuries with severity-based day durations (`Minor Knock`, `Muscle Strain`, `Ligament Sprain`, `Severe Injury`), daily calendar countdown in `advance_day()`, squad selection lock while injured, `"INJURY"` Inbox alerts, and JSON save persistence.
+
+### Phase 6B & 6C — Senior Squad Training Tab & Global UI/Typography Overhaul
+1. **Dependencies & Partial Support**:
+   * **Training (`Phase 6B`)**: Builds on Phase 4A's weekly XP progression pattern and Phase 6A's `Training Complex` facility tier, extending `CareerShell` with a `"training"` route (`demo/TrainingView.gd` / `.tscn`) and saving assignments/XP in `<slot>.json`.
+   * **UI & Typography (`Phase 6C`)**: Builds on Phase 3B/3C's `StyleBoxFlat` `"normal"` `Label` rules and centered modal standards across all views.
+2. **Planned Deliverables**:
+   * **Dedicated `Training` Tab (`TrainingView`)**: UI-only positional group session assignment for **Attackers (`ST, CF, LW, RW`)**, **Midfielders (`CDM, CM, CAM, LM, RM`)**, **Defenders (`CB, LB, RB`)**, and **Goalkeepers (`GK`)**, driving gradual, potential- and age-differentiated attribute and OVR growth over in-game calendar days.
+   * **UI & Typography Design System**: Bundled clean geometric/condensed font stack + tabular numerals, redesigned high-clarity player cards, and strict avoidance of AI-slop aesthetics (no heavy gradients, glowing drop-shadows, over-rounded cards, or generic dashboard clutter).
+
+### Phase 7E & 7F — Exclusive $> 96$ Base OVR Playstyles & Mandatory Age-37 Retirement
+* **Phase 7E (`PlaystylesDescription.txt`)**: Unlocks the 22 Playstyles exclusively for senior players with `BaseOVR > 96 && !IsAcademyProduct`, wiring `Playstyle 1..3` metadata into `MatchEngine` behaviors and `PlayerProfileModal` / `SquadView` badges.
+* **Phase 7F (Mandatory Age-37 Retirement)**: Builds on the committed `RetirementAge = 37` data/save normalization to add contract length clamping ($\min(5, \max(1, 37 - \text{Age}))$), `"Retiring at End of Season"` status badges at `Age == 36`, July 1 rollover removal of `Age >= 37` players from active squads/market/match payloads, automatic Best-XI rebalance (preserving `GK` in Slot `0`), and a `"BOARD"` Inbox retirement report.
 
 ---
 
-## 4. File Inventory & Cleanup Checklist
+## 4. Technical Risks & Required Regression Tests (Phases 5–7)
+
+### Key Technical Risks to Monitor
+1. **CSV `Stamina` vs. `Physical` Mapping**: `PlayerAttributes` currently stores 6 core attributes (`Pace`, `Shooting`, `Passing`, `Dribbling`, `Defending`, `Physical`). Binding the existing CSV `Stamina` column onto a dedicated `int Stamina` field on `Player` ensures match endurance scales accurately without distorting `Physical` duel calculations or GK 6-stat mappings.
+2. **Match Stamina & Recovery Balance**: If `MatchEngine` drains $> 75\%$ stamina in a single 90-minute match while recovery is $30\%$/day, congested 3-day fixture turnarounds could leave starters below $60\%$ stamina unless `BaseDrain` and `stamina_recovery_rate_per_day` are tuned together.
+3. **Real-Time Movement Responsiveness vs. Inertia**: Excessive turn-rate or deceleration damping in `MatchEngine` could make direct user movement feel sluggish; turning/acceleration constants must be profiled on both mouse-click and Android virtual stick inputs.
+4. **Injury & Age-37 Retirement Squad Soft-Lock Edge Cases**: If multiple injuries or July 1 retirements thin out a squad (especially `GK`s), `CareerState` must ensure a club always retains at least 11 available players (including a `GK` in Slot `0`) via emergency youth/reserve call-up fallback so matches cannot soft-lock.
+
+### Planned Regression Suites for Upcoming Phases
+* **Phase 5 Regression Suites**:
+  * Historical **15 July 2006** `clubs.csv` load (`NewCareerView` `League -> Club`) & kit colour propagation to `MatchEngine`.
+  * CSV `Stamina` column differential drain test (90-rated `Stamina` player vs. 50-rated `Stamina` player over identical 90-minute simulation).
+  * Post-match stamina persistence + 3-day `advance_day()` recovery ($+30\%$/day capped at $100\%$) + Save/Load round-trip.
+  * Injury lifecycle test (sustained in match -> blocked in `SquadView`/`PreMatchView` -> daily countdown in `advance_day()` -> cleared on day `0` -> Save/Load persistence).
+  * `KEY_R` Advanced Dribbling removal check (no action trigger, intact pass/shot/tackle/dribble controls) and real-time steering movement velocity ramp verification.
+* **Phase 6 & 7 Regression Suites**:
+  * `TrainingView` 4-group assignment persistence, OVR recalculation after attribute XP thresholds, and age/potential growth differentiation.
+  * 6-criteria Transfer Search (`Name`, `Club`, `Age`, `Nationality`, `League`, `Position`), `NHHA72528` unlock gate, $> 96$ Base OVR Playstyles gate, and July 1 Age-37 mandatory retirement.
+
+---
+
+## 5. File Inventory & Cleanup Checklist
 
 ### Active Project Files
 * **C++23 GDExtension Core (`src/`)**:
-  * `src/MatchEngine.h` / `src/MatchEngine.cpp` (Phase 1–2C simulation engine; planned Phase 7E Playstyle hooks)
-  * `src/CareerState.h` / `src/CareerState.cpp` (Phase 3A & Phase 4A central career state, GK-only Slot `0` guard, GK 6-stat export; planned Phase 5D `clubs.csv` & Codes; planned Phase 7E/7F Playstyles & Age-37 retirement)
-  * `src/mainplayer.h` / `src/mainplayer.cpp` (GK 6-stat attribute accessors, `BaseOVR`, `RetirementAge = 37`, `IsRetired`) & `src/team.h` / `src/team.cpp`
+  * `src/MatchEngine.h` / `src/MatchEngine.cpp` (Phase 1–2C simulation engine; planned Phase 5E stamina/attribute/AI/movement/R-removal; planned Phase 7E Playstyle hooks)
+  * `src/CareerState.h` / `src/CareerState.cpp` (Phase 3A & Phase 4A central career state, GK-only Slot `0` guard, GK 6-stat export, player metadata & Age-37 save normalization; planned Phase 5D `clubs.csv` & Codes; planned Phase 5F/6B/7E/7F systems)
+  * `src/mainplayer.h` / `src/mainplayer.cpp` (GK 6-stat attribute accessors, player metadata, `RetirementAge = 37`; planned `Stamina`, `CurrentStamina`, `IsInjured`, `IsRetired`) & `src/team.h` / `src/team.cpp`
 * **Data & CSV Registries (`demo/data/` & `Players_Database/`)**:
   * `demo/data/formations.csv` (Normalized 11-slot formation shapes)
-  * `demo/data/clubs.csv` (planned Phase 5D deterministic club/league registry)
-  * `Players_Database/players_2006_with_price.csv` & `demo/data/players_2006_with_price.csv` (Phase 5D planned `Club`, `League`, `Nationality`, and `Playstyle 1..3` metadata with `RetirementAge = 37`)
+  * `demo/data/clubs.csv` (planned Phase 5D historical **15 July 2006** club/league & kit colour registry; data preparation required)
+  * `demo/data/players_2006_with_price.csv` (`res://data/players_2006_with_price.csv` — active runtime dataset with `Club`, `League`, `Nationality`, `Stamina`, and `Playstyle 1..3`)
+  * `Players_Database/players_2006_with_price.csv` (retained separate preventive/source copy)
   * `demo/data/PlaystylesDescription.txt` (22-Playstyle reference; gameplay integration planned in Phase 7E)
 * **GDScript UI & Scenes (`demo/`)**:
-  * `demo/CareerShell.gd` / `demo/CareerShell.tscn` (Global 10-route shell, header, modals, toast)
+  * `demo/CareerShell.gd` / `demo/CareerShell.tscn` (Global route shell, header, modals, toast)
   * `demo/DashboardView.gd` / `demo/DashboardView.tscn` (Career Dashboard)
   * `demo/SquadView.gd` / `demo/SquadView.tscn` (Phase 4B Interactive 2D Pitch, drag-and-drop + click-swap GK-only Slot `0` lock, XI/Bench/Reserves, Roles & Kit Numbers)
   * `demo/TacticsView.gd` / `demo/TacticsView.tscn` (Phase 4B Permanent Club Formation & Tactical Sliders)
@@ -165,13 +185,13 @@
 
 ---
 
-## 5. Phase 4C Build & Test Verification Matrix
+## 6. Phase 4C Build & Test Verification Matrix
 
 ### Step 1 — Recompile C++23 GDExtension (Windows MinGW/GCC 16.1.0 UCRT64)
 ```powershell
 scons platform=windows target=template_debug api_version=4.7 -j6
 ```
-* **Expected Artifact**: `demo/bin/libfootball.windows.template_debug.x86_64.dll` updated with Phase 4A `CareerState` method bindings (`swap_squad_players` with strict GK-only Slot `0` guard, `_player_to_dict` GK 6-stat keys, `set_club_roles`, `set_player_jersey_number`, `get_club_tactics`, `set_club_tactics`, `get_youth_academy_info`, `upgrade_youth_facility`, `assign_youth_coach`, `promote_youth_player`).
+* **Expected Artifact**: `demo/bin/libfootball.windows.template_debug.x86_64.dll` updated with Phase 4A `CareerState` method bindings (`swap_squad_players` with strict GK-only Slot `0` guard, `_player_to_dict` GK 6-stat keys, `set_club_roles`, `set_player_jersey_number`, `get_club_tactics`, `set_club_tactics`, `get_youth_academy_info`, `upgrade_youth_facility`, `assign_youth_coach`, `promote_youth_player`) plus the `4aa3a2a4b227006758f2421c1042657c921b3fe6` player metadata loader and Age-37 save normalization.
 
 ### Step 2 — Automated Regression Verification (`demo/CareerRegressionTest.gd`)
 | Suite | Scope | Key Assertions |

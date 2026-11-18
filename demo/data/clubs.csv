@@ -1,107 +1,107 @@
-Club,League
-Djurgardens IF,Allsvenskan
-Boca Juniors,Argentine Primera División
-Estudiantes,Argentine Primera División
-Racing Club,Argentine Primera División
-River Plate,Argentine Primera División
-Anderlecht,Belgian Pro League
-Bayer Leverkusen,Bundesliga
-Bayern Munich,Bundesliga
-Borussia Dortmund,Bundesliga
-Borussia Monchengladbach,Bundesliga
-FC Koln,Bundesliga
-Hamburger SV,Bundesliga
-RB Leipzig,Bundesliga
-Schalke 04,Bundesliga
-VfB Stuttgart,Bundesliga
-VfL Wolfsburg,Bundesliga
-Werder Bremen,Bundesliga
-Corinthians,Campeonato Brasileiro Série A
-Flamengo,Campeonato Brasileiro Série A
-Gremio,Campeonato Brasileiro Série A
-Internacional,Campeonato Brasileiro Série A
-Palmeiras,Campeonato Brasileiro Série A
-Santos FC,Campeonato Brasileiro Série A
-Sao Paulo,Campeonato Brasileiro Série A
-Birmingham City,Championship
-Leeds United,Championship
-Southampton FC,Championship
-Sunderland AFC,Championship
-Dinamo Zagreb,Croatian First Football League
-Hajduk Split,Croatian First Football League
-FC Copenhagen,Danish Superliga
-Lech Poznan,Ekstraklasa
-Molde FK,Eliteserien
-Rosenborg BK,Eliteserien
-Ajax Amsterdam,Eredivisie
-Feyenoord,Eredivisie
-PSV Eindhoven,Eredivisie
-Athletic Bilbao,La Liga
-Atletico Madrid,La Liga
-Deportivo La Coruna,La Liga
-FC Barcelona,La Liga
-Las Palmas,La Liga
-Real Betis,La Liga
-Real Madrid,La Liga
-Real Sociedad,La Liga
-Sevilla FC,La Liga
-Valencia CF,La Liga
-Villarreal CF,La Liga
-AS Monaco,Ligue 1
-Girondins Bordeaux,Ligue 1
-Lille OSC,Ligue 1
-OGC Nice,Ligue 1
-Olympique Lyon,Ligue 1
-Olympique Marseille,Ligue 1
-Paris Saint-Germain,Ligue 1
-Stade Rennais,Ligue 1
-Toulouse FC,Ligue 1
-Troyes AC,Ligue 2
-US Boulogne,Ligue 2
-DC United,MLS
-Philadelphia Union,MLS
-Vancouver Whitecaps,MLS
-Arsenal FC,Premier League
-Aston Villa,Premier League
-Blackburn Rovers,Premier League
-Bolton Wanderers,Premier League
-Chelsea FC,Premier League
-Everton FC,Premier League
-Liverpool FC,Premier League
-Manchester City,Premier League
-Manchester United,Premier League
-Middlesbrough FC,Premier League
-Newcastle United,Premier League
-Tottenham Hotspur,Premier League
-West Ham United,Premier League
-Benfica,Primeira Liga
-FC Porto,Primeira Liga
-Sporting CP,Primeira Liga
-CSKA Moscow,Russian Premier League
-Rubin Kazan,Russian Premier League
-Zenit Saint Petersburg,Russian Premier League
-Celtic FC,Scottish Premiership
-Rangers FC,Scottish Premiership
-AC Milan,Serie A
-AS Roma,Serie A
-Cagliari Calcio,Serie A
-Fiorentina,Serie A
-Inter Milan,Serie A
-Juventus FC,Serie A
-Napoli,Serie A
-Palermo,Serie A
-SS Lazio,Serie A
-Sampdoria,Serie A
-Udinese Calcio,Serie A
-Brescia Calcio,Serie B
-Fenerbahce,Süper Lig
-Galatasaray,Süper Lig
-11A7,Tuesday League
-Shakhtar Donetsk,Ukrainian Premier League
-Brighton & Hove Albion,Unknown
-FC Basel,Unknown
-FC Groningen,Unknown
-FC Nurnberg,Unknown
-Penarol,Unknown
-Red Bull Salzburg,Unknown
-Willem II,Unknown
+Club,League,Country,Reputation,Budget,DefaultFormation,KitColor
+Djurgardens IF,Allsvenskan,Sweden,71,7500000,4-3-3,#00529B
+Boca Juniors,Argentine Primera División,Argentina,84,24000000,4-3-1-2,#003B7A
+Estudiantes,Argentine Primera División,Argentina,77,13000000,4-4-2,#D00027
+Racing Club,Argentine Primera División,Argentina,77,12500000,4-3-1-2,#6CABDD
+River Plate,Argentine Primera División,Argentina,83,22000000,4-3-1-2,#E4002B
+Anderlecht,Belgian Pro League,Belgium,78,16000000,4-4-2,#512D6D
+Bayer Leverkusen,Bundesliga,Germany,83,36000000,4-2-3-1,#E32221
+Bayern Munich,Bundesliga,Germany,92,85000000,4-4-2,#DC052D
+Borussia Dortmund,Bundesliga,Germany,82,32000000,4-4-2,#FDE100
+Borussia Monchengladbach,Bundesliga,Germany,76,18000000,4-4-2,#000000
+FC Koln,Bundesliga,Germany,75,16000000,4-4-2,#ED1C24
+Hamburger SV,Bundesliga,Germany,82,34000000,4-1-2-1-2,#005CA9
+RB Leipzig,Bundesliga,Germany,76,25000000,4-2-3-1,#DD0741
+Schalke 04,Bundesliga,Germany,83,38000000,4-1-2-1-2,#004D9D
+VfB Stuttgart,Bundesliga,Germany,80,28000000,4-4-2,#E32219
+VfL Wolfsburg,Bundesliga,Germany,77,24000000,4-4-2,#65B32E
+Werder Bremen,Bundesliga,Germany,84,38000000,4-1-2-1-2,#1D9053
+Corinthians,Campeonato Brasileiro Série A,Brazil,81,20000000,4-2-3-1,#111111
+Flamengo,Campeonato Brasileiro Série A,Brazil,81,19000000,4-4-2,#C52613
+Gremio,Campeonato Brasileiro Série A,Brazil,78,14000000,4-4-2,#0D80BF
+Internacional,Campeonato Brasileiro Série A,Brazil,81,18000000,4-2-3-1,#E5050F
+Palmeiras,Campeonato Brasileiro Série A,Brazil,80,17500000,4-4-2,#006437
+Santos FC,Campeonato Brasileiro Série A,Brazil,80,17000000,4-3-3,#FFFFFF
+Sao Paulo,Campeonato Brasileiro Série A,Brazil,83,22000000,3-5-2,#FE0000
+Birmingham City,Championship,England,73,12000000,4-4-2,#0000FF
+Leeds United,Championship,England,74,11000000,4-4-2,#FFFFFF
+Southampton FC,Championship,England,73,11500000,4-4-2,#D71920
+Sunderland AFC,Championship,England,73,12000000,4-4-2,#EB172B
+Dinamo Zagreb,Croatian First Football League,Croatia,75,11000000,4-2-3-1,#0051A5
+Hajduk Split,Croatian First Football League,Croatia,73,8500000,4-4-2,#FFFFFF
+FC Copenhagen,Danish Superliga,Denmark,75,12000000,4-4-2,#FFFFFF
+Lech Poznan,Ekstraklasa,Poland,71,7500000,4-2-3-1,#0054A6
+Molde FK,Eliteserien,Norway,71,8000000,4-3-3,#004B93
+Rosenborg BK,Eliteserien,Norway,75,11000000,4-3-3,#111111
+Ajax Amsterdam,Eredivisie,Netherlands,84,36000000,4-3-3,#D2122E
+Feyenoord,Eredivisie,Netherlands,79,20000000,4-3-3,#E30613
+PSV Eindhoven,Eredivisie,Netherlands,83,30000000,4-3-3,#ED1C24
+Athletic Bilbao,La Liga,Spain,79,24000000,4-4-2,#EE2523
+Atletico Madrid,La Liga,Spain,83,45000000,4-4-2,#CB3524
+Deportivo La Coruna,La Liga,Spain,78,20000000,4-2-3-1,#0055A5
+FC Barcelona,La Liga,Spain,95,105000000,4-3-3,#A50044
+Las Palmas,La Liga,Spain,72,10000000,4-2-3-1,#FFE400
+Real Betis,La Liga,Spain,79,24000000,4-2-3-1,#0BB363
+Real Madrid,La Liga,Spain,95,110000000,4-2-3-1,#FFFFFF
+Real Sociedad,La Liga,Spain,76,18000000,4-4-2,#0067B1
+Sevilla FC,La Liga,Spain,84,40000000,4-4-2,#D4021D
+Valencia CF,La Liga,Spain,86,48000000,4-2-3-1,#FF6600
+Villarreal CF,La Liga,Spain,83,36000000,4-3-1-2,#FFE667
+AS Monaco,Ligue 1,France,81,30000000,4-4-2,#E2001A
+Girondins Bordeaux,Ligue 1,France,79,22000000,4-4-2,#001B44
+Lille OSC,Ligue 1,France,80,24000000,4-2-3-1,#E01E13
+OGC Nice,Ligue 1,France,74,14000000,4-3-3,#CC0000
+Olympique Lyon,Ligue 1,France,87,52000000,4-3-3,#FFFFFF
+Olympique Marseille,Ligue 1,France,82,32000000,4-2-3-1,#009DDC
+Paris Saint-Germain,Ligue 1,France,81,34000000,4-2-3-1,#004170
+Stade Rennais,Ligue 1,France,76,18000000,4-3-3,#E30613
+Toulouse FC,Ligue 1,France,74,14000000,4-3-3,#4E2A84
+Troyes AC,Ligue 2,France,69,6500000,4-4-2,#0055A4
+US Boulogne,Ligue 2,France,66,4500000,4-4-2,#D71920
+DC United,MLS,United States,72,9000000,3-5-2,#EF3E42
+Philadelphia Union,MLS,United States,71,8500000,4-1-2-1-2,#071B2C
+Vancouver Whitecaps,MLS,Canada,71,8500000,4-2-3-1,#00245E
+Arsenal FC,Premier League,England,91,78000000,4-4-2,#EF0107
+Aston Villa,Premier League,England,78,26000000,4-4-2,#670E36
+Blackburn Rovers,Premier League,England,77,22000000,4-4-2,#009EE0
+Bolton Wanderers,Premier League,England,77,20000000,4-3-3,#FFFFFF
+Chelsea FC,Premier League,England,93,125000000,4-3-3,#034694
+Everton FC,Premier League,England,79,28000000,4-5-1,#003399
+Liverpool FC,Premier League,England,90,72000000,4-2-3-1,#C8102E
+Manchester City,Premier League,England,78,35000000,4-4-2,#6CABDD
+Manchester United,Premier League,England,93,95000000,4-4-2,#DA291C
+Middlesbrough FC,Premier League,England,77,22000000,4-4-2,#E11B22
+Newcastle United,Premier League,England,80,34000000,4-4-2,#241F20
+Tottenham Hotspur,Premier League,England,82,42000000,4-4-2,#FFFFFF
+West Ham United,Premier League,England,78,28000000,4-4-2,#7A263A
+Benfica,Primeira Liga,Portugal,83,32000000,4-4-2,#E8112D
+FC Porto,Primeira Liga,Portugal,85,38000000,4-3-3,#00428C
+Sporting CP,Primeira Liga,Portugal,81,26000000,4-1-2-1-2,#008057
+CSKA Moscow,Russian Premier League,Russia,80,32000000,3-5-2,#D52B1E
+Rubin Kazan,Russian Premier League,Russia,74,16000000,4-4-2,#8B1E3F
+Zenit Saint Petersburg,Russian Premier League,Russia,79,30000000,4-3-3,#00AEEF
+Celtic FC,Scottish Premiership,Scotland,79,20000000,4-4-2,#018749
+Rangers FC,Scottish Premiership,Scotland,78,18000000,4-4-2,#1B458F
+AC Milan,Serie A,Italy,94,90000000,4-3-1-2,#FB090B
+AS Roma,Serie A,Italy,85,44000000,4-2-3-1,#8E1F2F
+Cagliari Calcio,Serie A,Italy,74,14000000,4-3-3,#A21C26
+Fiorentina,Serie A,Italy,81,30000000,4-3-3,#482E92
+Inter Milan,Serie A,Italy,91,88000000,4-4-2,#010E80
+Juventus FC,Serie A,Italy,93,85000000,4-4-2,#111111
+Napoli,Serie A,Italy,76,22000000,3-5-2,#12A0D7
+Palermo,Serie A,Italy,79,24000000,4-3-2-1,#F2A9B8
+SS Lazio,Serie A,Italy,80,25000000,4-4-2,#87D8F7
+Sampdoria,Serie A,Italy,77,19000000,4-4-2,#005BA9
+Udinese Calcio,Serie A,Italy,78,22000000,3-5-2,#111111
+Brescia Calcio,Serie B,Italy,71,8000000,4-3-1-2,#004B93
+Fenerbahce,Süper Lig,Turkey,81,30000000,4-2-3-1,#FFED00
+Galatasaray,Süper Lig,Turkey,80,26000000,4-4-2,#A90432
+11A7,Tuesday League,Vietnam,99,999999999,4-3-3,#1A1A2E
+Shakhtar Donetsk,Ukrainian Premier League,Ukraine,80,32000000,4-2-3-1,#FF6600
+Brighton & Hove Albion,Unknown,England,72,12000000,4-4-2,#0057B8
+FC Basel,Unknown,Switzerland,76,15000000,4-4-2,#E30613
+FC Groningen,Unknown,Netherlands,73,11000000,4-3-3,#008B45
+FC Nurnberg,Unknown,Germany,74,13000000,4-4-2,#8B0000
+Penarol,Unknown,Uruguay,77,11000000,4-4-2,#F7D117
+Red Bull Salzburg,Unknown,Austria,76,22000000,4-3-3,#DD0741
+Willem II,Unknown,Netherlands,71,9000000,4-3-3,#D71920
