@@ -47,7 +47,9 @@ The following systems are part of the development roadmap and are not yet fully 
 - **Club Management** — Club finances, transfer budgets, wage budgets, board objectives, and stadium upgrades.
 - **Transfer Market** — Player valuations, transfer negotiations, contracts, and AI-driven market activity.
 - **Manager Progression** — Manager reputation, career history, achievements, and opportunities to manage other clubs.
+- **Player Data Foundation** — The runtime player CSV includes club, league, nationality, and up to three Playstyle metadata fields; the C++ loader now reads these fields, with build verification pending.
 - **Advanced Player Systems** — Dynamic development, loyalty, and special Playstyles for eligible players.
+- **Career Setup & Promo Codes** — Canonical club/league selection, the Tuesday League / 11A7 access lock, and code redemption are planned.
 - **Cross-Platform Release** — Further Windows and Android testing, optimization, and packaging.
 
 For detailed implementation progress, see [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md). For the long-term development plan, see [ROADMAP.md](ROADMAP.md).
@@ -120,9 +122,9 @@ The repository is organized around the following major components:
 | Directory / File | Responsibility |
 |---|---|
 | `src/` | Core C++ gameplay and career-management systems |
-| `Players_Database/` | Player database and CSV loading |
+| `Players_Database/` | C++ player database loader and a separately retained preventive/source CSV copy |
 | `demo/` | Godot interface, scenes, scripts, and game presentation |
-| `demo/data/` | Game data and configuration files |
+| `demo/data/` | Runtime game data and configuration files, including the player CSV loaded through `res://data/` |
 | `ROADMAP.md` | Long-term development roadmap |
 | `DEVELOPMENT_STATUS.md` | Current implementation status and engineering handoff |
 
