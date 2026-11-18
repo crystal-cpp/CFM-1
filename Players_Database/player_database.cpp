@@ -1,6 +1,7 @@
 #include "player_database.h"
 #include <godot_cpp/core/class_db.hpp>
 #include <algorithm>
+#include <unordered_map>
 
 using namespace godot;
 
