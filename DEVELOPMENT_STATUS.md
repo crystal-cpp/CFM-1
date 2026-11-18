@@ -68,7 +68,7 @@
 
 > The items in this section are specifications for future work unless their implementation is explicitly marked complete in the status matrix. Their presence here does not mean the systems are already implemented or tested.
 
-### Phase 5D — `res://data/clubs.csv` & `players_2006_with_price.csv` `Club` Column Merge
+### Phase 5D — `res://data/clubs.csv`, New Career League Selection & Player Metadata Merge
 1. **Files to Create / Update**:
    * **`demo/data/clubs.csv` (`res://data/clubs.csv`)**: Canonical club registry (`ClubID,Club,League,ShortCode,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor`). Replaces hardcoded `DEFAULT_CLUB_NAMES[16]` and prevents random club creation.
    * **`Players_Database/players_2006_with_price.csv` & `demo/data/players_2006_with_price.csv`**: Add `Club`, `League`, `Nationality`, and `Playstyle 1..3` columns; club values must match the canonical `Club` entries in `res://data/clubs.csv` or use `Free Agent`.
@@ -79,7 +79,7 @@
      * In `start_new_career()`: Load `res://data/clubs.csv` first to create exact `Team` records, implement the New Career `League -> Club -> Manager Name` selection flow, map players by their CSV `Club` value (routing unmatched/empty rows to Free Agents), run positional Best-XI sorting (`GK` locked to Slot `0`), and serialize `"csv_club_name"`, `"base_ovr"`, `"is_academy_product"`, `"league"`, and `"short_code"` in `save_career()` / `load_career()`.
    * **GDScript Views (`CareerShell.gd`, `DashboardView.gd`, `SquadView.gd`, `CompetitionsView.gd`, `TransfersView.gd`, `PlayerProfileModal.gd`)**: Consume `clubs.csv` short codes, league names, and merged player `club_name`, `league`, and `nationality` metadata.
 2. **Adding Custom Players & Classmates**:
-   * Append custom player rows to `players_2006_with_price.csv` with `Club` set to an exact `ClubName` from `res://data/clubs.csv`.
+   * Append custom player rows with `Club` and `League` values matching the canonical entries in `res://data/clubs.csv`, plus the player's `Nationality`.
    * Any custom player authored with base attributes yielding $\text{BaseOVR} > 96$ (`97–99` OVR) automatically qualifies for **Phase 7E Playstyles**.
 
 
