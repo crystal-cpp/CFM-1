@@ -1,7 +1,7 @@
 # CFM-1 Development Status & Engineering Handoff
 
-**Last Updated**: 2026-11-17  
-**Baseline Git Commit SHA**: `e9b715f659a1b5ce5e12ae9e9c7d95ce609be170` *(Phase 4A/4B local working tree ready for Phase 4C build & commit)*  
+**Last Updated**: 2026-11-18  
+**Repository HEAD**: `c1c4d7451820057762afdf3d8d50562654cce492` *(latest reviewed commit; Phase 4C verification remains pending)*  
 **Current Phase**: Phase 4 — Team Management, Permanent Tactics & Youth Academy UI  
 **Current Milestone**: **Phase 4A & 4B Implemented -> Entering Phase 4C (SCons Build, Automated Regression Suites 9–12 & Manual Verification)**
 
@@ -22,11 +22,11 @@
 | **Phase 4A: C++ Squad, Tactics & Youth Bindings** | C++23 | **Complete** | **Pending Phase 4C** | Swaps, GK/ID guards, fit OVR, roles/numbers, tactics, youth training/aging/promo. |
 | **Phase 4B: `SquadView`, `TacticsView`, `YouthView` UI** | GDScript | **Complete** | **Pending Phase 4C** | Procedural views wired into `CareerShell.gd` and `PlayerProfileModal.gd`. |
 | **Phase 4C: Phase 4 Build & Acceptance Suite** | Both | **Ready to Run** | **Active (Next)** | Recompile DLL + run Suites 1–12 + manual cross-viewport QA + `*_2` cleanup. |
-| **Phase 5A–5E: Schedule, Competitions & Pre-Match** | Both | Placeholder Views | Scheduled | Scaffolded as route cards inside `CareerShell.gd`. |
-| **Phase 5F: `res://data/club.csv` & `Club` Column Merge** | Both | **Spec Ready** | **Scheduled (Phase 5)** | Deterministic `club.csv` registry + `players_2006_with_price.csv` `Club` column + custom players. |
+| **Phase 5A–5C: Schedule, Competitions & Pre-Match** | Both | Placeholder Views | Scheduled | Scaffolded as route cards inside `CareerShell.gd`. |
+| **Phase 5D: `res://data/clubs.csv` & Player Metadata Merge** | Both | **Spec Ready** | **Scheduled (Phase 5)** | Canonical club/league registry, New Career `League -> Club` selection, and `Club`, `League`, `Nationality`, `Playstyle 1..3` CSV metadata. |
 | **Phase 6: Club Management, Finances & Board** | Both | Placeholder Views | Scheduled | Separated financial ledgers, board confidence, stadium/facility upgrades. |
-| **Phase 7A–7E: Dynamic Transfers & Reputation** | Both | Placeholder Views | Scheduled | Valuation formula, two-stage fee + wage negotiations, transfer windows, loyalty. |
-| **Phase 7F: Exclusive $> 96$ Base OVR Playstyles** | Both | **Spec Ready** | **Scheduled (Phase 7)** | 22 Playstyles (`PlaystylesDescription.txt`) gated strictly to `BaseOVR > 96` non-academy players. |
+| **Phase 7A–7D: Transfers, Search & Reputation** | Both | Placeholder Views | Scheduled | Valuation, fee/wage negotiations, transfer windows, six-field player search, AI transfers, loyalty, and reputation. |
+| **Phase 7E: Exclusive $> 96$ Base OVR Playstyles** | Both | **Spec Ready** | **Scheduled (Phase 7)** | 22 Playstyles (`PlaystylesDescription.txt`) gated strictly to `BaseOVR > 96` non-academy players. |
 
 ---
 
@@ -66,9 +66,11 @@
 
 ## 3. Upcoming Engineering Blueprints: Phase 5D & Phase 7E
 
-### Phase 5D — `res://data/club.csv` & `players_2006_with_price.csv` `Club` Column Merge
+> The items in this section are specifications for future work unless their implementation is explicitly marked complete in the status matrix. Their presence here does not mean the systems are already implemented or tested.
+
+### Phase 5D — `res://data/clubs.csv` & `players_2006_with_price.csv` `Club` Column Merge
 1. **Files to Create / Update**:
-   * **`demo/data/club.csv` (`res://data/club.csv`)**: Canonical club registry (`ClubID,ClubName,ShortCode,League,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor`). Replaces hardcoded `DEFAULT_CLUB_NAMES[16]` and prevents random club creation.
+   * **`demo/data/club.csv` (`res://data/club.csv`)**: Canonical club registry (`ClubID,Club,League,ShortCode,League,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor`). Replaces hardcoded `DEFAULT_CLUB_NAMES[16]` and prevents random club creation.
    * **`Players_Database/players_2006_with_price.csv` & `demo/data/players_2006_with_price.csv`**: Add `Club` column matching `ClubName` in `res://data/club.csv` (or `Free Agent`), plus custom player/classmate rows.
    * **`src/mainplayer.h` & `src/mainplayer.cpp`**: Add `ClubName`, `BaseOVR`, and `IsAcademyProduct` fields and accessors.
    * **`src/team.h` & `src/team.cpp`**: Store `ShortCode`, `LeagueName`, `Country`, `Reputation`, `TransferBudget`, `WageBudget`, and kit colors loaded from `club.csv`.
@@ -79,6 +81,13 @@
 2. **Adding Custom Players & Classmates**:
    * Append custom player rows to `players_2006_with_price.csv` with `Club` set to an exact `ClubName` from `res://data/club.csv`.
    * Any custom player authored with base attributes yielding $\text{BaseOVR} > 96$ (`97–99` OVR) automatically qualifies for **Phase 7E Playstyles**.
+
+
+**Roadmap alignment update (2026-11-18):**
+* Phase 5D now uses `res://data/clubs.csv` with the canonical header `ClubID,Club,League,ShortCode,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor`.
+* New Career is planned as a `League -> Club -> Manager Name` selection flow, populated only from the registry; do not create random or unregistered clubs.
+* The player CSV metadata scope is `Club`, `League`, `Nationality`, and `Playstyle 1`, `Playstyle 2`, `Playstyle 3` (not just a `Club` column).
+* Phase 7A–7D includes a six-field Transfer Search: `Name`, `Club`, `Age`, `Nationality`, `League`, and `Position`. This is planned functionality, not a claim that the transfer market is implemented.
 
 ### Phase 7E — Exclusive $> 96$ Base OVR Playstyles System (`PlaystylesDescription.txt`)
 1. **Strict Eligibility Gate**:
@@ -91,7 +100,7 @@
    * *Dribbling & Physical*: `Rapid`, `Trickster`, `Bruiser`, `Accelerator`, `Relentless`.
    * *Aerial*: `Precision Header`.
    * *Goalkeeping*: `Deflector`, `Rush Out`.
-3. **Files to Update in Phase 7F**:
+3. **Files to Update in Phase 7E**:
    * `src/mainplayer.h` / `.cpp`: `uint32_t PlaystyleMask` + `std::vector<std::string> Playstyles` with `BaseOVR > 96 && !IsAcademyProduct` guard.
    * `Players_Database/player_database.cpp`: Parse pipe-delimited `Playstyles` column (or auto-assign 2–3 role-matched Playstyles for `BaseOVR > 96` players when omitted).
    * `src/MatchEngine.h` / `.cpp`: Apply Playstyle decision weights, shot curves, pass lane detection, tackle selection, sprint dribbling, and GK rush-out/deflection modifiers during match simulation.
@@ -105,12 +114,12 @@
 ### Active Project Files
 * **C++23 GDExtension Core (`src/`)**:
   * `src/MatchEngine.h` / `src/MatchEngine.cpp` (Phase 1–2C simulation engine; Phase 7F Playstyle hooks)
-  * `src/CareerState.h` / `src/CareerState.cpp` (Phase 3A & Phase 4A central career state; Phase 5F `club.csv` & `Club` merge; Phase 7F serialization)
+  * `src/CareerState.h` / `src/CareerState.cpp` (Phase 3A & Phase 4A central career state; Phase 5D `club.csv` & `Club` merge; Phase 7F serialization)
   * `src/mainplayer.h` / `src/mainplayer.cpp` & `src/team.h` / `src/team.cpp`
 * **Data & CSV Registries (`demo/data/` & `Players_Database/`)**:
   * `demo/data/formations.csv` (Normalized 11-slot formation shapes)
   * `demo/data/club.csv` (Phase 5F deterministic club registry)
-  * `Players_Database/players_2006_with_price.csv` & `demo/data/players_2006_with_price.csv` (Merged `Club` + `Playstyles` columns + custom players)
+  * `Players_Database/players_2006_with_price.csv` & `demo/data/players_2006_with_price.csv` (Phase 5D planned `Club`, `League`, `Nationality`, and `Playstyle 1..3` metadata)
   * `PlaystylesDescription.txt` (Canonical 22-Playstyle reference)
 * **GDScript UI & Scenes (`demo/`)**:
   * `demo/CareerShell.gd` / `demo/CareerShell.tscn` (Global 10-route shell, header, modals, toast)
@@ -122,14 +131,14 @@
   * `demo/PlayerProfileModal.gd` / `demo/PlayerProfileModal.tscn` (Universal 4-mode player modal)
   * `demo/CareerRegressionTest.gd` (Automated regression Suites 1–12)
 * **Documentation**:
-  * `ROADMAP_4.md` (supersedes `ROADMAP_3.md`)
-  * `DEVELOPMENT_STATUS_4.md` (supersedes `DEVELOPMENT_STATUS_3.md`)
+  * `ROADMAP.md` (canonical project roadmap)
+  * `DEVELOPMENT_STATUS.md` (this current engineering handoff)
 
 ### Duplicate / Legacy Backup Files Recommended for Removal in Phase 4C
 * `demo/DashboardView_2.gd` / `demo/DashboardView_2.tscn`
 * `demo/InboxView_2.gd` / `demo/InboxView_2.tscn`
 * `demo/PlayerProfileModal_2.gd` / `demo/PlayerProfileModal_2.tscn`
-* `ROADMAP_2.md`, `ROADMAP_3.md`, `DEVELOPMENT_STATUS_2.md`, `DEVELOPMENT_STATUS_3.md`
+* No numbered roadmap/status backup documents are present in the repository root at the reviewed commit; keep `ROADMAP.md` and `DEVELOPMENT_STATUS.md` as the canonical documents.
 * *Cleanup Rule*: Run `rg "_2\.(gd|tscn)" demo/` to verify zero active `.tscn` `ext_resource` dependencies remain, then remove stale `*_2` files before committing Phase 4C.
 
 ---
