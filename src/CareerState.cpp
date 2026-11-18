@@ -368,6 +368,7 @@ Dictionary CareerState::_player_to_dict(const std::shared_ptr<Player> &p) const 
 	d["ovr"] = p->GetOVR();
 	d["retirement_age"] = p->GetRetirementAge();
 	d["club_name"] = String(p->GetClubName().c_str());
+	d["csv_club_name"] = String(p->GetClubName().c_str());
 	d["league"] = String(p->GetLeagueName().c_str());
 	d["nationality"] = String(p->GetNationality().c_str());
 	Array playstyles;
