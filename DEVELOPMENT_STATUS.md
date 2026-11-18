@@ -1,7 +1,7 @@
 # CFM-1 Development Status & Engineering Handoff
 
 **Last Updated**: 2026-11-17  
-**Baseline Git Commit SHA**: `42ad58aec5fb5191f4e1cd5878748e23b8f1f5d1` *(Phase 4A/4B local working tree ready for Phase 4C build & commit)*  
+**Baseline Git Commit SHA**: `e9b715f659a1b5ce5e12ae9e9c7d95ce609be170` *(Phase 4A/4B local working tree ready for Phase 4C build & commit)*  
 **Current Phase**: Phase 4 — Team Management, Permanent Tactics & Youth Academy UI  
 **Current Milestone**: **Phase 4A & 4B Implemented -> Entering Phase 4C (SCons Build, Automated Regression Suites 9–12 & Manual Verification)**
 
@@ -64,9 +64,9 @@
 
 ---
 
-## 3. Upcoming Engineering Blueprints: Phase 5F & Phase 7F
+## 3. Upcoming Engineering Blueprints: Phase 5D & Phase 7E
 
-### Phase 5F — `res://data/club.csv` & `players_2006_with_price.csv` `Club` Column Merge
+### Phase 5D — `res://data/club.csv` & `players_2006_with_price.csv` `Club` Column Merge
 1. **Files to Create / Update**:
    * **`demo/data/club.csv` (`res://data/club.csv`)**: Canonical club registry (`ClubID,ClubName,ShortCode,League,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor`). Replaces hardcoded `DEFAULT_CLUB_NAMES[16]` and prevents random club creation.
    * **`Players_Database/players_2006_with_price.csv` & `demo/data/players_2006_with_price.csv`**: Add `Club` column matching `ClubName` in `res://data/club.csv` (or `Free Agent`), plus custom player/classmate rows.
@@ -78,9 +78,9 @@
    * **GDScript Views (`CareerShell.gd`, `DashboardView.gd`, `SquadView.gd`, `CompetitionsView.gd`, `TransfersView.gd`, `PlayerProfileModal.gd`)**: Consume `club.csv` short codes, league names, and merged player `club_name` metadata.
 2. **Adding Custom Players & Classmates**:
    * Append custom player rows to `players_2006_with_price.csv` with `Club` set to an exact `ClubName` from `res://data/club.csv`.
-   * Any custom player authored with base attributes yielding $\text{BaseOVR} > 96$ (`97–99` OVR) automatically qualifies for **Phase 7F Playstyles**.
+   * Any custom player authored with base attributes yielding $\text{BaseOVR} > 96$ (`97–99` OVR) automatically qualifies for **Phase 7E Playstyles**.
 
-### Phase 7F — Exclusive $> 96$ Base OVR Playstyles System (`PlaystylesDescription.txt`)
+### Phase 7E — Exclusive $> 96$ Base OVR Playstyles System (`PlaystylesDescription.txt`)
 1. **Strict Eligibility Gate**:
    * Playstyles are granted **exclusively** when `player.GetBaseOVR() > 96 && !player.GetIsAcademyProduct()`.
    * Academy players promoted from `YouthAcademy` (`IsAcademyProduct == true`) or normal players whose initial $\text{BaseOVR} \le 96$ never receive Playstyles even if trained past $96$ OVR.

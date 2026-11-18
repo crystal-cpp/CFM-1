@@ -17,9 +17,9 @@
 | **Phase 2C** | Build & Match Regression Suite | **Complete** | SCons Windows UCRT64 compilation (`libfootball.windows.template_debug.x86_64.dll`) and headless/live match simulation regression suite. |
 | **Phase 3** | Unified `CareerState`, Save/Load & Global Shell | **Complete** | Central C++ source of truth (`CareerState`), atomic JSON save/load, `CareerShell` 10-route router, `DashboardView`, `InboxView`, `PlayerProfileModal`, and `CareerRegressionTest` (Suites 1–8). |
 | **Phase 4** | Team Management, Permanent Tactics & Youth UI | **In Progress (4C)** | **4A** C++ squad/tactics/youth bindings (`Complete`), **4B** procedural `SquadView`, `TacticsView`, `YouthView` (`Complete`), **4C** SCons build, regression Suites 9–12 & manual QA (`Active`). |
-| **Phase 5** | Schedule, Competitions, Pre-Match & `club.csv` Merge | *Next Up* | **5A–5E** Calendar, read-only match modals, League Table, Pre-Match Center, Post-Match report pipeline; **5F** `res://data/club.csv` registry + (`Club` + `Nationality`) column merge in `players_2006_with_price.csv` + custom player roster integration. |
+| **Phase 5** | Schedule, Competitions, Pre-Match & `clubs.csv` Merge | *Next Up* | **5A–5C** Calendar, read-only match modals, League Table, Pre-Match Center, Post-Match report pipeline; **5D** `res://data/clubs.csv` registry, New Career `League -> Club` setup, and (`Club`, `League`, `Nationality`, `Playstyle 1..3`) column merge in `players_2006_with_price.csv`. |
 | **Phase 6** | Club Management, Finances & Board Rewards | *Scheduled* | Separated financial ledgers (Balance, Transfer Budget, Wage Budget), Board confidence & objectives tracker, stadium/facility upgrades, and competition prize payouts. |
-| **Phase 7** | Dynamic Transfer Market, Contracts, Reputation & Playstyles | *Scheduled* | **7A–7E** Valuation engine, two-stage fee + wage negotiations, transfer windows, AI market transfers, loyalty & reputation; **7F** Exclusive $> 96$ Base OVR (non-academy) 22-Playstyle system. |
+| **Phase 7** | Dynamic Transfer Market, Search, Reputation & Playstyles | *Scheduled* | **7A–7D** Valuation engine, two-stage fee + wage negotiations, transfer windows, 6-field Transfer Search (`Name`, `Club`, `Age`, `Nationality`, `League`, `Position`), AI market transfers, loyalty & reputation; **7E** Exclusive $> 96$ Base OVR (non-academy) 22-Playstyle system. |
 | **Phase 8** | Full Career Acceptance & Multi-Platform Release | *Scheduled* | Cross-platform desktop + Android verification, save/load integrity stress tests, performance profiling, and zero-3D release packaging. |
 
 ---
@@ -111,48 +111,54 @@
 ---
 
 ### Phase 5 — Schedule, Competitions, Pre-Match Center & Deterministic Club Database `[NEXT UP]`
-* **Target Files**: `demo/ScheduleView.gd` / `.tscn`, `demo/CompetitionsView.gd` / `.tscn`, `demo/PreMatchView.gd` / `.tscn`, `demo/PostMatchModal.gd` / `.tscn`, `demo/data/club.csv`, `Players_Database/players_2006_with_price.csv`, `src/mainplayer.h`, `src/team.h`, `Players_Database/player_database.h` / `.cpp`, `src/CareerState.h` / `.cpp`.
+* **Target Files**: `demo/ScheduleView.gd` / `.tscn`, `demo/CompetitionsView.gd` / `.tscn`, `demo/PreMatchView.gd` / `.tscn`, `demo/PostMatchModal.gd` / `.tscn`, `demo/NewCareerView.gd` / `.tscn`, `demo/data/clubs.csv`, `Players_Database/players_2006_with_price.csv`, `src/mainplayer.h` / `.cpp`, `src/team.h` / `.cpp`, `Players_Database/player_database.h` / `.cpp`, `src/CareerState.h` / `.cpp`.
 * **5A. Schedule & Fixtures (`ScheduleView`)**:
   * **Dual View Modes**: Monthly calendar grid (highlighting matchdays, transfer window dates, and training blocks) and chronological fixture list with filters (`ALL`, `UPCOMING`, `COMPLETED`, `HOME`, `AWAY`).
   * **Read-Only Match Detail Modal**: Clicking any completed fixture opens full scoreline, goalscorers/assists timeline, yellow/red cards, and `MatchEngine` possession/shot statistics; clicking upcoming fixtures previews venue and kickoff metadata.
 * **5B. Competitions Center (`CompetitionsView`)**:
-  * **Live League Table**: Full standings (`Pos`, `Club`, `P`, `W`, `D`, `L`, `GF`, `GA`, `GD`, `Pts`, `Last 5 Form`) grouped by league from `res://data/club.csv` with qualification/relegation zone color bands.
+  * **Live League Table**: Full standings (`Pos`, `Club`, `P`, `W`, `D`, `L`, `GF`, `GA`, `GD`, `Pts`, `Last 5 Form`) grouped by league from `res://data/clubs.csv` with qualification/relegation zone color bands.
   * **Player Leaderboards & History**: Sortable Top Scorers, Top Assists, Clean Sheets, and Average Match Rating tables plus multi-season archive selector (`2026/27`, `2027/28`, ...).
 * **5C. Pre-Match Center & Post-Match Pipeline (`PreMatchView` & `PostMatchModal`)**:
   * **Pre-Match Briefing**: Side-by-side club comparison (OVR, tactical formation/mentality tendencies, Last-5 form, head-to-head record) and Starting XI fitness/suspension readiness check (auto-warning if any starter has $< 65\%$ condition).
   * **Match Launch & Commit**: `START MATCH` packages user + AI `Team` squads and permanent tactics from Phase 4 into `MatchEngine`; upon full-time whistle, `CareerState.commit_match_result()` updates league standings, player stats (`appearances`, `goals`, `assists`), post-match stamina/condition drain, gate receipts, and displays `PostMatchModal` before returning to `CareerShell`.
-* **5F. Deterministic `res://data/club.csv` Registry & `players_2006_with_price.csv` `Club` Column Merge `[MANDATORY DATA PIPELINE]`**:
-  * **1. Canonical Club Registry (`demo/data/club.csv` -> `res://data/club.csv`)**:
-    * Eliminates random club imports and hardcoded `DEFAULT_CLUB_NAMES[16]` arrays. Every club in the simulation must be defined explicitly in `res://data/club.csv` with the following header schema:
+* **5D. Deterministic `res://data/clubs.csv` Registry, New Career `League -> Club` Selector & `players_2006_with_price.csv` (`Club`, `League`, `Nationality`, `Playstyle 1..3`) Merge `[MANDATORY DATA PIPELINE]`**:
+  * **1. Canonical Club & League Registry (`demo/data/clubs.csv` -> `res://data/clubs.csv`)**:
+    * Eliminates random club imports and hardcoded `DEFAULT_CLUB_NAMES[16]` arrays. Every league and club in the simulation must be defined explicitly in `res://data/clubs.csv` (which pairs each `League` and `Club` column) with the following header schema:
       ```csv
-      ClubID,ClubName,ShortCode,League,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor
+      ClubID,Club,League,ShortCode,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor
       ```
-    * `CareerState` parses `res://data/club.csv` during `start_new_career()`, validating unique positive `ClubID` integers, non-empty `ClubName` keys, valid `DefaultFormation` IDs from `formations.csv`, and exact league groupings. Any club not present in `res://data/club.csv` is **never** randomly generated.
-  * **2. Merging the `Club` Column in `players_2006_with_price.csv` (and `players.csv`)**:
-    * Standardizes the player CSV header schema to include `Club` (plus optional `Playstyles` for Phase 7F):
+    * `CareerState` parses `res://data/clubs.csv` during pre-career catalog inspection and `start_new_career()`, validating unique positive `ClubID` integers, non-empty `Club` and `League` keys, valid `DefaultFormation` IDs from `formations.csv`, and exact league groupings. Any club or league not present in `res://data/clubs.csv` is **never** randomly generated.
+    * **New Career Setup Flow (`New Career -> Select League -> Select Club -> Manager Name` in `demo/NewCareerView.gd`)**:
+      * When creating a new career in the main career flow, the **Select League** step dynamically lists the distinct `League` entries defined in `res://data/clubs.csv` (alongside country and top-club star rating).
+      * Selecting a `League` dynamically filters the **Select Club** step strictly to the clubs belonging to that `League` in `res://data/clubs.csv`, displaying each club's squad OVR, star rating, and budgets before invoking `career_state.start_new_career(selected_club_id, manager_name, 2026)`.
+  * **2. Merging `Club`, `League`, `Nationality`, and `Playstyle 1..3` Columns in `players_2006_with_price.csv` (and `players.csv`)**:
+    * Standardizes the player CSV header schema to include `Club`, `League`, `Nationality`, and `Playstyle 1..3` (for Phase 7E):
       ```csv
       Name,Position,Age,Potential,DebutAge,RetirementAge,Pace,Shooting,Passing,Dribbling,Defending,Physical,Price,Club,League,Nationality,Playstyle 1,Playstyle 2,Playstyle 3
       ```
-    * **`src/mainplayer.h` / `src/mainplayer.cpp`**: Add `std::string ClubName = "Free Agent"`, `int BaseOVR = 0`, and `bool IsAcademyProduct = false` with getters/setters (`GetClubName()`, `SetClubName()`, `GetBaseOVR()`, `SetBaseOVR()`, `GetIsAcademyProduct()`, `SetIsAcademyProduct()`).
+    * **`src/mainplayer.h` / `src/mainplayer.cpp`**:
+      * Add `std::string ClubName = "Free Agent"`, `std::string LeagueName = "Free Agent"`, `std::string Nationality = "Unknown"`, `int BaseOVR = 0`, `bool IsAcademyProduct = false`, and `std::vector<std::string> Playstyles` with getters and setters (`GetClubName()`/`SetClubName()`, `GetLeagueName()`/`SetLeagueName()`, `GetNationality()`/`SetNationality()`, `GetBaseOVR()`/`SetBaseOVR()`, `GetIsAcademyProduct()`/`SetIsAcademyProduct()`, `GetPlaystyles()`/`SetPlaystyles()`).
     * **`Players_Database/player_database.h` / `Players_Database/player_database.cpp`**:
-      * Update `load_from_csv()` to resolve the `"club"` (case-insensitive) header column index dynamically, strip Windows `\r` and leading/trailing whitespace, and store `player.SetClubName(...)` and `player.SetBaseOVR(player.GetOVR())`.
-      * Add `load_clubs_from_csv(const std::string& path)` to parse `res://data/club.csv` into structured `ClubDefinition` records.
+      * Update `load_from_csv()` to resolve the `"club"`, `"league"`, `"nationality"`, `"playstyle 1"`, `"playstyle 2"`, and `"playstyle 3"` (case-insensitive) header column indices dynamically, strip trailing `\r` and leading/trailing whitespace, default blank `Club`/`League` cells to `"Free Agent"` and blank `Nationality` cells to `"Unknown"`, and record `player.SetBaseOVR(player.GetOVR())`.
+      * Add `load_clubs_from_csv(const std::string& path)` to parse `res://data/clubs.csv` into structured `ClubDefinition` records (`ClubID`, `Club`, `League`, `ShortCode`, `Country`, budgets, colors, and `DefaultFormation`).
     * **`src/CareerState.h` / `src/CareerState.cpp`**:
-      * In `start_new_career()`, instantiate `Team` instances strictly from `res://data/club.csv`, then route every player from `players_2006_with_price.csv` into their exact matching `Team` by normalized `ClubName` (supporting clean alias matching such as `FC Barcelona` -> `Barcelona`).
-      * Players whose `Club` value is empty, `"Free Agent"`, or does not match an entry in `res://data/club.csv` are placed into the **Free Agent** pool (`club_id = 0`) rather than spawning unconfigured clubs.
-      * Run positional Best-XI sorting on every club roster after CSV import so `GK` always occupies Slot `0` and outfielders fill natural roles.
-      * Persist `"csv_club_name"`, `"base_ovr"`, `"is_academy_product"`, `"league"`, `"country"`, and `"short_code"` inside `save_career()` / `load_career()` JSON snapshots.
-      * Do the same for `Nationality` and `League` columns.
+      * Expose `get_leagues_and_clubs()` returning all leagues and clubs loaded from `res://data/clubs.csv` so `NewCareerView.gd` renders the exact `League -> Club` hierarchy.
+      * In `start_new_career()`, instantiate `Team` instances strictly from `res://data/clubs.csv`, then route every player from `players_2006_with_price.csv` into their exact matching `Team` by normalized `Club` name (supporting clean alias matching such as `FC Barcelona` -> `Barcelona`), syncing the club's canonical `League` while preserving each player's `Nationality` and `League` attributes.
+      * Players whose `Club` value is empty, `"Free Agent"`, or does not match an entry in `res://data/clubs.csv` are placed into the **Free Agent** pool (`club_id = 0`, `LeagueName = "Free Agent"`) rather than spawning unconfigured clubs.
+      * Run positional Best-XI sorting (`auto_pick_best_xi`) on every club roster after CSV import so `GK` always occupies Slot `0` and outfielders fill natural roles.
+      * Expose `"club_name"`, `"league"`, and `"nationality"` in `_player_to_dict()` and persist `"csv_club_name"`, `"league"`, `"nationality"`, `"base_ovr"`, `"is_academy_product"`, `"country"`, `"short_code"`, and `"playstyles"` inside `save_career()` / `load_career()` JSON snapshots.
     * **GDScript UI Synchronization**:
+      * `NewCareerView.gd` populates its `League -> Club` cascade directly from `res://data/clubs.csv`.
       * `CareerShell.gd` reads `ShortCode` and `PrimaryColor` from `get_club_info(club_id)` for the top-bar club crest badge.
-      * `DashboardView.gd`, `SquadView.gd`, `CompetitionsView.gd`, `TransfersView.gd`, and `PlayerProfileModal.gd` display exact `club.csv` club names, leagues, and Free Agent tags.
+      * `DashboardView.gd`, `SquadView.gd`, `CompetitionsView.gd`, and `PlayerProfileModal.gd` display exact `Club`, `League`, and `Nationality` metadata from `clubs.csv` and `players_2006_with_price.csv`.
+      * `TransfersView.gd` binds the merged `Name`, `Club`, `Age`, `Nationality`, `League`, and `Position` fields directly into the Transfer Market Search engine (detailed in Phase 7C below).
   * **3. Custom Player & Classmate Roster Addition Workflow**:
     * Supports adding custom real-world legends and user-created players (such as the user's classmates) directly into `Players_Database/players_2006_with_price.csv` (and synced to `demo/data/players_2006_with_price.csv`):
-      * Assign each custom player's `Club` column to an exact `ClubName` from `res://data/club.csv` so they load deterministically onto that club's roster on career start.
-      * Custom players authored with base attributes yielding $\text{BaseOVR} > 96$ (`97`, `98`, or `99` OVR) automatically qualify for **Phase 7F Playstyles** (see Section 3, Phase 7F below).
+      * Populate `Club`, `League`, and `Nationality` (matching an exact `Club` and `League` from `res://data/clubs.csv`) so they load deterministically onto that club's roster on career start and appear accurately in Transfer Market searches.
+      * Custom players authored with base attributes yielding $\text{BaseOVR} > 96$ (`97`, `98`, or `99` OVR) and populated `Playstyle 1..3` columns automatically unlock **Phase 7E Playstyles**.
 * **Phase 5 Acceptance Criteria**:
+  * Selecting a `League` and `Club` in New Career setup reflects the exact `League` and `Club` entries from `res://data/clubs.csv`, with zero random clubs generated.
   * Playing or simulating a match updates the League Table, player season stats, club gate-receipt balance, and advances the Next Match Hero Card to the subsequent matchday.
-  * Zero random clubs are created at career start; 100% of clubs originate from `res://data/club.csv` and 100% of `Club`-tagged players in `players_2006_with_price.csv` land in their assigned clubs.
 
 ---
 
@@ -174,7 +180,7 @@
 
 ---
 
-### Phase 7 — Dynamic Transfer Market, Contracts, Loyalty, Reputation & Exclusive Playstyles
+### Phase 7 — Dynamic Transfer Market, Multi-Criteria Search, Contracts, Reputation & Exclusive Playstyles
 * **Target Files**: `demo/TransfersView.gd` / `.tscn`, `demo/NegotiationModal.gd` / `.tscn`, `demo/PlayerProfileModal.gd`, `src/mainplayer.h` / `.cpp`, `src/MatchEngine.h` / `.cpp`, `src/CareerState.h` / `.cpp`.
 * **7A. Scalable Player Valuation Engine**:
   * Computes dynamic market value from:
@@ -183,13 +189,21 @@
 * **7B. Two-Stage Transfer & Contract Negotiations (`NegotiationModal`)**:
   * **Stage 1 — Club-to-Club Fee Negotiation**: Submit initial transfer fee (plus optional sell-on clause); AI club evaluates against player valuation and squad depth, responding with `Accept`, `Counteroffer` (up to 3 rounds), or `Reject`.
   * **Stage 2 — Player Personal Terms**: Upon fee agreement, negotiate `Weekly Wage`, `Contract Length (1–5 yrs)`, and `Squad Role` (`Crucial`, `Important`, `Rotation`, `Prospect`).
-* **7C. Transfer Windows & AI Market Activity**:
-  * Enforces Summer (`July 1 – August 31`) and Winter (`January 1 – January 31`) transfer windows (pre-contract agreements allowed outside windows for players with $< 6\text{ months}$ remaining).
-  * AI clubs evaluate positional weak spots and submit incoming transfer offers for user players via `TRANSFER` Inbox messages.
+* **7C. Multi-Criteria Transfer Search Engine, Transfer Windows & AI Market Activity (`TransfersView`)**:
+  * **6-Criteria Player Search & Filter Engine**: Backed by C++ `CareerState::search_transfer_players(filters_dict)` querying the merged `players_2006_with_price.csv` + `clubs.csv` database across all 6 search parameters:
+    1. **`Name`**: Case-insensitive substring query matching player full name or surname.
+    2. **`Club`**: Dropdown/autocomplete filter sourced from `res://data/clubs.csv` plus `"Free Agent"`.
+    3. **`Age`**: Minimum and maximum age bounds (`Min Age` to `Max Age`).
+    4. **`Nationality`**: Country filter sourced directly from the merged `Nationality` column in `players_2006_with_price.csv`.
+    5. **`League`**: Competition filter sourced directly from the merged `League` column in `players_2006_with_price.csv` and `res://data/clubs.csv`.
+    6. **`Position`**: Exact position (`GK`, `CB`, `LB`, `RB`, `CDM`, `CM`, `CAM`, `LW`, `RW`, `ST`) or positional group (`DEF`, `MID`, `FWD`) filter.
+  * **Transfer Windows & AI Offers**:
+    * Enforces Summer (`July 1 – August 31`) and Winter (`January 1 – January 31`) transfer windows (pre-contract agreements allowed outside windows for players with $< 6\text{ months}$ remaining).
+    * AI clubs evaluate positional weak spots and submit incoming transfer offers for user players via `TRANSFER` Inbox messages.
 * **7D. Player Loyalty & Evolving Club Reputation**:
   * **Player Loyalty ($0\text{--}100$)**: Increases with consecutive seasons at the club, consistent starts, and trophies; decreases when benched below promised `Squad Role` or when transfer requests are blocked.
   * **Club Reputation ($1\text{--}100$)**: Scales dynamically with league finish, continental qualification, and trophy wins—governing which tier of players will enter contract talks.
-* **7F. Exclusive $> 96$ Base OVR Playstyles System (`PlaystylesDescription.txt` Spec)**:
+* **7E. Exclusive $> 96$ Base OVR Playstyles System (`PlaystylesDescription.txt` Spec)**:
   * **1. Strict Eligibility Rule (Generational / Custom Icon Gate)**:
     * Playstyles are **exclusively** unlocked and active for senior players whose **initial base OVR at database import/creation satisfies $\text{BaseOVR} > 96$** (i.e., $\text{BaseOVR} \in \{97, 98, 99\}$) **AND** `IsAcademyProduct == false`.
     * Players who start with $\text{BaseOVR} \le 96$ and later grow above $96$ OVR through Youth Academy development, weekly training XP, or seasonal progression **never** unlock Playstyles ($\text{BaseOVR} \le 96 \lor \text{IsAcademyProduct} = \text{true} \implies \text{Playstyles} = \emptyset$).
@@ -221,17 +235,18 @@
 | **Goalkeeping** | **Deflector** | Better save direction | Biases parry/deflection angles away from central rebound zones toward wide touchlines. |
 | **Goalkeeping** | **Rush Out** | Better decisions when leaving the goal | Optimizes sweeper-keeper charge trigger distance and angle closing in 1v1 breakaways. |
 
-  * **3. CSV, C++23 & UI Data Flow for Phase 7F**:
-    * **CSV Assignment (`Playstyles` column in `players_2006_with_price.csv`)**: Supports pipe-separated Playstyle names (e.g., `Finesse Expert|Tiki Taka|Trickster`). During CSV import, if `BaseOVR > 96` and `Playstyles` is empty, `CareerState` assigns 2–3 signature Playstyles matching the player's `Position` and highest attributes; if `BaseOVR <= 96`, any Playstyle tags are stripped.
+  * **3. CSV, C++23 & UI Data Flow for Phase 7E**:
+    * **CSV Assignment (`Playstyle 1`, `Playstyle 2`, `Playstyle 3` columns in `players_2006_with_price.csv`)**: Reads up to 3 Playstyle columns per row. During CSV import, if `BaseOVR > 96` and all 3 Playstyle columns are empty, `CareerState` assigns 2–3 signature Playstyles matching the player's `Position` and highest attributes; if `BaseOVR <= 96`, any Playstyle tags are stripped.
     * **C++ Bitmask & Serialization**: `Player` stores `uint32_t PlaystyleMask` + `std::vector<std::string> Playstyles`, serialized as `"playstyles"` in `<slot>.json` and passed inside `prepare_next_match_payload()` to `MatchEngine`.
     * **UI Display (`PlayerProfileModal.gd` & `SquadView.gd`)**: Renders a dedicated **PLAYSTYLES** badge section with exact descriptions from `PlaystylesDescription.txt` on `PlayerProfileModal` for eligible `BaseOVR > 96` players.
 * **Phase 7 Acceptance Criteria**:
+  * Filtering `TransfersView` by any combination of `Name`, `Club`, `Age`, `Nationality`, `League`, and `Position` returns exact matching players from the merged database.
   * Completing a two-stage transfer deducts `Transfer Budget` + commits `Wage Budget`, transfers the `player_id` to the user `Team`, generates a `TRANSFER` Inbox receipt, and persists cleanly across Save/Load.
   * Players with `BaseOVR > 96` (non-academy) display their assigned Playstyles in `PlayerProfileModal`, execute Playstyle-weighted behaviors in `MatchEngine`, and academy graduates remain strictly excluded from Playstyles even if trained past $96$ OVR.
 
 ---
 
 ### Phase 8 — Full Career Acceptance Suite & Multi-Platform Release
-* **End-to-End Automated Test Harness**: Expand `CareerRegressionTest.gd` to cover full-season simulation, `club.csv` + `Club` column loading, transfer window round-trips, financial ledger invariants, $> 96$ Base OVR Playstyles gating, and multi-season rollover.
+* **End-to-End Automated Test Harness**: Expand `CareerRegressionTest.gd` to cover full-season simulation, `clubs.csv` `League -> Club` selection, `Club`/`League`/`Nationality` column loading, 6-criteria Transfer Search, transfer window round-trips, financial ledger invariants, $> 96$ Base OVR Playstyles gating, and multi-season rollover.
 * **Android & Aspect-Ratio Verification**: Validate touch targets ($\ge 44\text{dp}$), collapsible drawer ergonomics, modal bounds, and font legibility across `16:9`, `19.5:9`, and `20:9` viewports.
 * **Release Packaging**: Strip debug overlays/test harnesses and build release GDExtension binaries (`target=template_release`) for Windows and Android.
