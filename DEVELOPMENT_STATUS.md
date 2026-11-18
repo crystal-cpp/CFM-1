@@ -1,7 +1,7 @@
 # CFM-1 Development Status & Engineering Handoff
 
 **Last Updated**: 2026-11-18  
-**Reviewed Repository Baseline**: `4aa3a2a4b227006758f2421c1042657c921b3fe6` *(metadata loader and age-37 save normalization committed; build verification pending)*  
+**Reviewed Repository Baseline**: `b62b97bc0e659e634d8206893776ae09d3beab16` *(Expand roadmap and add regression runner; build verification pending)*  
 **Current Phase**: Phase 4 — Team Management, Permanent Tactics & Youth Academy UI  
 **Current Milestone**: **Phase 4A & 4B Implemented -> Entering Phase 4C (SCons Build, Automated Regression Suites 9–12 & Manual Verification)**
 
