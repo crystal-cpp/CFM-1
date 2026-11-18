@@ -1,7 +1,7 @@
 # CFM-1 Development Status & Engineering Handoff
 
 **Last Updated**: 2026-11-18  
-**Repository HEAD**: `c1c4d7451820057762afdf3d8d50562654cce492` *(latest reviewed commit; Phase 4C verification remains pending)*  
+**Reviewed Repository Baseline**: `c1c4d7451820057762afdf3d8d50562654cce492` *(latest code/roadmap commit reviewed for this update; Phase 4C verification remains pending)*  
 **Current Phase**: Phase 4 — Team Management, Permanent Tactics & Youth Academy UI  
 **Current Milestone**: **Phase 4A & 4B Implemented -> Entering Phase 4C (SCons Build, Automated Regression Suites 9–12 & Manual Verification)**
 
@@ -70,16 +70,16 @@
 
 ### Phase 5D — `res://data/clubs.csv` & `players_2006_with_price.csv` `Club` Column Merge
 1. **Files to Create / Update**:
-   * **`demo/data/club.csv` (`res://data/club.csv`)**: Canonical club registry (`ClubID,Club,League,ShortCode,League,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor`). Replaces hardcoded `DEFAULT_CLUB_NAMES[16]` and prevents random club creation.
-   * **`Players_Database/players_2006_with_price.csv` & `demo/data/players_2006_with_price.csv`**: Add `Club` column matching `ClubName` in `res://data/club.csv` (or `Free Agent`), plus custom player/classmate rows.
+   * **`demo/data/clubs.csv` (`res://data/clubs.csv`)**: Canonical club registry (`ClubID,Club,League,ShortCode,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor`). Replaces hardcoded `DEFAULT_CLUB_NAMES[16]` and prevents random club creation.
+   * **`Players_Database/players_2006_with_price.csv` & `demo/data/players_2006_with_price.csv`**: Add `Club`, `League`, `Nationality`, and `Playstyle 1..3` columns; club values must match the canonical `Club` entries in `res://data/clubs.csv` or use `Free Agent`.
    * **`src/mainplayer.h` & `src/mainplayer.cpp`**: Add `ClubName`, `BaseOVR`, and `IsAcademyProduct` fields and accessors.
-   * **`src/team.h` & `src/team.cpp`**: Store `ShortCode`, `LeagueName`, `Country`, `Reputation`, `TransferBudget`, `WageBudget`, and kit colors loaded from `club.csv`.
-   * **`Players_Database/player_database.h` & `Players_Database/player_database.cpp`**: Parse `Club` (and optional `Playstyles`) header columns dynamically in `load_from_csv()` and add `load_clubs_from_csv()` for `res://data/club.csv`.
+   * **`src/team.h` & `src/team.cpp`**: Store `ShortCode`, `LeagueName`, `Country`, `Reputation`, `TransferBudget`, `WageBudget`, and kit colors loaded from `clubs.csv`.
+   * **`Players_Database/player_database.h` & `Players_Database/player_database.cpp`**: Parse `Club`, `League`, `Nationality`, and `Playstyle 1..3` header columns dynamically in `load_from_csv()` and add `load_clubs_from_csv()` for `res://data/clubs.csv`.
    * **`src/CareerState.h` & `src/CareerState.cpp`**:
-     * In `start_new_career()`: Load `res://data/club.csv` first to create exact `Team` records, map `players_2006_with_price.csv` players to their exact `ClubName` (routing unmatched/empty rows to Free Agents), run positional Best-XI sorting (`GK` locked to Slot `0`), and serialize `"csv_club_name"`, `"base_ovr"`, `"is_academy_product"`, `"league"`, and `"short_code"` in `save_career()` / `load_career()`.
-   * **GDScript Views (`CareerShell.gd`, `DashboardView.gd`, `SquadView.gd`, `CompetitionsView.gd`, `TransfersView.gd`, `PlayerProfileModal.gd`)**: Consume `club.csv` short codes, league names, and merged player `club_name` metadata.
+     * In `start_new_career()`: Load `res://data/clubs.csv` first to create exact `Team` records, implement the New Career `League -> Club -> Manager Name` selection flow, map players by their CSV `Club` value (routing unmatched/empty rows to Free Agents), run positional Best-XI sorting (`GK` locked to Slot `0`), and serialize `"csv_club_name"`, `"base_ovr"`, `"is_academy_product"`, `"league"`, and `"short_code"` in `save_career()` / `load_career()`.
+   * **GDScript Views (`CareerShell.gd`, `DashboardView.gd`, `SquadView.gd`, `CompetitionsView.gd`, `TransfersView.gd`, `PlayerProfileModal.gd`)**: Consume `clubs.csv` short codes, league names, and merged player `club_name`, `league`, and `nationality` metadata.
 2. **Adding Custom Players & Classmates**:
-   * Append custom player rows to `players_2006_with_price.csv` with `Club` set to an exact `ClubName` from `res://data/club.csv`.
+   * Append custom player rows to `players_2006_with_price.csv` with `Club` set to an exact `ClubName` from `res://data/clubs.csv`.
    * Any custom player authored with base attributes yielding $\text{BaseOVR} > 96$ (`97–99` OVR) automatically qualifies for **Phase 7E Playstyles**.
 
 
@@ -113,14 +113,14 @@
 
 ### Active Project Files
 * **C++23 GDExtension Core (`src/`)**:
-  * `src/MatchEngine.h` / `src/MatchEngine.cpp` (Phase 1–2C simulation engine; Phase 7F Playstyle hooks)
-  * `src/CareerState.h` / `src/CareerState.cpp` (Phase 3A & Phase 4A central career state; Phase 5D `club.csv` & `Club` merge; Phase 7F serialization)
+  * `src/MatchEngine.h` / `src/MatchEngine.cpp` (Phase 1–2C simulation engine; planned Phase 7E Playstyle hooks)
+  * `src/CareerState.h` / `src/CareerState.cpp` (Phase 3A & Phase 4A central career state; planned Phase 5D `clubs.csv` integration; planned Phase 7E serialization)
   * `src/mainplayer.h` / `src/mainplayer.cpp` & `src/team.h` / `src/team.cpp`
 * **Data & CSV Registries (`demo/data/` & `Players_Database/`)**:
   * `demo/data/formations.csv` (Normalized 11-slot formation shapes)
-  * `demo/data/club.csv` (Phase 5F deterministic club registry)
+  * `demo/data/clubs.csv` (planned Phase 5D deterministic club/league registry; not yet present in the reviewed data directory)
   * `Players_Database/players_2006_with_price.csv` & `demo/data/players_2006_with_price.csv` (Phase 5D planned `Club`, `League`, `Nationality`, and `Playstyle 1..3` metadata)
-  * `PlaystylesDescription.txt` (Canonical 22-Playstyle reference)
+  * `demo/data/PlaystylesDescription.txt` (22-Playstyle reference; gameplay integration remains planned)
 * **GDScript UI & Scenes (`demo/`)**:
   * `demo/CareerShell.gd` / `demo/CareerShell.tscn` (Global 10-route shell, header, modals, toast)
   * `demo/DashboardView.gd` / `demo/DashboardView.tscn` (Career Dashboard)
