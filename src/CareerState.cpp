@@ -366,6 +366,13 @@ Dictionary CareerState::_player_to_dict(const std::shared_ptr<Player> &p) const 
 	d["debut_age"] = p->GetDebutAge();
 	d["potential"] = p->GetPotential();
 	d["ovr"] = p->GetOVR();
+	d["retirement_age"] = p->GetRetirementAge();
+	d["club_name"] = String(p->GetClubName().c_str());
+	d["league"] = String(p->GetLeagueName().c_str());
+	d["nationality"] = String(p->GetNationality().c_str());
+	Array playstyles;
+	for (const auto& style : p->GetPlaystyles()) playstyles.append(String(style.c_str()));
+	d["playstyles"] = playstyles;
 
 	PlayerAttributes attrs = p->GetAttributes();
 	d["pace"] = attrs.Pace;
@@ -1676,8 +1683,14 @@ bool CareerState::save_career(const String &p_slot_name) {
 		pd["position"] = String(position_to_string(p->GetPosition()).c_str());
 		pd["age"] = p->GetAge();
 		pd["debut_age"] = p->GetDebutAge();
-		pd["retirement_age"] = p->GetRetirementAge();
+		pd["retirement_age"] = 37;
 		pd["potential"] = p->GetPotential();
+		pd["club_name"] = String(p->GetClubName().c_str());
+		pd["league"] = String(p->GetLeagueName().c_str());
+		pd["nationality"] = String(p->GetNationality().c_str());
+		Array saved_playstyles;
+		for (const auto& style : p->GetPlaystyles()) saved_playstyles.append(String(style.c_str()));
+		pd["playstyles"] = saved_playstyles;
 
 		PlayerAttributes attrs = p->GetAttributes();
 		pd["pace"] = attrs.Pace;
@@ -1834,9 +1847,18 @@ bool CareerState::load_career(const String &p_slot_name) {
 			int age = pd.get("age", 24);
 			int potential = pd.get("potential", 75);
 			int debut_age = pd.get("debut_age", 16);
-			int ret_age = pd.get("retirement_age", 36);
+			int ret_age = 37; // Normalize legacy saves to the mandatory age-37 rule.
 
 			auto player_ptr = std::make_shared<Player>(name, pos, attrs, age, potential, debut_age, ret_age);
+			player_ptr->SetClubName(String(pd.get("club_name", "Free Agent")).utf8().get_data());
+			player_ptr->SetLeagueName(String(pd.get("league", "Free Agent")).utf8().get_data());
+			player_ptr->SetNationality(String(pd.get("nationality", "Unknown")).utf8().get_data());
+			std::vector<std::string> loaded_playstyles;
+			Array playstyle_array = pd.get("playstyles", Array());
+			for (int style_index = 0; style_index < playstyle_array.size(); ++style_index) {
+				loaded_playstyles.push_back(String(playstyle_array[style_index]).utf8().get_data());
+			}
+			player_ptr->SetPlaystyles(loaded_playstyles);
 			player_ptr->SetId(pid);
 			player_ptr->SetClubId(pd.get("club_id", -1));
 			player_ptr->SetCondition(pd.get("condition", 100));
