@@ -1,7 +1,7 @@
 # CFM-1 Development Status & Engineering Handoff
 
 **Last Updated**: 2026-11-18  
-**Reviewed Repository Baseline**: `c1c4d7451820057762afdf3d8d50562654cce492` *(latest code/roadmap commit reviewed for this update; Phase 4C verification remains pending)*  
+**Reviewed Repository Baseline**: `4aa3a2a4b227006758f2421c1042657c921b3fe6` *(metadata loader and age-37 save normalization committed; build verification pending)*  
 **Current Phase**: Phase 4 — Team Management, Permanent Tactics & Youth Academy UI  
 **Current Milestone**: **Phase 4A & 4B Implemented -> Entering Phase 4C (SCons Build, Automated Regression Suites 9–12 & Manual Verification)**
 
@@ -23,7 +23,7 @@
 | **Phase 4B: `SquadView`, `TacticsView`, `YouthView` & GK UI** | GDScript | **Complete** | **Pending Phase 4C** | Procedural views wired into `CareerShell.gd`, `SquadView` drag-and-drop/click-swap GK-only Slot `0` lock, and `PlayerProfileModal.gd` 6-stat GK display. |
 | **Phase 4C: Phase 4 Build & Acceptance Suite** | Both | **Ready to Run** | **Active (Next)** | Recompile DLL + run Suites 1–12 + manual cross-viewport QA + `*_2` cleanup. |
 | **Phase 5A–5C: Schedule, Competitions & Pre-Match** | Both | Placeholder Views | Scheduled | Scaffolded as route cards inside `CareerShell.gd`. |
-| **Phase 5D: `res://data/clubs.csv`, Player Metadata & Codes** | Both | **Spec Ready** | **Scheduled (Phase 5)** | Canonical club/league registry, New Career `League -> Club` selection, `Club`/`League`/`Nationality`/`Playstyle 1..3` CSV metadata (`RetirementAge = 37`), `Tuesday League` / `11A7` lock, and `NHHA72528` Codes modal. |
+| **Phase 5D: Player Metadata, Club Registry & Codes** | Both | **Partially Implemented** | **Build Verification Pending** | Runtime CSV loader now reads `Club`, `League`, `Nationality`, and `Playstyle 1..3`; metadata is included in player dictionaries and career saves. `res://data/players_2006_with_price.csv` remains the runtime dataset. `Players_Database/players_2006_with_price.csv` is intentionally retained as a separate preventive/source copy. `clubs.csv`, New Career selection, access lock, and code redemption remain planned. |
 | **Phase 6: Club Management, Finances & Board** | Both | Placeholder Views | Scheduled | Separated financial ledgers, board confidence, stadium/facility upgrades. |
 | **Phase 7A–7D: Transfers, Search & Reputation** | Both | Placeholder Views | Scheduled | Valuation, fee/wage negotiations, transfer windows, six-field player search, AI transfers, loyalty, and reputation. |
 | **Phase 7E: Exclusive $> 96$ Base OVR Playstyles** | Both | **Spec Ready** | **Scheduled (Phase 7)** | 22 Playstyles (`PlaystylesDescription.txt`) gated strictly to `BaseOVR > 96` non-academy players. |
@@ -78,15 +78,16 @@
 
 > The items in this section are specifications for future work unless their implementation is explicitly marked complete in the status matrix. Their presence here does not mean the systems are already implemented or tested.
 
-### Phase 5D — `res://data/clubs.csv`, New Career League Selection, Codes (`NHHA72528`) & Player Metadata Merge
+### Phase 5D — Player Metadata Integration, `clubs.csv`, New Career League Selection & Codes (`NHHA72528`)
 1. **Files to Create / Update**:
    * **`demo/data/clubs.csv` (`res://data/clubs.csv`)**: Canonical club registry (`ClubID,Club,League,ShortCode,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor`). Replaces hardcoded `DEFAULT_CLUB_NAMES[16]` and prevents random club creation.
-   * **`Players_Database/players_2006_with_price.csv` & `demo/data/players_2006_with_price.csv`**: Add `Club`, `League`, `Nationality`, and `Playstyle 1..3` columns; club values must match the canonical `Club` entries in `res://data/clubs.csv` or use `Free Agent`.
+   * **Runtime player data (`demo/data/players_2006_with_price.csv`, loaded as `res://data/players_2006_with_price.csv`)**: Contains `Club`, `League`, `Nationality`, and `Playstyle 1..3`. `Players_Database/players_2006_with_price.csv` is a deliberately retained separate preventive/source copy; it is not required to mirror the runtime dataset row-for-row.
    * **`src/mainplayer.h` & `src/mainplayer.cpp`**: Add `ClubName`, `LeagueName`, `Nationality`, `BaseOVR`, `IsAcademyProduct`, `IsRetired`, `RetirementAge = 37`, and `Playstyles` fields and accessors.
    * **`src/team.h` & `src/team.cpp`**: Store `ShortCode`, `LeagueName`, `Country`, `Reputation`, `TransferBudget`, `WageBudget`, and kit colors loaded from `clubs.csv`.
    * **`Players_Database/player_database.h` & `Players_Database/player_database.cpp`**:
-     * Parse `Club`, `League`, `Nationality`, and `Playstyle 1..3` header columns dynamically in `load_from_csv()` and add `load_clubs_from_csv()` for `res://data/clubs.csv`.
-     * Normalize `RetirementAge` to **`37`** for all imported rows (overriding any legacy `36` defaults or CSV `RetirementAge` values so every player retires uniformly at age `37` in Phase 7F).
+     * **Implemented, build verification pending:** `load_from_csv()` resolves core and optional columns by header name, reads `Club`, `League`, `Nationality`, `Playstyle 1..3`, and optional `Price`, and preserves metadata on each `Player`.
+     * **Remaining:** add `load_clubs_from_csv()` for the future `res://data/clubs.csv` registry.
+     * Imported players are normalized to `RetirementAge = 37`; legacy save loading also defaults and normalizes retirement age to `37`.
    * **`src/CareerState.h` & `src/CareerState.cpp`**:
      * In `start_new_career()`: Load `res://data/clubs.csv` first to create exact `Team` records, implement the New Career `League -> Club -> Manager Name` selection flow, map players by their CSV `Club` value (routing unmatched/empty rows to Free Agents), run positional Best-XI sorting (`GK` locked to Slot `0`), and serialize `"csv_club_name"`, `"base_ovr"`, `"is_academy_product"`, `"retirement_age"`, `"is_retired"`, `"league"`, `"nationality"`, `"short_code"`, `"playstyles"`, and `"redeemed_codes"` in `save_career()` / `load_career()`.
      * Implement `redeem_promo_code("NHHA72528")` to permanently unlock `Tuesday League` and `11A7` Club (and all `11A7` players) across New Career setup and Transfer Market searches while awarding `+$50.0M` Club Balance, `+$35.0M` Transfer Budget, `+$250K/wk` Wage Budget, `+5` Skip Tokens, and `+10` Club Reputation.
