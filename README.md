@@ -139,10 +139,10 @@ CFM-1 is developed through incremental milestones:
 | Phase | Development Focus | Status |
 |---|---|---|
 | Phase 1 | Match Engine Foundation | Complete |
-| Phase 2 | Match Gameplay, Controls & Tactical Simulation | Complete |
-| Phase 3 | Career State, Save/Load & Global Interface | Complete |
-| Phase 4 | Squad Management, Permanent Tactics & Youth Academy | Implementation Complete; Verification Ongoing |
-| Phase 5 | Fixtures, Competitions & Pre-Match Systems | Planned |
+| Phase 2 | Match Gameplay, Controls & Tactical Simulation | Completed |
+| Phase 3 | Career State, Save/Load & Global Interface | Completed |
+| Phase 4 | Squad Management, Permanent Tactics & Youth Academy | Completed |
+| Phase 5 | Fixtures, Competitions & Pre-Match Systems | Ongoing |
 | Phase 6 | Club Management, Finances & Board Objectives | Planned |
 | Phase 7 | Transfers, Contracts, Reputation & Playstyles | Planned |
 | Phase 8 | Full Acceptance Testing & Multi-Platform Release | Planned |
