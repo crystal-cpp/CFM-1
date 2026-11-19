@@ -815,7 +815,6 @@ func _on_tactics_updated(_club_id: int) -> void:
 func _on_youth_updated() -> void:
 	if is_instance_valid(_youth_view):
 		_youth_view.refresh_youth()
-2
 func _on_career_saved(slot_name: String) -> void:
 	show_toast("Career saved to slot '%s'" % slot_name, 2.0)
 
