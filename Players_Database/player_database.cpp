@@ -121,6 +121,7 @@ bool PlayerDatabase::load_from_csv(const String& p_filepath) {
         return (index >= 0 && index < row.size()) ? row[index].strip_edges() : fallback;
     };
 
+    const int stamina_col = find_column("stamina");
     const int price_col = find_column("price");
     const int club_col = find_column("club");
     const int league_col = find_column("league");
@@ -159,12 +160,15 @@ bool PlayerDatabase::load_from_csv(const String& p_filepath) {
         attrs.Dribbling = std::clamp(static_cast<int>(get_value(row, dribbling_col, "60").to_int()), 1, 99);
         attrs.Defending = std::clamp(static_cast<int>(get_value(row, defending_col, "60").to_int()), 1, 99);
         attrs.Physical  = std::clamp(static_cast<int>(get_value(row, physical_col, "60").to_int()), 1, 99);
+        const int stamina_val = std::clamp(static_cast<int>(get_value(row, stamina_col, "75").to_int()), 1, 99);
+        attrs.Stamina   = stamina_val;
 
         const int age = get_value(row, age_col, "24").to_int();
         const int debut_age = get_value(row, debut_col, "16").to_int();
         const int potential = std::clamp(static_cast<int>(get_value(row, potential_col, "75").to_int()), 1, 99);
 
         Player player(name.utf8().get_data(), pos_enum, attrs, age, potential, debut_age, 37);
+        player.SetStamina(stamina_val);
         player.SetClubName(get_value(row, club_col, "Free Agent").utf8().get_data());
         player.SetLeagueName(get_value(row, league_col, "Free Agent").utf8().get_data());
         player.SetNationality(get_value(row, nationality_col, "Unknown").utf8().get_data());
@@ -398,6 +402,7 @@ Dictionary PlayerDatabase::_player_to_dict(const Player& p) const {
     d["dribbling"] = attrs.Dribbling;
     d["defending"] = attrs.Defending;
     d["physical"] = attrs.Physical;
+    d["stamina"] = p.GetStamina();
     
     d["ovr"] = p.GetOVR();
     d["market_value"] = p.GetMarketValue();

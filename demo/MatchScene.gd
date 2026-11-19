@@ -110,7 +110,7 @@ func open_pre_match_center(p_career_state: CareerState) -> bool:
 	if not is_instance_valid(p_career_state):
 		return false
 
-	var fixture: Dictionary = p_career_state.get_next_match()
+	var fixture: Dictionary = p_career_state.get_next_fixture()
 	if fixture.is_empty():
 		if is_instance_valid(career_shell):
 			career_shell.show_toast("No upcoming fixture is available.", 2.5)
@@ -149,7 +149,10 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 
 	career_state = p_career_state
 	active_match_context = context
-	career_state.apply_context_to_match_engine(match_engine, active_match_context)
+	if career_state.has_method("prepare_next_match_payload"):
+		career_state.prepare_next_match_payload(match_engine)
+	elif career_state.has_method("apply_context_to_match_engine"):
+		career_state.call("apply_context_to_match_engine", match_engine, active_match_context)
 
 	# Apply the selected home/away kit colors to the 2D player markers.
 	var kits: Dictionary = active_match_context.get("kits", {})

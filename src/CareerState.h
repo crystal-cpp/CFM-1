@@ -142,6 +142,14 @@ private:
 	std::unordered_map<int32_t, std::shared_ptr<Player>> _players_by_id;
 	int32_t _next_player_id = 1;
 
+	// Phase 5D: Clubs.csv registry, codes & lock state
+	std::unordered_map<std::string, int32_t> _club_id_by_name_lower;
+	std::unordered_set<std::string> _redeemed_codes;
+	bool _tuesday_league_unlocked = false;
+	void _load_unlock_persistence();
+	void _save_unlock_persistence() const;
+	bool _is_club_or_league_locked(const std::string &club_name, const std::string &league_name) const;
+
 	// Internal Helpers
 	std::string _format_date_iso() const;
 	std::string _format_season_label() const;
@@ -167,7 +175,11 @@ public:
 	~CareerState() override;
 
 	// --- Career Bootstrap & Time Progression ---
-	bool start_new_career(int32_t p_club_id, const String &p_manager_name, int32_t p_start_year = 2026);
+	bool start_new_career(int32_t p_club_id, const String &p_manager_name, int32_t p_start_year = 2006);
+	TypedArray<Dictionary> get_leagues_and_clubs() const;
+	bool is_promo_code_redeemed(const String &p_code) const;
+	bool is_tuesday_league_unlocked() const { return _tuesday_league_unlocked; }
+	Dictionary redeem_promo_code(const String &p_code);
 	bool is_career_active() const { return _career_active; }
 	void advance_day(int32_t p_days = 1);
 	int32_t advance_to_next_matchday();

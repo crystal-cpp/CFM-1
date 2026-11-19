@@ -79,6 +79,12 @@ public:
         return false;
     }
 
+    std::string League = "Premier Division";
+    std::string Country = "England";
+    int Reputation = 75;
+    std::string KitColor = "#FFFFFF";
+    std::string SecondaryColor = "#111111";
+
     // Tactical setup for match handoff
     std::string Formation = "4-3-3";
     int Mentality = 2;            // Balanced

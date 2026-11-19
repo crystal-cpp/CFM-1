@@ -202,9 +202,48 @@ func _labeled_row(title: String, control: Control) -> HBoxContainer:
 
 func setup(p_career_state: Node, fixture: Dictionary, db: PlayerDatabase = null) -> void:
 	career_state = p_career_state
-	match_context = career_state.prepare_match_context(fixture, db)
+	if is_instance_valid(career_state) and career_state.has_method("prepare_match_context"):
+		match_context = career_state.call("prepare_match_context", fixture, db)
+	else:
+		match_context = _build_fallback_match_context(fixture)
+
 	use_alternate_away_kit = bool(match_context.get("kits", {}).get("clash_detected", false))
 	_refresh_view()
+
+func _build_fallback_match_context(fixture: Dictionary) -> Dictionary:
+	var home_id := int(fixture.get("home_club_id", 1))
+	var away_id := int(fixture.get("away_club_id", 2))
+	var managed_id := int(career_state.get_managed_club_id()) if is_instance_valid(career_state) and career_state.has_method("get_managed_club_id") else home_id
+
+	var home_info: Dictionary = career_state.get_club_info(home_id) if is_instance_valid(career_state) and career_state.has_method("get_club_info") else {}
+	var away_info: Dictionary = career_state.get_club_info(away_id) if is_instance_valid(career_state) and career_state.has_method("get_club_info") else {}
+
+	var home_name := String(fixture.get("home_club", home_info.get("club_name", "Home")))
+	var away_name := String(fixture.get("away_club", away_info.get("club_name", "Away")))
+	var home_color: Color = home_info.get("primary_color", Color(0.06, 0.78, 0.48))
+	var away_color: Color = away_info.get("primary_color", Color(0.92, 0.26, 0.30))
+
+	return {
+		"fixture": fixture,
+		"home_club_id": home_id,
+		"away_club_id": away_id,
+		"home_club": home_name,
+		"away_club": away_name,
+		"user_is_home": home_id == managed_id,
+		"stadium": String(fixture.get("stadium", "%s Stadium" % home_name)),
+		"competition": String(fixture.get("competition", "League Match")),
+		"importance": {
+			"label": String(fixture.get("match_importance", "LEAGUE MATCH")),
+			"text_color": Color(0.11, 0.82, 0.63),
+			"description": "%s vs %s" % [home_name, away_name],
+		},
+		"kits": {
+			"home_primary": home_color,
+			"away_primary": away_color,
+			"away_default_primary": away_color,
+			"clash_detected": false,
+		},
+	}
 
 
 func _refresh_view() -> void:
@@ -261,11 +300,24 @@ func _on_tactics_changed(_idx: int) -> void:
 	if career_state == null or match_context.is_empty():
 		return
 	var fmt: String = _formation_opt.get_item_text(_formation_opt.selected)
-	career_state.user_tactics["formation"] = fmt
-	career_state.user_tactics["mentality"] = _mentality_opt.selected
-	career_state.user_tactics["pressing"] = _pressing_opt.selected
+	var club_id: int = int(career_state.get_managed_club_id()) if career_state.has_method("get_managed_club_id") else 1
 
-	match_context["tactics"] = career_state.user_tactics.duplicate(true)
+	var tactics: Dictionary = {}
+	if career_state.has_method("get_club_tactics"):
+		tactics = career_state.get_club_tactics(club_id).duplicate(true)
+
+	tactics["formation"] = fmt
+	tactics["mentality"] = _mentality_opt.selected
+	tactics["pressing"] = _pressing_opt.selected
+
+	if career_state.has_method("set_club_tactics"):
+		career_state.set_club_tactics(club_id, tactics)
+
+	match_context["tactics"] = tactics.duplicate(true)
+	if bool(match_context.get("user_is_home", true)):
+		match_context["home_formation"] = fmt
+	else:
+		match_context["away_formation"] = fmt
 	if bool(match_context.get("user_is_home", true)):
 		match_context["home_formation"] = fmt
 	else:

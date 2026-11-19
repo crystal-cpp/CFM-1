@@ -64,6 +64,7 @@ struct PlayerAttributes {
     int Dribbling = 60;
     int Defending = 60;
     int Physical = 60;
+    int Stamina = 75;
 };
 
 class Player {
@@ -145,6 +146,11 @@ public:
     const std::string& GetLeagueName() const { return LeagueName; }
     const std::string& GetNationality() const { return Nationality; }
     const std::vector<std::string>& GetPlaystyles() const { return Playstyles; }
+    int GetStamina() const { return Stamina; }
+    void SetStamina(int value) {
+        Stamina = std::clamp(value, 1, 99);
+        Attributes.Stamina = Stamina;
+    }
     void SetClubName(const std::string& value) { ClubName = value.empty() ? "Free Agent" : value; }
     void SetLeagueName(const std::string& value) { LeagueName = value.empty() ? "Free Agent" : value; }
     void SetNationality(const std::string& value) { Nationality = value.empty() ? "Unknown" : value; }
@@ -209,6 +215,7 @@ private:
     std::string LeagueName = "Free Agent";
     std::string Nationality = "Unknown";
     std::vector<std::string> Playstyles;
+    int Stamina = 75;
 
     int Id = 0;
     int ClubId = -1;
