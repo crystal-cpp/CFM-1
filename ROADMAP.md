@@ -122,7 +122,7 @@
 ---
 
 ### Phase 5 — Schedule, Competitions, Historical 15 July 2006 Club DB, Stamina/Injuries, Match Realism & Audio `[IN PROGRESS — PHASE 5B-2]`
-* **Target Files**: `demo/ScheduleView.gd` / `.tscn`, `demo/CompetitionsView.gd` / `.tscn`, `demo/PreMatchView.gd` / `.tscn`, `demo/PostMatchModal.gd` / `.tscn`, `demo/NewCareerView.gd` / `.tscn`, `demo/RedeemCodeModal.gd` / `.tscn`, `demo/CareerShell.gd`, `demo/MatchHud.gd` (or active match presentation view), `demo/AudioManager.gd`, `demo/assets/audio/`, `demo/data/clubs.csv`, `demo/data/players_2006_with_price.csv`, `src/mainplayer.h` / `.cpp`, `src/team.h` / `.cpp`, `Players_Database/player_database.h` / `.cpp`, `src/MatchEngine.h` / `.cpp`, `src/CareerState.h` / `.cpp`.
+* **Target Files**: `demo/ScheduleView.gd` / `.tscn`, `demo/CompetitionView.gd`, `demo/PreMatchView.gd` / `.tscn`, `demo/PostMatchModal.gd` / `.tscn`, `demo/NewCareerView.gd` / `.tscn`, `demo/RedeemCodeModal.gd` / `.tscn`, `demo/CareerShell.gd`, `demo/MatchHud.gd` (or active match presentation view), `demo/AudioManager.gd`, `demo/assets/audio/`, `demo/data/clubs.csv`, `demo/data/players_2006_with_price.csv`, `src/mainplayer.h` / `.cpp`, `src/team.h` / `.cpp`, `Players_Database/player_database.h` / `.cpp`, `src/MatchEngine.h` / `.cpp`, `src/CareerState.h` / `.cpp`.
 
 * **5A. Schedule & Fixtures (`ScheduleView`)**:
   * **Dual View Modes**: Monthly calendar grid (highlighting matchdays, transfer window dates, recovery windows, and training blocks) and chronological fixture list with filters (`ALL`, `UPCOMING`, `COMPLETED`, `HOME`, `AWAY`).
@@ -134,7 +134,7 @@
 
 * **5B. Competitions Center (`CompetitionsView`)**:
   * **5B-1 — Domestic Competition Foundation**: Domestic league competition and standings are the initial scope.
-  * **5B-2 — Current Competitions UI / Live Refresh Integration**: `demo/CompetitionView.gd` provides the competitions center UI (domestic league table, UCL presentation tab, player statistics and prize information). `CareerShell.gd` must refresh it when the Competitions route is opened, during `refresh_all_views()`, and when standings change. ScheduleView responsive layout work is committed in `018eef5e4d73a340c7714c164ca69104f5ce95b6`. Source changes are not runtime QA; verify desktop and narrow viewports in Godot.
+  * **5B-2 — Competitions UI / Live Refresh Integration**: `demo/CompetitionView.gd` (`class_name CompetitionsView`) provides the competitions center UI (domestic league table, UCL presentation tab, player statistics and prize information). `CareerShell.gd` refresh wiring is implemented in all three required paths: opening the `competitions` route in `navigate_to()`, global refresh in `refresh_all_views()`, and standings-change handling in `_on_standings_updated()`. The wiring was committed in `d43ba52e4a7d2295790b0c3f1bb2f8827a974385`. ScheduleView responsive layout work is committed in `018eef5e4d73a340c7714c164ca69104f5ce95b6`. Source inspection confirms the hooks exist; runtime behavior and desktop/narrow viewport presentation still require Godot QA.
   * **Deferred — UEFA Champions League Fixtures**: The UCL tab/presentation shell is present, but authoritative UCL fixture generation, qualification/participant selection, knockout progression, result integration and prize payout logic remain deferred to a later 5B milestone. Do not treat the visual tab or placeholder data as completed UCL fixtures.
 
 * **5C. Pre-Match Center & Post-Match Pipeline (`PreMatchView` & `PostMatchModal`)**:
