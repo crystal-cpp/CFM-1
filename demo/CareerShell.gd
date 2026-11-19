@@ -711,6 +711,9 @@ func navigate_to(route_id: String) -> void:
 		"schedule":
 			if is_instance_valid(_schedule_view):
 				_schedule_view.refresh_schedule()
+		"competitions":
+			if is_instance_valid(_competitions_view):
+				_competitions_view.refresh_competitions()
 		"inbox":
 			if is_instance_valid(_inbox_view):
 				_inbox_view.refresh_inbox()
@@ -768,6 +771,8 @@ func refresh_all_views() -> void:
 		_youth_view.refresh_youth()
 	if is_instance_valid(_schedule_view):
 		_schedule_view.refresh_schedule()
+	if is_instance_valid(_competitions_view):
+		_competitions_view.refresh_competitions()
 	if is_instance_valid(_inbox_view):
 		_inbox_view.refresh_inbox()
 
@@ -807,6 +812,8 @@ func _on_standings_updated() -> void:
 		_dashboard_view.refresh_dashboard()
 	if is_instance_valid(_schedule_view):
 		_schedule_view.refresh_schedule()
+	if is_instance_valid(_competitions_view):
+		_competitions_view.refresh_competitions()
 
 func _on_squad_updated(_club_id: int) -> void:
 	if is_instance_valid(_squad_view):
