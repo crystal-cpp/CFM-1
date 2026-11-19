@@ -5,6 +5,10 @@ var overview_2d: CanvasLayer
 var hud: Control
 var match_pitch: Node
 var career_shell: CareerShell
+var career_state: CareerState
+var active_match_context: Dictionary = {}
+var pre_match_view: PreMatchView
+var post_match_modal: PostMatchModal
 
 var pending_match_ended: bool = false
 var cached_final_home: int = 0
@@ -25,6 +29,11 @@ func _ready() -> void:
 		return
 
 	overview_2d.show()
+
+	post_match_modal = PostMatchModal.new()
+	post_match_modal.name = "PostMatchModal"
+	add_child(post_match_modal)
+	post_match_modal.continue_requested.connect(_on_post_match_continue)
 
 	match_engine.chance_state_changed.connect(_on_chance_state_changed)
 	match_engine.match_ended.connect(_on_match_ended)
@@ -96,6 +105,77 @@ func toggle_manual_pause() -> void:
 	if hud and hud.has_method("refresh_all"):
 		hud.refresh_all()
 
+func open_pre_match_center(p_career_state: CareerState) -> bool:
+	if not is_instance_valid(p_career_state):
+		return false
+
+	var fixture: Dictionary = p_career_state.get_next_match()
+	if fixture.is_empty():
+		if is_instance_valid(career_shell):
+			career_shell.show_toast("No upcoming fixture is available.", 2.5)
+		return false
+
+	if is_instance_valid(pre_match_view):
+		pre_match_view.queue_free()
+
+	pre_match_view = PreMatchView.new()
+	pre_match_view.name = "PreMatchView"
+	add_child(pre_match_view)
+	pre_match_view.setup(p_career_state, fixture)
+	pre_match_view.start_match_requested.connect(
+		func(context: Dictionary) -> void:
+			launch_career_match(p_career_state, context)
+	)
+	pre_match_view.back_requested.connect(_close_pre_match_center)
+	overview_2d.hide()
+	return true
+
+
+func _close_pre_match_center() -> void:
+	if is_instance_valid(pre_match_view):
+		pre_match_view.queue_free()
+	pre_match_view = null
+	overview_2d.show()
+	if is_instance_valid(career_shell):
+		career_shell.visible = true
+		career_shell.refresh_all_views()
+
+
+func launch_career_match(p_career_state: CareerState, context: Dictionary) -> void:
+	if not is_instance_valid(match_engine) or not is_instance_valid(p_career_state) or context.is_empty():
+		push_error("MatchScene: Cannot launch career match without a valid engine, CareerState, and match context.")
+		return
+
+	career_state = p_career_state
+	active_match_context = context
+	career_state.apply_context_to_match_engine(match_engine, active_match_context)
+
+	# Apply the selected home/away kit colors to the 2D player markers.
+	var kits: Dictionary = active_match_context.get("kits", {})
+	var home_primary: Color = kits.get("home_primary", Color(0.06, 0.78, 0.48))
+	var away_primary: Color = kits.get("active_away_primary", kits.get("away_primary", kits.get("away_default_primary", Color(0.92, 0.26, 0.30))))
+	if is_instance_valid(match_pitch) and match_pitch.has_method("set_kit_colors"):
+		match_pitch.set_kit_colors(home_primary, away_primary)
+
+	if is_instance_valid(pre_match_view):
+		pre_match_view.queue_free()
+	pre_match_view = null
+	pending_match_ended = false
+	overview_2d.show()
+	match_engine.start_match()
+	if hud and hud.has_method("hide_fulltime_summary"):
+		hud.hide_fulltime_summary()
+	if hud and hud.has_method("show_toast"):
+		hud.show_toast("KICK OFF! Career Match Started", 2.0)
+
+
+func _on_post_match_continue(_summary: Dictionary) -> void:
+	active_match_context.clear()
+	if is_instance_valid(career_shell):
+		career_shell.visible = true
+		career_shell.refresh_all_views()
+
+
 func _request_skip_match() -> void:
 	if not is_instance_valid(match_engine) or not match_engine.is_match_active():
 		return
@@ -115,6 +195,8 @@ func _request_next_match() -> void:
 		return
 
 	pending_match_ended = false
+	career_state = null
+	active_match_context.clear()
 	overview_2d.show()
 	match_engine.start_match()
 	if hud and hud.has_method("hide_fulltime_summary"):
@@ -136,11 +218,15 @@ func _on_match_ended(final_home: int, final_away: int) -> void:
 
 func _process_final_whistle(final_home: int, final_away: int) -> void:
 	pending_match_ended = false
-	# Commit result to CareerState (updates standings, finances, inbox)
-	if is_instance_valid(career_shell) and is_instance_valid(career_shell.career_state):
-		if career_shell.career_state.has_method("commit_match_result"):
-			career_shell.career_state.commit_match_result(match_engine)
+
+	if is_instance_valid(career_state) and not active_match_context.is_empty():
+		var summary: Dictionary = career_state.commit_match_result(match_engine)
+		if is_instance_valid(career_shell):
 			career_shell.refresh_all_views()
+		if is_instance_valid(post_match_modal):
+			post_match_modal.show_report(summary)
+		return
+
 	if hud and hud.has_method("show_fulltime_summary"):
 		hud.show_fulltime_summary(final_home, final_away)
 
