@@ -1,6 +1,8 @@
 extends Node2D
 
 var match_engine: MatchEngine
+var home_kit_primary_color: Color = Color(0.06, 0.78, 0.48)
+var away_kit_primary_color: Color = Color(0.92, 0.26, 0.30)
 var _backdrop_canvas: Control
 var _viewport_clip: PanelContainer
 var _pitch_canvas: Control
@@ -74,6 +76,13 @@ const CARRIER_ORIGIN_RADIUS_LOGICAL: float = 28.0
 const SHOT_SWIPE_SPEED_PX: float = 225.0
 const SHOT_BOX_SWIPE_SPEED_PX: float = 180.0
 const SHOT_MAX_HOLD_SEC: float = 1.35
+
+func set_kit_colors(home_primary: Color, away_primary: Color) -> void:
+	home_kit_primary_color = home_primary
+	away_kit_primary_color = away_primary
+	if is_instance_valid(_pitch_canvas):
+		_pitch_canvas.queue_redraw()
+
 
 func _ready() -> void:
 	var child_cam: Node = get_node_or_null("Camera2D")
@@ -1310,7 +1319,7 @@ func _draw_pitch_scene() -> void:
 		if is_gk:
 			fill_col = Color(0.95, 0.74, 0.16) if is_home else Color(0.18, 0.80, 0.68)
 		else:
-			fill_col = Color(0.06, 0.78, 0.48) if is_home else Color(0.92, 0.26, 0.30)
+			fill_col = home_kit_primary_color if is_home else away_kit_primary_color
 
 		if not is_waiting_for_kickoff_or_resume():
 			if i == ctrl_idx:
