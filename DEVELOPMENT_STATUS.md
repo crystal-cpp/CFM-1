@@ -2,11 +2,11 @@
 
 **Last Updated**: 2026-11-19
 
-**Reviewed Repository Baseline**: `018eef5e4d73a340c7714c164ca69104f5ce95b6` *(latest commit: responsive ScheduleView layout refinement)*
+**Reviewed Repository Baseline**: `9c7f03a63179f890d6498fccab912a7aca685351` *(latest reviewed commit: Phase 5B-2 competitions scope clarification; includes CareerShell refresh wiring)*
 
 **Current Phase**: Phase 5
 
-**Current Milestone**: **Phase 5B-2 — Schedule / competition UI implementation and responsive layout refinement; UCL fixtures deferred.**
+**Current Milestone**: **Phase 5B-2 — CompetitionsView integration, live refresh wiring, and responsive Schedule / competition UI refinement; UCL fixture generation deferred.**
 
 ## 1. Milestone & Subsystem Status Matrix
 
@@ -22,10 +22,10 @@
 | **Phase 3D: Phase 3 Acceptance Suite** | Both | Complete | Verified | DLL built and Suites 1–8 passing on desktop & narrow viewports. | 
 | **Phase 4A: C++ Squad, Tactics, GK Stats & Youth Bindings** | C++23 | **Complete** | **Pending Phase 4C** | Swaps, strict GK-only Slot `0` guard, GK 6-stat export (`Diving`, `Reflex`, `Positioning`, `Reaction`, `Kicking`, `Physical`), fit OVR, roles/numbers, tactics, youth training/aging/promo. | 
 | **Phase 4B: `SquadView`, `TacticsView`, `YouthView` & GK UI** | GDScript | **Complete** | **Pending Phase 4C** | Procedural views wired into `CareerShell.gd`, `SquadView` drag-and-drop/click-swap GK-only Slot `0` lock, and `PlayerProfileModal.gd` 6-stat GK display. | 
-| **Phase 4C: Phase 4 Build & Acceptance Suite** | Both | **Ready to Run** | **Active (Next)** | Recompile DLL + run Suites 1–12 + manual cross-viewport QA + `*_2` cleanup. | 
+| **Phase 4C: Phase 4 Build & Acceptance Suite** | Both | **Ready to Run** | **Pending / not current focus** | Recompile DLL + run Suites 1–12 + manual cross-viewport QA + `*_2` cleanup; Phase 5B-2 is the active milestone. | 
 | **Phase 5A: Season Calendar & ScheduleView Foundation** | Both | **Implemented in repository** | **Runtime QA pending** | July–May calendar, July pre-season friendlies, domestic league fixture generation, and tabbed ScheduleView (`My Club Fixtures | League Matchdays | Results Archive`). Latest commit `018eef5` adds responsive flow layouts and compact labels/tooltips. |
-| **Phase 5B-1: Domestic Competition Foundation** | Both | **In progress / verify implementation** | **Pending** | Domestic league competition and standings scope. Do not count UCL fixtures as delivered. |
-| **Phase 5B-2: Schedule / Competition UI Refinement** | GDScript | **Current milestone** | **Code committed; runtime QA pending** | Responsive ScheduleView header, navigation tabs, filters, matchday controls, result filters, and fixture cards. Verify desktop and narrow viewport behavior in Godot. **UCL fixtures are deferred to a later 5B milestone.** |
+| **Phase 5B-1: Domestic Competition Foundation** | Both | **UI implemented in repository** | **Runtime / data QA pending** | `CompetitionView.gd` builds the domestic league table and reads live `CareerState.get_league_standings()` data when available, with CSV fallback. This does not imply UCL fixtures are complete. |
+| **Phase 5B-2: CompetitionsView Integration & Responsive UI** | GDScript | **Current milestone; refresh wiring committed** | **Source inspection complete; runtime QA pending** | `CareerShell.gd` calls `_competitions_view.refresh_competitions()` when navigating to Competitions, in `refresh_all_views()`, and in `_on_standings_updated()` (commit `d43ba52`). `ScheduleView` responsive layout refinements are in `018eef5`. Verify live updates and desktop/narrow viewport behavior in Godot. UCL fixture generation, qualification and authoritative results remain deferred. |
 | **Phase 5C: Pre-Match Center & Post-Match Pipeline** | Both | **Planned** | **Scheduled after current 5B work** | Pre-match briefing, match launch payload, result commit, and post-match report pipeline. |
 | **Phase 5D: Historical 15 July 2006 `clubs.csv`, Player Metadata & Codes** | Both | **Partially Implemented** | **Build Verification Pending** | Runtime CSV loader now reads `Club`, `League`, `Nationality`, and `Playstyle 1..3`, and normalizes `RetirementAge = 37` in CSV import and career saves (`res://data/players_2006_with_price.csv` is the runtime dataset; `Players_Database/players_2006_with_price.csv` is retained as a separate preventive/source copy). Historical **15 July 2006** `clubs.csv` + kit colours, existing CSV `Stamina` attribute binding, New Career `League -> Club` selection, `Tuesday League` / `11A7` lock, and `NHHA72528` Codes modal remain planned. | 
 | **Phase 5E: `MatchEngine` Realism, Stamina Drain & Controls Cleanup** | Both | **Spec Ready** | **Scheduled (Phase 5)** | CSV `Stamina`-driven match drain, attribute-coupled attack/defense chances, scaled opponent defensive AI, balanced chance probability, real-time steering movement, and removal of Advanced Dribbling (`R`). | 
@@ -114,7 +114,7 @@
 
 ## 3. Upcoming Engineering Blueprints & Technical Dependencies (Phases 5–7)
 
-> **Status Note**: Phase 5A Schedule / season-calendar code is present in the repository, and the latest `018eef5` commit contains responsive ScheduleView layout changes. These changes have been inspected at source/diff level only; runtime behavior still requires Godot testing. Phase 5B-2 is the current milestone. UCL fixture generation and related competition features are deferred. Other Phase 5 systems below remain planned or partially implemented as individually stated; do not infer completion from roadmap specifications.
+> **Status Note**: Phase 5A Schedule / season-calendar code and the Phase 5B competitions UI are present in the repository. `CareerShell.gd` refresh wiring for `CompetitionsView` is committed in `d43ba52`; responsive ScheduleView layout changes are committed in `018eef5`. These changes have been inspected at source/diff level only; runtime behavior and data correctness still require Godot testing. Phase 5B-2 is the current milestone. Authoritative UCL fixture generation and related competition progression remain deferred. Other Phase 5 systems below remain planned or partially implemented as individually stated; do not infer completion from roadmap specifications.
 
 ### Phase 5A–5B — Season Calendar Cycle & UEFA Champions League Specification
 1. **July–May Season Calendar (`src/CareerState.cpp` & `demo/ScheduleView.gd`)**:
