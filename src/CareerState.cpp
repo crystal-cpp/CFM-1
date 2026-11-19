@@ -30,12 +30,66 @@ static int days_in_month(int year, int month) {
 	return 31;
 }
 
+static void add_days_to_ymd(int &year, int &month, int &day, int delta_days) {
+	while (delta_days > 0) {
+		int dim = days_in_month(year, month);
+		int rem = dim - day;
+		if (delta_days <= rem) {
+			day += delta_days;
+			return;
+		}
+		delta_days -= (rem + 1);
+		day = 1;
+		month++;
+		if (month > 12) {
+			month = 1;
+			year++;
+		}
+	}
+}
+
+static std::string format_ymd_iso(int year, int month, int day) {
+	std::ostringstream ss;
+	ss << year << "-"
+	   << std::setw(2) << std::setfill('0') << month << "-"
+	   << std::setw(2) << std::setfill('0') << day;
+	return ss.str();
+}
+
+static int64_t civil_to_days(int y, int m, int d) {
+	y -= m <= 2;
+	const int era = (y >= 0 ? y : y - 399) / 400;
+	const unsigned yoe = static_cast<unsigned>(y - era * 400);
+	const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+	const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+	return static_cast<int64_t>(era) * 146097 + static_cast<int64_t>(doe) - 719468;
+}
+
 static const char *DEFAULT_CLUB_NAMES[16] = {
 	"Arsenal", "Chelsea", "Manchester United", "Liverpool",
 	"Barcelona", "Real Madrid", "AC Milan", "Juventus",
 	"Inter Milan", "Bayern Munich", "Lyon", "AS Roma",
 	"Valencia", "Porto", "Ajax", "Benfica"
 };
+
+static const char *DEFAULT_STADIUM_NAMES[16] = {
+	"Emirates Stadium", "Stamford Bridge", "Old Trafford", "Anfield",
+	"Camp Nou", "Santiago Bernabeu", "San Siro", "Allianz Stadium",
+	"Giuseppe Meazza", "Allianz Arena", "Groupama Stadium", "Stadio Olimpico",
+	"Mestalla", "Estadio do Dragao", "Johan Cruyff Arena", "Estadio da Luz"
+};
+
+static bool is_classic_derby_pair(const std::string &a, const std::string &b) {
+	auto match_pair = [&](const char *x, const char *y) {
+		return (a == x && b == y) || (a == y && b == x);
+	};
+	return match_pair("Arsenal", "Chelsea") ||
+	       match_pair("Manchester United", "Liverpool") ||
+	       match_pair("Barcelona", "Real Madrid") ||
+	       match_pair("AC Milan", "Inter Milan") ||
+	       match_pair("Juventus", "Inter Milan") ||
+	       match_pair("Porto", "Benfica");
+}
 
 } // namespace
 
@@ -99,14 +153,10 @@ static void auto_pick_best_xi_433(Team &team) {
 		}
 	};
 
-	// Pass 1: Exact position matches (GK -> GK, LB -> LB, CB -> CB, ST -> ST, etc.)
 	for (int s = 0; s < 11; s++) pick_for_slot(s, 100);
-	// Pass 2: Compatible secondary positions (CAM -> CM/LW/RW, CF -> ST, etc.)
 	for (int s = 0; s < 11; s++) pick_for_slot(s, 95);
-	// Pass 3: Best remaining outfielder (still blocking outfielders from GK slot 0)
 	for (int s = 0; s < 11; s++) pick_for_slot(s, 80);
 
-	// Rebuild roster so indices 0..10 are Starting XI in exact slot order, followed by Bench/Reserves
 	std::vector<std::shared_ptr<Player>> ordered_roster;
 	std::vector<std::shared_ptr<Player>> final_xi;
 	ordered_roster.reserve(roster.size());
@@ -135,11 +185,13 @@ void CareerState::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("start_new_career", "club_id", "manager_name", "start_year"), &CareerState::start_new_career, DEFVAL(2026));
 	ClassDB::bind_method(D_METHOD("is_career_active"), &CareerState::is_career_active);
 	ClassDB::bind_method(D_METHOD("advance_day", "days"), &CareerState::advance_day, DEFVAL(1));
+	ClassDB::bind_method(D_METHOD("advance_to_next_matchday"), &CareerState::advance_to_next_matchday);
 
 	// Top Header & Manager Career Queries
 	ClassDB::bind_method(D_METHOD("get_managed_club_id"), &CareerState::get_managed_club_id);
 	ClassDB::bind_method(D_METHOD("get_current_date_iso"), &CareerState::get_current_date_iso);
 	ClassDB::bind_method(D_METHOD("get_season_label"), &CareerState::get_season_label);
+	ClassDB::bind_method(D_METHOD("get_season_phase_info"), &CareerState::get_season_phase_info);
 	ClassDB::bind_method(D_METHOD("get_managed_club_league_rank"), &CareerState::get_managed_club_league_rank);
 	ClassDB::bind_method(D_METHOD("get_header_summary"), &CareerState::get_header_summary);
 	ClassDB::bind_method(D_METHOD("get_manager_profile"), &CareerState::get_manager_profile);
@@ -148,6 +200,13 @@ void CareerState::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_league_standings"), &CareerState::get_league_standings);
 	ClassDB::bind_method(D_METHOD("get_next_fixture"), &CareerState::get_next_fixture);
 	ClassDB::bind_method(D_METHOD("get_club_info", "club_id"), &CareerState::get_club_info);
+
+	// Phase 5A / 5B: Schedule & Fixture Queries
+	ClassDB::bind_method(D_METHOD("get_fixtures", "competition", "matchday", "club_id"),
+			&CareerState::get_fixtures, DEFVAL(""), DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("get_fixture_details", "fixture_id"), &CareerState::get_fixture_details);
+	ClassDB::bind_method(D_METHOD("get_total_matchdays", "competition"), &CareerState::get_total_matchdays, DEFVAL(""));
+	ClassDB::bind_method(D_METHOD("get_current_matchday"), &CareerState::get_current_matchday);
 
 	// Subsystem Bridges
 	ClassDB::bind_method(D_METHOD("get_club_squad", "club_id"), &CareerState::get_club_squad);
@@ -220,18 +279,21 @@ CareerState::CareerState() {
 CareerState::~CareerState() = default;
 
 std::string CareerState::_format_date_iso() const {
-	std::ostringstream ss;
-	ss << _year << "-"
-	   << std::setw(2) << std::setfill('0') << _month << "-"
-	   << std::setw(2) << std::setfill('0') << _day;
-	return ss.str();
+	return format_ymd_iso(_year, _month, _day);
 }
 
 std::string CareerState::_format_season_label() const {
 	std::ostringstream ss;
-	int next_year = (_year % 100) + 1;
-	ss << _year << "/" << std::setw(2) << std::setfill('0') << next_year;
+	int next_year = (_season_start_year % 100) + 1;
+	ss << _season_start_year << "/" << std::setw(2) << std::setfill('0') << next_year;
 	return ss.str();
+}
+
+int32_t CareerState::_compute_season_week() const {
+	int64_t start_days = civil_to_days(_season_start_year, 7, 1);
+	int64_t now_days = civil_to_days(_year, _month, _day);
+	int64_t diff = std::max<int64_t>(0, now_days - start_days);
+	return static_cast<int32_t>(diff / 7) + 1;
 }
 
 String CareerState::get_current_date_iso() const {
@@ -242,6 +304,158 @@ String CareerState::get_season_label() const {
 	return String(_format_season_label().c_str());
 }
 
+Dictionary CareerState::get_season_phase_info() const {
+	Dictionary d;
+	int32_t week = _compute_season_week();
+	d["week"] = week;
+	d["season_label"] = get_season_label();
+	d["current_date"] = get_current_date_iso();
+	d["current_matchday"] = get_current_matchday();
+	d["total_matchdays"] = get_total_matchdays("Premier Division");
+	d["friendlies_month"] = String("July");
+	d["league_start_date"] = String(format_ymd_iso(_season_start_year, 8, 15).c_str());
+	d["season_end_date"] = String(format_ymd_iso(_season_start_year + 1, 5, 31).c_str());
+
+	// Phase classification:
+	// Weeks 1-2 (July 1 - Aug 14): Pre-season window (friendlies in July, Matchday 1 starts Week 3 / Mid-August)
+	// Mid-August -> May 31: Competitive league season
+	// June 1 -> June 30: Off-season / summer break
+	if (_month == 6) {
+		d["phase_code"] = String("OFF_SEASON");
+		d["phase_label"] = String("End of Season • Summer Break (June)");
+	} else if (week <= 2 || (_year == _season_start_year && (_month == 7 || (_month == 8 && _day < 15)))) {
+		d["phase_code"] = String("PRE_SEASON");
+		d["phase_label"] = String("Pre-Season Window • Weeks 1–2 (July Friendlies)");
+	} else {
+		d["phase_code"] = String("LEAGUE_SEASON");
+		d["phase_label"] = String("Competitive Season • Mid-Aug to May");
+	}
+	return d;
+}
+
+void CareerState::_generate_season_fixtures(int32_t start_year) {
+	_fixtures.clear();
+
+	const int teams_count = 16;
+	std::vector<int> team_ids;
+	team_ids.reserve(teams_count);
+	for (int i = 1; i <= teams_count; i++) {
+		team_ids.push_back(i);
+	}
+
+	int fix_id = 1;
+
+	// -------------------------------------------------------------------------
+	// 1. PRE-SEASON WINDOW (Weeks 1–2 in July: Friendly 1 on Jul 8, Friendly 2 on Jul 15)
+	//    Matchday 1 of the competitive league begins on Week 3 (Mid-August: Aug 15).
+	// -------------------------------------------------------------------------
+	for (int pre_wk = 1; pre_wk <= 2; pre_wk++) {
+		int f_day = (pre_wk == 1) ? 8 : 15;
+		std::string f_date = format_ymd_iso(start_year, 7, f_day);
+
+		for (int m = 0; m < teams_count / 2; m++) {
+			int idx_a = (m * 2 + (pre_wk - 1)) % teams_count;
+			int idx_b = (idx_a + 1 + (pre_wk * 2)) % teams_count;
+			if (idx_a == idx_b) {
+				idx_b = (idx_a + 1) % teams_count;
+			}
+			int home = team_ids[idx_a];
+			int away = team_ids[idx_b];
+			if (pre_wk == 2) {
+				std::swap(home, away);
+			}
+
+			FixtureRecord fix;
+			fix.fixture_id = fix_id++;
+			fix.week = pre_wk;
+			fix.matchday = 0; // 0 indicates Pre-Season Friendly before League MD 1
+			fix.date_iso = f_date;
+			fix.competition = "Pre-Season Friendly";
+			fix.home_club_id = home;
+			fix.away_club_id = away;
+			fix.home_goals = -1;
+			fix.away_goals = -1;
+			fix.played = false;
+			fix.is_friendly = true;
+			if (home >= 1 && home <= 16) {
+				fix.stadium = DEFAULT_STADIUM_NAMES[home - 1];
+			}
+			fix.match_importance = "FRIENDLY";
+			_fixtures.push_back(fix);
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// 2. COMPETITIVE LEAGUE SEASON (Week 3+ • Mid-August to May)
+	//    Full Double Round-Robin (30 Matchdays):
+	//      - Matchday 1 kicks off Mid-August (start_year-08-15, Week 3)
+	//      - Matchday 30 concludes in May ((start_year + 1)-05-23, Week 32)
+	// -------------------------------------------------------------------------
+	std::vector<std::vector<std::pair<int, int>>> first_half_pairs;
+	std::vector<int> rot = team_ids;
+	const int rounds_per_half = teams_count - 1; // 15 rounds per half -> 30 matchdays total
+
+	for (int round = 0; round < rounds_per_half; round++) {
+		std::vector<std::pair<int, int>> round_matches;
+		for (int m = 0; m < teams_count / 2; m++) {
+			int home = rot[m];
+			int away = rot[teams_count - 1 - m];
+			if (m == 0 && (round % 2 == 1)) {
+				std::swap(home, away);
+			}
+			round_matches.emplace_back(home, away);
+		}
+		first_half_pairs.push_back(std::move(round_matches));
+
+		int last = rot.back();
+		rot.pop_back();
+		rot.insert(rot.begin() + 1, last);
+	}
+
+	const int total_matchdays = rounds_per_half * 2; // 30 matchdays
+	const int64_t md1_days = civil_to_days(start_year, 8, 15);
+	const int64_t md_end_days = civil_to_days(start_year + 1, 5, 23);
+	const int span_days = static_cast<int>(md_end_days - md1_days); // 281 days
+
+	for (int md_idx = 0; md_idx < total_matchdays; md_idx++) {
+		int matchday = md_idx + 1;
+		int week = 3 + md_idx; // Matchday 1 starts on Week 3
+		int day_offset = static_cast<int>(std::llround((static_cast<double>(md_idx) * span_days) / (total_matchdays - 1)));
+
+		int y = start_year;
+		int m = 8;
+		int d = 15;
+		add_days_to_ymd(y, m, d, day_offset);
+		std::string md_date = format_ymd_iso(y, m, d);
+
+		bool is_second_half = (md_idx >= rounds_per_half);
+		int base_round = md_idx % rounds_per_half;
+
+		for (const auto &pair : first_half_pairs[base_round]) {
+			int home = is_second_half ? pair.second : pair.first;
+			int away = is_second_half ? pair.first : pair.second;
+
+			FixtureRecord fix;
+			fix.fixture_id = fix_id++;
+			fix.week = week;
+			fix.matchday = matchday;
+			fix.date_iso = md_date;
+			fix.competition = "Premier Division";
+			fix.home_club_id = home;
+			fix.away_club_id = away;
+			fix.home_goals = -1;
+			fix.away_goals = -1;
+			fix.played = false;
+			fix.is_friendly = false;
+			if (home >= 1 && home <= 16) {
+				fix.stadium = DEFAULT_STADIUM_NAMES[home - 1];
+			}
+			fix.match_importance = _classify_match_importance(home, away, matchday, fix.competition);
+			_fixtures.push_back(fix);
+		}
+	}
+}
+
 void CareerState::_seed_default_objectives() {
 	_board_objectives.clear();
 
@@ -249,7 +463,7 @@ void CareerState::_seed_default_objectives() {
 	obj1.id = 1;
 	obj1.category = "LEAGUE";
 	obj1.title = "Top 4 Finish";
-	obj1.description = "Secure qualification for continental competition by finishing in the top 4.";
+	obj1.description = "Secure qualification for continental competition by finishing in the top 4 by May.";
 	obj1.target_value = 4;
 	obj1.current_value = get_managed_club_league_rank();
 	obj1.reward_amount = 5000000;
@@ -299,7 +513,8 @@ void CareerState::_recalculate_standings() {
 	}
 
 	for (const auto &fix : _fixtures) {
-		if (!fix.played) continue;
+		// Pre-season friendlies do not award competitive league points
+		if (!fix.played || fix.is_friendly) continue;
 		if (club_to_idx.find(fix.home_club_id) == club_to_idx.end() ||
 			club_to_idx.find(fix.away_club_id) == club_to_idx.end()) {
 			continue;
@@ -350,6 +565,175 @@ int32_t CareerState::get_managed_club_league_rank() const {
 		}
 	}
 	return 1;
+}
+
+std::string CareerState::_classify_match_importance(int32_t home_id, int32_t away_id, int32_t matchday, const std::string &competition) const {
+	if (competition.find("Friendly") != std::string::npos || matchday <= 0) {
+		return "FRIENDLY";
+	}
+	if (competition.find("Final") != std::string::npos || competition.find("Cup") != std::string::npos) {
+		return "CUP_FINAL";
+	}
+	auto h_it = _clubs.find(home_id);
+	auto a_it = _clubs.find(away_id);
+	std::string h_name = (h_it != _clubs.end() && h_it->second) ? h_it->second->GetName() : "";
+	std::string a_name = (a_it != _clubs.end() && a_it->second) ? a_it->second->GetName() : "";
+
+	if (is_classic_derby_pair(h_name, a_name)) {
+		return "RIVALRY_DERBY";
+	}
+
+	int h_rank = 16;
+	int a_rank = 16;
+	for (size_t i = 0; i < _standings.size(); i++) {
+		if (_standings[i].club_id == home_id) h_rank = static_cast<int>(i + 1);
+		if (_standings[i].club_id == away_id) a_rank = static_cast<int>(i + 1);
+	}
+
+	if (matchday >= 26 && (h_rank <= 2 || a_rank <= 2)) {
+		return "TITLE_DECIDER";
+	}
+	if (h_rank <= 4 && a_rank <= 4) {
+		return "TOP_CLASH";
+	}
+	return "STANDARD";
+}
+
+void CareerState::_populate_fixture_goal_events(FixtureRecord &fix) {
+	fix.events.clear();
+	if (!fix.played) return;
+
+	auto assign_team_goals = [&](int32_t club_id, int32_t goals_count, int32_t seed_offset) {
+		if (goals_count <= 0) return;
+		auto c_it = _clubs.find(club_id);
+		if (c_it == _clubs.end() || !c_it->second) return;
+
+		std::vector<std::shared_ptr<Player>> outfield;
+		for (const auto &p : c_it->second->GetStartingXI()) {
+			if (p && p->GetPosition() != Position::GK) {
+				outfield.push_back(p);
+			}
+		}
+		if (outfield.empty()) return;
+
+		std::sort(outfield.begin(), outfield.end(), [](const std::shared_ptr<Player> &a, const std::shared_ptr<Player> &b) {
+			int sa = a->GetAttributes().Shooting * 2 + a->GetAttributes().Dribbling;
+			int sb = b->GetAttributes().Shooting * 2 + b->GetAttributes().Dribbling;
+			return sa > sb;
+		});
+
+		size_t pool_size = std::min<size_t>(outfield.size(), 6);
+		for (int g = 0; g < goals_count; g++) {
+			int hash = (fix.fixture_id * 13) + (g * 29) + seed_offset;
+			const auto &scorer = outfield[hash % pool_size];
+			scorer->SetGoals(scorer->GetGoals() + 1);
+
+			MatchEventRecord ev;
+			ev.minute = std::clamp(6 + ((hash * 7) % 84), 2, 90);
+			ev.club_id = club_id;
+			ev.player_id = scorer->GetId();
+			ev.player_name = scorer->GetName();
+			ev.type = "GOAL";
+
+			if (outfield.size() >= 2 && (hash % 4) != 0) {
+				size_t assister_idx = (hash + 1) % std::min<size_t>(outfield.size(), 8);
+				if (outfield[assister_idx]->GetId() == scorer->GetId()) {
+					assister_idx = (assister_idx + 1) % outfield.size();
+				}
+				const auto &assister = outfield[assister_idx];
+				assister->SetAssists(assister->GetAssists() + 1);
+				ev.assist_player_id = assister->GetId();
+				ev.assist_player_name = assister->GetName();
+			}
+
+			fix.events.push_back(ev);
+		}
+	};
+
+	assign_team_goals(fix.home_club_id, fix.home_goals, 3);
+	assign_team_goals(fix.away_club_id, fix.away_goals, 11);
+
+	std::sort(fix.events.begin(), fix.events.end(), [](const MatchEventRecord &a, const MatchEventRecord &b) {
+		return a.minute < b.minute;
+	});
+
+	if (fix.attendance <= 0) {
+		int base_att = fix.is_friendly ? 26000 : ((fix.match_importance == "RIVALRY_DERBY" || fix.match_importance == "TITLE_DECIDER") ? 56000 : 42000);
+		fix.attendance = base_att + ((fix.fixture_id * 733) % 14000);
+	}
+}
+
+Dictionary CareerState::_fixture_to_dict(const FixtureRecord &fix, bool include_events) const {
+	Dictionary d;
+	d["fixture_id"] = fix.fixture_id;
+	d["week"] = fix.week;
+	d["matchday"] = fix.matchday;
+	d["date_iso"] = String(fix.date_iso.c_str());
+	d["competition"] = String(fix.competition.c_str());
+	d["is_friendly"] = fix.is_friendly;
+	d["season_phase"] = fix.is_friendly ? String("PRE_SEASON") : String("LEAGUE");
+	d["home_club_id"] = fix.home_club_id;
+	d["away_club_id"] = fix.away_club_id;
+
+	auto h_it = _clubs.find(fix.home_club_id);
+	auto a_it = _clubs.find(fix.away_club_id);
+	d["home_club_name"] = (h_it != _clubs.end() && h_it->second) ? String(h_it->second->GetName().c_str()) : String("Home");
+	d["away_club_name"] = (a_it != _clubs.end() && a_it->second) ? String(a_it->second->GetName().c_str()) : String("Away");
+	d["home_ovr"] = (h_it != _clubs.end() && h_it->second) ? h_it->second->GetTeamRating() : 75;
+	d["away_ovr"] = (a_it != _clubs.end() && a_it->second) ? a_it->second->GetTeamRating() : 75;
+	d["home_formation"] = (h_it != _clubs.end() && h_it->second) ? String(h_it->second->Formation.c_str()) : String("4-3-3");
+	d["away_formation"] = (a_it != _clubs.end() && a_it->second) ? String(a_it->second->Formation.c_str()) : String("4-3-3");
+
+	d["home_goals"] = fix.home_goals;
+	d["away_goals"] = fix.away_goals;
+	d["played"] = fix.played;
+
+	bool is_user = (fix.home_club_id == _managed_club_id || fix.away_club_id == _managed_club_id);
+	bool is_home = (fix.home_club_id == _managed_club_id);
+	d["is_user_match"] = is_user;
+	d["is_home"] = is_home;
+
+	String user_res = "";
+	if (fix.played && is_user) {
+		int ug = is_home ? fix.home_goals : fix.away_goals;
+		int og = is_home ? fix.away_goals : fix.home_goals;
+		if (ug > og) user_res = "W";
+		else if (ug < og) user_res = "L";
+		else user_res = "D";
+	}
+	d["user_result"] = user_res;
+
+	std::string stad = fix.stadium;
+	if (stad.empty() && fix.home_club_id >= 1 && fix.home_club_id <= 16) {
+		stad = DEFAULT_STADIUM_NAMES[fix.home_club_id - 1];
+	}
+	d["stadium"] = String(stad.c_str());
+	d["attendance"] = fix.attendance;
+
+	std::string imp = fix.match_importance.empty()
+		? _classify_match_importance(fix.home_club_id, fix.away_club_id, fix.matchday, fix.competition)
+		: fix.match_importance;
+	d["match_importance"] = String(imp.c_str());
+
+	if (include_events) {
+		Array ev_arr;
+		for (const auto &ev : fix.events) {
+			Dictionary ed;
+			ed["minute"] = ev.minute;
+			ed["club_id"] = ev.club_id;
+			auto ec_it = _clubs.find(ev.club_id);
+			ed["club_name"] = (ec_it != _clubs.end() && ec_it->second) ? String(ec_it->second->GetName().c_str()) : String("Club");
+			ed["player_id"] = ev.player_id;
+			ed["player_name"] = String(ev.player_name.c_str());
+			ed["assist_player_id"] = ev.assist_player_id;
+			ed["assist_player_name"] = String(ev.assist_player_name.c_str());
+			ed["type"] = String(ev.type.c_str());
+			ev_arr.append(ed);
+		}
+		d["events"] = ev_arr;
+	}
+
+	return d;
 }
 
 Dictionary CareerState::_player_to_dict(const std::shared_ptr<Player> &p) const {
@@ -478,7 +862,6 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 		_standings.push_back(row);
 	}
 
-// Bucket loaded CSV players by positional group so every club gets a balanced squad (GK, DEF, MID, FWD)
 	std::vector<Player> gk_pool, def_pool, mid_pool, fwd_pool;
 	if (db_loaded) {
 		for (const auto &src : _player_db->get_raw_players()) {
@@ -500,7 +883,6 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 	for (int i = 1; i <= 16; i++) {
 		auto &team = _clubs[i];
 
-		// Deal 2 GK + 6 DEF + 5 MID + 5 FWD = 18 players per club
 		for (int p = 0; p < 18; p++) {
 			int pid = _next_player_id++;
 			std::shared_ptr<Player> player_ptr;
@@ -538,7 +920,7 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 
 			if (!picked) {
 				PlayerAttributes attrs{ 68, 65, 70, 68, 65, 70 };
-				player_ptr = std::make_shared<Player>("Player " + std::to_string(pid), fallback_pos, attrs, 24, 78, 16, 36);
+				player_ptr = std::make_shared<Player>("Player " + std::to_string(pid), fallback_pos, attrs, 24, 78, 16, 37);
 			}
 
 			player_ptr->SetId(pid);
@@ -552,7 +934,6 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 			team->AddPlayer(player_ptr);
 		}
 
-		// Sort Starting XI into true 4-3-3 positions (GK at slot 0, defenders at 1..4, midfielders at 5..7, forwards at 8..10)
 		auto_pick_best_xi_433(*team);
 
 		const auto &xi = team->GetStartingXI();
@@ -598,7 +979,7 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 	for (const auto &ys : youth_seeds) {
 		int y_id = _next_player_id++;
 		PlayerAttributes attrs{ ys.ovr_seed, ys.ovr_seed, ys.ovr_seed, ys.ovr_seed, ys.ovr_seed, ys.ovr_seed };
-		auto prospect = std::make_shared<Player>(ys.name, ys.pos, attrs, 15, ys.pot, 16, 36);
+		auto prospect = std::make_shared<Player>(ys.name, ys.pos, attrs, 15, ys.pot, 16, 37);
 		prospect->SetId(y_id);
 		prospect->SetClubId(-1);
 		prospect->SetCondition(100);
@@ -613,56 +994,13 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 	_youth_academy->HireCoach(Coach{ "Tran Van Phuc", 75, 4500.0, "Attacking" });
 	_youth_academy->HireCoach(Coach{ "Nguyen Sy Hien", 72, 3800.0, "Defending" });
 
-	int teams_count = 16;
-	std::vector<int> team_ids;
-	for (int i = 1; i <= teams_count; i++) team_ids.push_back(i);
-
-	int fix_id = 1;
-	for (int round = 0; round < teams_count - 1; round++) {
-		int matchday = round + 1;
-		int match_month = 8 + (round / 4);
-		int match_day = 1 + ((round % 4) * 7);
-		if (match_month > 12) {
-			match_month -= 12;
-		}
-
-		std::ostringstream ds;
-		ds << _year << "-"
-		   << std::setw(2) << std::setfill('0') << match_month << "-"
-		   << std::setw(2) << std::setfill('0') << match_day;
-
-		for (int m = 0; m < teams_count / 2; m++) {
-			int home = team_ids[m];
-			int away = team_ids[teams_count - 1 - m];
-
-			if (round % 2 == 1) {
-				std::swap(home, away);
-			}
-
-			FixtureRecord fix;
-			fix.fixture_id = fix_id++;
-			fix.matchday = matchday;
-			fix.date_iso = ds.str();
-			fix.competition = "Premier Division";
-			fix.home_club_id = home;
-			fix.away_club_id = away;
-			fix.home_goals = -1;
-			fix.away_goals = -1;
-			fix.played = false;
-			_fixtures.push_back(fix);
-		}
-
-		int last = team_ids.back();
-		team_ids.pop_back();
-		team_ids.insert(team_ids.begin() + 1, last);
-	}
-
+	_generate_season_fixtures(p_start_year);
 	_seed_default_objectives();
 	_recalculate_standings();
 
 	push_inbox_message("BOARD", "Welcome to the Club!",
 		"The Board of Directors welcomes manager " + String(_manager.manager_name.c_str()) +
-		". We expect full dedication towards our season targets.", "dashboard", _managed_club_id);
+		". Pre-season friendlies take place across Weeks 1–2 in July before the league kicks off in Mid-August.", "schedule", _managed_club_id);
 
 	_career_active = true;
 
@@ -689,6 +1027,11 @@ void CareerState::_advance_single_day() {
 			_process_annual_rollover();
 		}
 	}
+
+	// Official End of Competitive Season on May 31
+	if (_month == 5 && _day == 31) {
+		_process_end_of_season_may();
+	}
 }
 
 void CareerState::_simulate_ai_fixtures_for_current_date() {
@@ -712,6 +1055,19 @@ void CareerState::_simulate_ai_fixtures_for_current_date() {
 		fix.home_goals = h_goals;
 		fix.away_goals = a_goals;
 		fix.played = true;
+
+		if (home_it != _clubs.end() && home_it->second) {
+			for (auto &p : home_it->second->GetStartingXI()) {
+				if (p) p->RecordAppearance();
+			}
+		}
+		if (away_it != _clubs.end() && away_it->second) {
+			for (auto &p : away_it->second->GetStartingXI()) {
+				if (p) p->RecordAppearance();
+			}
+		}
+
+		_populate_fixture_goal_events(fix);
 	}
 
 	_recalculate_standings();
@@ -732,7 +1088,6 @@ void CareerState::_process_weekly_progression() {
 		}
 	}
 
-	// Weekly youth training XP (without aging)
 	if (_youth_academy) {
 		_youth_academy->ProcessWeeklyTraining();
 		emit_signal("youth_updated");
@@ -741,8 +1096,40 @@ void CareerState::_process_weekly_progression() {
 	emit_signal("balance_changed", _finances.total_balance, _finances.transfer_budget, _finances.wage_budget);
 }
 
+void CareerState::_process_end_of_season_may() {
+	_recalculate_standings();
+	int32_t final_rank = get_managed_club_league_rank();
+	std::string champion_name = _standings.empty() ? "Unknown" : _standings[0].club_name;
+
+	if (!_standings.empty() && _standings[0].club_id == _managed_club_id) {
+		_manager.trophies_won++;
+		_manager.reputation = std::min(100, _manager.reputation + 8);
+	}
+
+	for (auto &obj : _board_objectives) {
+		if (obj.category == "LEAGUE" && !obj.is_completed) {
+			obj.current_value = final_rank;
+			if (final_rank <= obj.target_value) {
+				obj.is_completed = true;
+				_finances.total_balance += obj.reward_amount;
+			}
+		}
+	}
+
+	push_inbox_message("BOARD", "May End-of-Season Review (" + get_season_label() + ")",
+		"The " + get_season_label() + " competitive campaign has concluded in May. Champions: " +
+		String(champion_name.c_str()) + ". Your club finished Rank #" + String::num_int64(final_rank) +
+		". Pre-season friendlies begin in July.",
+		"schedule", _managed_club_id);
+
+	emit_signal("balance_changed", _finances.total_balance, _finances.transfer_budget, _finances.wage_budget);
+}
+
 void CareerState::_process_annual_rollover() {
 	_manager.seasons_managed++;
+	_season_start_year = _year;
+	_current_matchday = 1;
+
 	for (auto &pair : _clubs) {
 		if (pair.second) {
 			pair.second->ProcessEndOfWeekOrSeason();
@@ -752,9 +1139,15 @@ void CareerState::_process_annual_rollover() {
 		_youth_academy->ProcessSeasonDevelopment();
 		emit_signal("youth_updated");
 	}
-	push_inbox_message("YOUTH", "Annual Academy Intake & Aging Report",
-		"Season rollover complete: senior players and youth prospects have aged +1 year and completed annual potential evaluations.",
-		"youth", -1);
+
+	// Regenerate new season schedule (July Friendlies + Mid-August to May League Fixtures)
+	_generate_season_fixtures(_season_start_year);
+	_recalculate_standings();
+	_seed_default_objectives();
+
+	push_inbox_message("YOUTH", "New Season Rollover & Pre-Season Schedule (" + get_season_label() + ")",
+		"Season " + get_season_label() + " has begun! Players aged +1 year, and the July Pre-Season Friendlies + Mid-August to May league calendar are now live.",
+		"schedule", -1);
 }
 
 void CareerState::advance_day(int32_t p_days) {
@@ -773,6 +1166,35 @@ void CareerState::advance_day(int32_t p_days) {
 	emit_signal("date_changed", get_current_date_iso());
 }
 
+int32_t CareerState::advance_to_next_matchday() {
+	if (!_career_active) return 0;
+
+	std::string target_date;
+	for (const auto &fix : _fixtures) {
+		if (!fix.played && (fix.home_club_id == _managed_club_id || fix.away_club_id == _managed_club_id)) {
+			target_date = fix.date_iso;
+			break;
+		}
+	}
+	if (target_date.empty()) return 0;
+
+	int32_t days_advanced = 0;
+	const int32_t safety_cap = 365;
+	while (_format_date_iso() < target_date && days_advanced < safety_cap) {
+		_advance_single_day();
+		_simulate_ai_fixtures_for_current_date();
+		if (_day % 7 == 0) {
+			_process_weekly_progression();
+		}
+		days_advanced++;
+	}
+
+	if (days_advanced > 0) {
+		emit_signal("date_changed", get_current_date_iso());
+	}
+	return days_advanced;
+}
+
 Dictionary CareerState::get_header_summary() const {
 	Dictionary d;
 	d["managed_club_id"] = _managed_club_id;
@@ -782,6 +1204,7 @@ Dictionary CareerState::get_header_summary() const {
 	d["manager_name"] = String(_manager.manager_name.c_str());
 	d["season_label"] = get_season_label();
 	d["current_date"] = get_current_date_iso();
+	d["season_week"] = _compute_season_week();
 	d["league_rank"] = get_managed_club_league_rank();
 	d["total_balance"] = _finances.total_balance;
 	d["transfer_budget"] = _finances.transfer_budget;
@@ -858,23 +1281,59 @@ Dictionary CareerState::get_next_fixture() const {
 	for (const auto &fix : _fixtures) {
 		if (fix.played) continue;
 		if (fix.home_club_id == _managed_club_id || fix.away_club_id == _managed_club_id) {
-			Dictionary d;
-			d["fixture_id"] = fix.fixture_id;
-			d["matchday"] = fix.matchday;
-			d["date_iso"] = String(fix.date_iso.c_str());
-			d["competition"] = String(fix.competition.c_str());
-			d["home_club_id"] = fix.home_club_id;
-			d["away_club_id"] = fix.away_club_id;
-
-			auto h_it = _clubs.find(fix.home_club_id);
-			auto a_it = _clubs.find(fix.away_club_id);
-			d["home_club_name"] = (h_it != _clubs.end() && h_it->second) ? String(h_it->second->GetName().c_str()) : String("Home");
-			d["away_club_name"] = (a_it != _clubs.end() && a_it->second) ? String(a_it->second->GetName().c_str()) : String("Away");
-			d["is_home"] = (fix.home_club_id == _managed_club_id);
-			return d;
+			return _fixture_to_dict(fix, false);
 		}
 	}
 	return Dictionary();
+}
+
+TypedArray<Dictionary> CareerState::get_fixtures(const String &p_competition, int32_t p_matchday, int32_t p_club_id) const {
+	TypedArray<Dictionary> list;
+	std::string comp_filter = p_competition.strip_edges().utf8().get_data();
+
+	for (const auto &fix : _fixtures) {
+		if (!comp_filter.empty() && comp_filter != "ALL" && fix.competition != comp_filter) {
+			continue;
+		}
+		if (p_matchday >= 0 && fix.matchday != p_matchday) {
+			continue;
+		}
+		if (p_club_id > 0 && fix.home_club_id != p_club_id && fix.away_club_id != p_club_id) {
+			continue;
+		}
+		list.append(_fixture_to_dict(fix, false));
+	}
+	return list;
+}
+
+Dictionary CareerState::get_fixture_details(int32_t p_fixture_id) const {
+	for (const auto &fix : _fixtures) {
+		if (fix.fixture_id == p_fixture_id) {
+			return _fixture_to_dict(fix, true);
+		}
+	}
+	return Dictionary();
+}
+
+int32_t CareerState::get_total_matchdays(const String &p_competition) const {
+	std::string comp_filter = p_competition.strip_edges().utf8().get_data();
+	int32_t max_md = 1;
+	for (const auto &fix : _fixtures) {
+		if (!comp_filter.empty() && comp_filter != "ALL" && fix.competition != comp_filter) {
+			continue;
+		}
+		max_md = std::max(max_md, fix.matchday);
+	}
+	return max_md;
+}
+
+int32_t CareerState::get_current_matchday() const {
+	for (const auto &fix : _fixtures) {
+		if (!fix.played && !fix.is_friendly && (fix.home_club_id == _managed_club_id || fix.away_club_id == _managed_club_id)) {
+			return fix.matchday;
+		}
+	}
+	return get_total_matchdays("Premier Division");
 }
 
 Dictionary CareerState::get_club_info(int32_t p_club_id) const {
@@ -1009,7 +1468,7 @@ bool CareerState::set_starting_xi(int32_t p_club_id, const PackedInt32Array &p_x
 
 	for (int i = 0; i < 11; i++) {
 		int32_t pid = p_xi_ids[i];
-		if (seen.count(pid)) return false; // Prevent duplicates
+		if (seen.count(pid)) return false;
 		seen.insert(pid);
 
 		auto pit = _players_by_id.find(pid);
@@ -1019,7 +1478,6 @@ bool CareerState::set_starting_xi(int32_t p_club_id, const PackedInt32Array &p_x
 		new_xi.push_back(pit->second);
 	}
 
-	// Rebuild roster with Starting XI first (in exact slot order), followed by bench/reserves
 	std::vector<std::shared_ptr<Player>> reordered;
 	reordered.reserve(roster.size());
 	for (auto &starter : new_xi) {
@@ -1243,7 +1701,7 @@ Dictionary CareerState::scout_youth_prospect() {
 
 	int y_id = _next_player_id++;
 	PlayerAttributes attrs{ base_ovr, base_ovr, base_ovr, base_ovr, base_ovr, base_ovr };
-	auto prospect = std::make_shared<Player>(full_name, pos, attrs, 15, pot, 16, 36);
+	auto prospect = std::make_shared<Player>(full_name, pos, attrs, 15, pot, 16, 37);
 	prospect->SetId(y_id);
 	prospect->SetClubId(-1);
 	prospect->SetCondition(100);
@@ -1369,22 +1827,25 @@ bool CareerState::commit_match_result(MatchEngine *p_engine) {
 			fix.home_goals = home_score;
 			fix.away_goals = away_score;
 			fix.played = true;
+			_populate_fixture_goal_events(fix);
 
 			bool is_user_home = (fix.home_club_id == _managed_club_id);
 			int user_goals = is_user_home ? home_score : away_score;
 			int opp_goals = is_user_home ? away_score : home_score;
 
-			if (user_goals > opp_goals) {
-				_manager.career_wins++;
-				_manager.board_confidence = std::min(100, _manager.board_confidence + 3);
-			} else if (user_goals == opp_goals) {
-				_manager.career_draws++;
-			} else {
-				_manager.career_losses++;
-				_manager.board_confidence = std::max(0, _manager.board_confidence - 4);
+			if (!fix.is_friendly) {
+				if (user_goals > opp_goals) {
+					_manager.career_wins++;
+					_manager.board_confidence = std::min(100, _manager.board_confidence + 3);
+				} else if (user_goals == opp_goals) {
+					_manager.career_draws++;
+				} else {
+					_manager.career_losses++;
+					_manager.board_confidence = std::max(0, _manager.board_confidence - 4);
+				}
 			}
 
-			int64_t gate_receipts = is_user_home ? 1800000 : 450000;
+			int64_t gate_receipts = fix.is_friendly ? (is_user_home ? 650000 : 250000) : (is_user_home ? 1800000 : 450000);
 			_finances.total_balance += gate_receipts;
 
 			auto user_club_it = _clubs.find(_managed_club_id);
@@ -1392,7 +1853,7 @@ bool CareerState::commit_match_result(MatchEngine *p_engine) {
 				for (auto &p : user_club_it->second->GetStartingXI()) {
 					if (p) {
 						p->RecordAppearance();
-						p->SetCondition(std::max(40, p->GetCondition() - 14));
+						p->SetCondition(std::max(40, p->GetCondition() - (fix.is_friendly ? 8 : 14)));
 					}
 				}
 			}
@@ -1401,7 +1862,7 @@ bool CareerState::commit_match_result(MatchEngine *p_engine) {
 				(std::to_string(home_score) + " - " + std::to_string(away_score)) :
 				(std::to_string(away_score) + " - " + std::to_string(home_score));
 
-			push_inbox_message("MATCH", "Full-Time Match Report",
+			push_inbox_message("MATCH", fix.is_friendly ? "Pre-Season Friendly Report" : "Full-Time Match Report",
 				"Final Score: " + String(result_str.c_str()) + ". Gate receipts of $" +
 				String::num_int64(gate_receipts) + " credited.", "schedule", fix_id);
 			break;
@@ -1588,6 +2049,7 @@ bool CareerState::save_career(const String &p_slot_name) {
 	for (const auto &fix : _fixtures) {
 		Dictionary d;
 		d["fixture_id"] = fix.fixture_id;
+		d["week"] = fix.week;
 		d["matchday"] = fix.matchday;
 		d["date_iso"] = String(fix.date_iso.c_str());
 		d["competition"] = String(fix.competition.c_str());
@@ -1596,6 +2058,24 @@ bool CareerState::save_career(const String &p_slot_name) {
 		d["home_goals"] = fix.home_goals;
 		d["away_goals"] = fix.away_goals;
 		d["played"] = fix.played;
+		d["is_friendly"] = fix.is_friendly;
+		d["stadium"] = String(fix.stadium.c_str());
+		d["attendance"] = fix.attendance;
+		d["match_importance"] = String(fix.match_importance.c_str());
+
+		Array ev_arr;
+		for (const auto &ev : fix.events) {
+			Dictionary ed;
+			ed["minute"] = ev.minute;
+			ed["club_id"] = ev.club_id;
+			ed["player_id"] = ev.player_id;
+			ed["player_name"] = String(ev.player_name.c_str());
+			ed["assist_player_id"] = ev.assist_player_id;
+			ed["assist_player_name"] = String(ev.assist_player_name.c_str());
+			ed["type"] = String(ev.type.c_str());
+			ev_arr.append(ed);
+		}
+		d["events"] = ev_arr;
 		fixtures_arr.append(d);
 	}
 	root["fixtures"] = fixtures_arr;
@@ -1848,7 +2328,7 @@ bool CareerState::load_career(const String &p_slot_name) {
 			int age = pd.get("age", 24);
 			int potential = pd.get("potential", 75);
 			int debut_age = pd.get("debut_age", 16);
-			int ret_age = 37; // Normalize legacy saves to the mandatory age-37 rule.
+			int ret_age = 37;
 
 			auto player_ptr = std::make_shared<Player>(name, pos, attrs, age, potential, debut_age, ret_age);
 			player_ptr->SetClubName(String(pd.get("club_name", "Free Agent")).utf8().get_data());
@@ -1994,6 +2474,7 @@ bool CareerState::load_career(const String &p_slot_name) {
 			FixtureRecord fix;
 			fix.fixture_id = fd.get("fixture_id", 0);
 			fix.matchday = fd.get("matchday", 1);
+			fix.week = fd.get("week", fix.matchday <= 0 ? 1 : (fix.matchday + 2));
 			fix.date_iso = String(fd.get("date_iso", "")).utf8().get_data();
 			fix.competition = String(fd.get("competition", "")).utf8().get_data();
 			fix.home_club_id = fd.get("home_club_id", -1);
@@ -2001,6 +2482,27 @@ bool CareerState::load_career(const String &p_slot_name) {
 			fix.home_goals = fd.get("home_goals", -1);
 			fix.away_goals = fd.get("away_goals", -1);
 			fix.played = fd.get("played", false);
+			fix.is_friendly = fd.get("is_friendly", fix.matchday <= 0 || fix.competition.find("Friendly") != std::string::npos);
+			fix.stadium = String(fd.get("stadium", "")).utf8().get_data();
+			fix.attendance = fd.get("attendance", 0);
+			fix.match_importance = String(fd.get("match_importance", "STANDARD")).utf8().get_data();
+
+			if (fd.has("events")) {
+				Array ev_arr = fd["events"];
+				for (int k = 0; k < ev_arr.size(); k++) {
+					Dictionary ed = ev_arr[k];
+					MatchEventRecord ev;
+					ev.minute = ed.get("minute", 1);
+					ev.club_id = ed.get("club_id", -1);
+					ev.player_id = ed.get("player_id", -1);
+					ev.player_name = String(ed.get("player_name", "")).utf8().get_data();
+					ev.assist_player_id = ed.get("assist_player_id", -1);
+					ev.assist_player_name = String(ed.get("assist_player_name", "")).utf8().get_data();
+					ev.type = String(ed.get("type", "GOAL")).utf8().get_data();
+					fix.events.push_back(ev);
+				}
+			}
+
 			_fixtures.push_back(fix);
 		}
 	}
@@ -2094,8 +2596,6 @@ TypedArray<Dictionary> CareerState::list_save_slots() const {
 
 	return slots;
 }
-
-
 
 bool CareerState::delete_save_slot(const String &p_slot_name) {
 	String slot_clean = p_slot_name.strip_edges().replace("/", "_").replace("\\", "_");

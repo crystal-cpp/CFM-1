@@ -48,11 +48,12 @@ var _route_views: Dictionary = {}
 var _current_route: String = "dashboard"
 var _sidebar_visible: bool = true
 
-# Phase 3C & Phase 4 Views
+# Phase 3C, Phase 4 & Phase 5A Views
 var _dashboard_view: DashboardView
 var _squad_view: SquadView
 var _tactics_view: TacticsView
 var _youth_view: YouthView
+var _schedule_view: ScheduleView
 var _inbox_view: InboxView
 var _player_profile_modal: PlayerProfileModal
 
@@ -111,6 +112,8 @@ func _init_career_state() -> void:
 		_tactics_view.career_state = career_state
 	if is_instance_valid(_youth_view):
 		_youth_view.career_state = career_state
+	if is_instance_valid(_schedule_view):
+		_schedule_view.career_state = career_state
 	if is_instance_valid(_inbox_view):
 		_inbox_view.career_state = career_state
 	if is_instance_valid(_player_profile_modal):
@@ -427,6 +430,13 @@ func _create_route_view(route_id: String, route_title: String) -> Control:
 			_youth_view.player_profile_requested.connect(open_player_profile)
 			return _youth_view
 
+		"schedule":
+			_schedule_view = ScheduleView.new()
+			_schedule_view.route_requested.connect(navigate_to)
+			_schedule_view.player_profile_requested.connect(open_player_profile)
+			_schedule_view.match_launch_requested.connect(_on_pre_match_requested)
+			return _schedule_view
+
 		"inbox":
 			_inbox_view = InboxView.new()
 			_inbox_view.route_requested.connect(navigate_to)
@@ -477,10 +487,8 @@ func _build_route_specific_content(route_id: String) -> Control:
 	container.add_theme_constant_override("separation", 12)
 
 	match route_id:
-		"schedule":
-			container.add_child(_create_info_card("SCHEDULE & FIXTURES (PHASE 5)", "Season calendar, home/away fixture list, and official match details."))
 		"competitions":
-			container.add_child(_create_info_card("COMPETITIONS CENTER (PHASE 5)", "League Table standings, Top Scorers, Top Assists, and competition prize structures."))
+			container.add_child(_create_info_card("COMPETITIONS CENTER (PHASE 5B)", "League Table standings, Top Scorers, Top Assists, and competition prize structures."))
 		"transfers":
 			container.add_child(_create_info_card("DYNAMIC TRANSFER MARKET (PHASE 7)", "Player valuation engine, multi-round transfer fee & wage negotiations, and scout lists."))
 		"club":
@@ -692,6 +700,9 @@ func navigate_to(route_id: String) -> void:
 		"youth":
 			if is_instance_valid(_youth_view):
 				_youth_view.refresh_youth()
+		"schedule":
+			if is_instance_valid(_schedule_view):
+				_schedule_view.refresh_schedule()
 		"inbox":
 			if is_instance_valid(_inbox_view):
 				_inbox_view.refresh_inbox()
@@ -747,6 +758,8 @@ func refresh_all_views() -> void:
 		_tactics_view.refresh_tactics()
 	if is_instance_valid(_youth_view):
 		_youth_view.refresh_youth()
+	if is_instance_valid(_schedule_view):
+		_schedule_view.refresh_schedule()
 	if is_instance_valid(_inbox_view):
 		_inbox_view.refresh_inbox()
 
@@ -784,6 +797,8 @@ func _on_standings_updated() -> void:
 		_rank_lbl.text = "Rank #%d" % career_state.get_managed_club_league_rank()
 	if is_instance_valid(_dashboard_view):
 		_dashboard_view.refresh_dashboard()
+	if is_instance_valid(_schedule_view):
+		_schedule_view.refresh_schedule()
 
 func _on_squad_updated(_club_id: int) -> void:
 	if is_instance_valid(_squad_view):
@@ -800,7 +815,7 @@ func _on_tactics_updated(_club_id: int) -> void:
 func _on_youth_updated() -> void:
 	if is_instance_valid(_youth_view):
 		_youth_view.refresh_youth()
-
+2
 func _on_career_saved(slot_name: String) -> void:
 	show_toast("Career saved to slot '%s'" % slot_name, 2.0)
 

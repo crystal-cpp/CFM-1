@@ -66,16 +66,32 @@ struct InboxMessage {
 	int32_t target_entity_id = -1; // player_id, club_id, or fixture_id
 };
 
+struct MatchEventRecord {
+	int32_t minute = 1;
+	int32_t club_id = -1;
+	int32_t player_id = -1;
+	std::string player_name;
+	int32_t assist_player_id = -1;
+	std::string assist_player_name;
+	std::string type = "GOAL";     // "GOAL", "PENALTY", "YELLOW", "RED"
+};
+
 struct FixtureRecord {
 	int32_t fixture_id = 0;
-	int32_t matchday = 1;
+	int32_t week = 1;              // Week 1-2: Pre-Season Window; Week 3+: Competitive Season
+	int32_t matchday = 1;          // 0 for Pre-Season Friendlies, 1..N for League Matchdays
 	std::string date_iso;
-	std::string competition;       // e.g., "Premier Division", "National Cup"
+	std::string competition;       // e.g., "Pre-Season Friendly", "Premier Division"
 	int32_t home_club_id = -1;
 	int32_t away_club_id = -1;
 	int32_t home_goals = -1;
 	int32_t away_goals = -1;
 	bool played = false;
+	bool is_friendly = false;      // Friendlies do not award league standings points
+	std::string stadium;
+	int32_t attendance = 0;
+	std::string match_importance = "STANDARD"; // "FRIENDLY", "STANDARD", "RIVALRY_DERBY", "TOP_CLASH", "TITLE_DECIDER", "CUP_FINAL"
+	std::vector<MatchEventRecord> events;
 };
 
 struct LeagueStandingRow {
@@ -100,7 +116,7 @@ private:
 	bool _career_active = false;
 	int32_t _managed_club_id = -1;
 
-	// Calendar & Season Clock
+	// Calendar & Season Clock (Season runs July 1 -> May 31; June off-season)
 	int32_t _season_start_year = 2026;
 	int32_t _year = 2026;
 	int32_t _month = 7;
@@ -129,11 +145,17 @@ private:
 	// Internal Helpers
 	std::string _format_date_iso() const;
 	std::string _format_season_label() const;
+	int32_t _compute_season_week() const;
+	void _generate_season_fixtures(int32_t start_year);
 	void _advance_single_day();
 	void _recalculate_standings();
 	void _seed_default_objectives();
 	void _simulate_ai_fixtures_for_current_date();
+	void _populate_fixture_goal_events(FixtureRecord &fix);
+	std::string _classify_match_importance(int32_t home_id, int32_t away_id, int32_t matchday, const std::string &competition) const;
+	Dictionary _fixture_to_dict(const FixtureRecord &fix, bool include_events = false) const;
 	void _process_weekly_progression();
+	void _process_end_of_season_may();
 	void _process_annual_rollover();
 	Dictionary _player_to_dict(const std::shared_ptr<Player> &p) const;
 
@@ -148,11 +170,13 @@ public:
 	bool start_new_career(int32_t p_club_id, const String &p_manager_name, int32_t p_start_year = 2026);
 	bool is_career_active() const { return _career_active; }
 	void advance_day(int32_t p_days = 1);
+	int32_t advance_to_next_matchday();
 
 	// --- Top Header & Manager Career Queries ---
 	int32_t get_managed_club_id() const { return _managed_club_id; }
 	String get_current_date_iso() const;
 	String get_season_label() const;
+	Dictionary get_season_phase_info() const;
 	int32_t get_managed_club_league_rank() const;
 	Dictionary get_header_summary() const;
 	Dictionary get_manager_profile() const;
@@ -161,6 +185,12 @@ public:
 	TypedArray<Dictionary> get_league_standings() const;
 	Dictionary get_next_fixture() const;
 	Dictionary get_club_info(int32_t p_club_id) const;
+
+	// --- Phase 5A / 5B: Schedule & Fixture Queries ---
+	TypedArray<Dictionary> get_fixtures(const String &p_competition = "", int32_t p_matchday = -1, int32_t p_club_id = -1) const;
+	Dictionary get_fixture_details(int32_t p_fixture_id) const;
+	int32_t get_total_matchdays(const String &p_competition = "") const;
+	int32_t get_current_matchday() const;
 
 	// --- Subsystem Read/Write Bridges (Zero Duplicate State) ---
 	TypedArray<Dictionary> get_club_squad(int32_t p_club_id) const;
