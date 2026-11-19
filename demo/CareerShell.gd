@@ -846,12 +846,33 @@ func _on_save_pressed() -> void:
 	if is_instance_valid(career_state):
 		career_state.save_career("career_autosave")
 
+func _find_match_scene() -> Node:
+	# Prefer an ancestor so nested CareerShell instances resolve their owner.
+	var node: Node = get_parent()
+	while is_instance_valid(node):
+		if node.has_method("open_pre_match_center"):
+			return node
+		node = node.get_parent()
+
+	# Fallback for scenes where CareerShell is instanced outside MatchScene's
+	# direct hierarchy (for example, under a separate UI/root container).
+	var tree := get_tree()
+	if is_instance_valid(tree):
+		var grouped_scene := tree.get_first_node_in_group("match_scene")
+		if is_instance_valid(grouped_scene) and grouped_scene.has_method("open_pre_match_center"):
+			return grouped_scene
+		var current := tree.current_scene
+		if is_instance_valid(current) and current.has_method("open_pre_match_center"):
+			return current
+	return null
+
+
 func _on_pre_match_requested() -> void:
-	var match_scene = get_parent()
-	if match_scene and match_scene.has_method("open_pre_match_center"):
+	var match_scene := _find_match_scene()
+	if is_instance_valid(match_scene):
 		if match_scene.open_pre_match_center(career_state):
 			visible = false
 		else:
 			show_toast("Unable to open Pre-Match Center. Check the upcoming fixtures.", 2.5)
 	else:
-		show_toast("MatchScene is not available.", 2.5)
+		show_toast("MatchScene is not available. Ensure the active match scene is loaded.", 2.5)
