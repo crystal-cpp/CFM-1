@@ -847,8 +847,11 @@ func _on_save_pressed() -> void:
 		career_state.save_career("career_autosave")
 
 func _on_pre_match_requested() -> void:
-	show_toast("Launching Pre-Match Center...", 2.0)
 	var match_scene = get_parent()
-	if match_scene and match_scene.has_method("_request_next_match"):
-		visible = false
-		match_scene._request_next_match()
+	if match_scene and match_scene.has_method("open_pre_match_center"):
+		if match_scene.open_pre_match_center(career_state):
+			visible = false
+		else:
+			show_toast("Unable to open Pre-Match Center. Check the upcoming fixtures.", 2.5)
+	else:
+		show_toast("MatchScene is not available.", 2.5)
