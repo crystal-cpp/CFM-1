@@ -40,6 +40,7 @@ struct SimPlayer {
     int dribbling = 70;
     int defending = 70;
     int physical = 70;
+    float starting_stamina = 100.0f;
     float stamina = 100.0f;
     float recovery_timer = 0.0f;
     float sprint_boost_timer = 0.0f;

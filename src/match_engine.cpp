@@ -313,6 +313,10 @@ void MatchEngine::set_home_lineup(const Array& p_players) {
         if (d.has("dribbling")) p.dribbling = std::clamp(static_cast<int>(d["dribbling"]), 1, 99);
         if (d.has("defending")) p.defending = std::clamp(static_cast<int>(d["defending"]), 1, 99);
         if (d.has("physical")) p.physical = std::clamp(static_cast<int>(d["physical"]), 1, 99);
+        if (d.has("stamina")) {
+            p.starting_stamina = std::clamp(static_cast<float>(d["stamina"]), 10.0f, 100.0f);
+            p.stamina = p.starting_stamina;
+        }
     }
 }
 
@@ -332,6 +336,11 @@ void MatchEngine::set_away_lineup(const Array& p_players) {
         if (d.has("dribbling")) p.dribbling = std::clamp(static_cast<int>(d["dribbling"]), 1, 99);
         if (d.has("defending")) p.defending = std::clamp(static_cast<int>(d["defending"]), 1, 99);
         if (d.has("physical")) p.physical = std::clamp(static_cast<int>(d["physical"]), 1, 99);
+        if (d.has("physical")) p.physical = std::clamp(static_cast<int>(d["physical"]), 1, 99);
+        if (d.has("stamina")) {
+            p.starting_stamina = std::clamp(static_cast<float>(d["stamina"]), 10.0f, 100.0f);
+            p.stamina = p.starting_stamina;
+        }
     }
 }
 
@@ -2978,7 +2987,7 @@ void MatchEngine::start_match() {
     stats = MatchStats();
 
     for (auto& p : sim_players) {
-        p.stamina = 100.0f;
+        p.stamina = std::clamp(p.starting_stamina, 10.0f, 100.0f);
         p.recovery_timer = 0.0f;
         p.sprint_boost_timer = 0.0f;
         p.dribble_boost_timer = 0.0f;

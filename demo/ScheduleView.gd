@@ -725,6 +725,14 @@ func _create_fixture_card(fix: Dictionary, is_next_match: bool) -> PanelContaine
 	date_lbl.add_theme_font_size_override("font_size", 12)
 	hbox.add_child(date_lbl)
 
+	var comp_raw: String = String(fix.get("competition", ""))
+	var comp_lower: String = comp_raw.to_lower()
+	var is_ucl: bool = comp_lower.contains("champions") or comp_lower.contains("ucl")
+	var comp_tag_text: String = "Friendlies" if is_friendly else ("UCL" if is_ucl else ("League Match %d" % maxi(1, md)))
+	var comp_bg: Color = Color(0.55, 0.40, 0.14) if is_friendly else (Color(0.22, 0.34, 0.72) if is_ucl else Color(0.10, 0.46, 0.36))
+	var comp_fg: Color = Color(1.0, 0.88, 0.40) if is_friendly else (Color(0.65, 0.85, 1.0) if is_ucl else Color(0.40, 0.98, 0.72))
+	hbox.add_child(_create_badge(comp_tag_text, comp_bg, comp_fg))
+
 	var match_lbl := Label.new()
 	match_lbl.text = "%s  vs  %s" % [String(fix.get("home_club_name", "Home")), String(fix.get("away_club_name", "Away"))]
 	match_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
