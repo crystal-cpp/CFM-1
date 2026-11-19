@@ -56,6 +56,7 @@ var _youth_view: YouthView
 var _schedule_view: ScheduleView
 var _inbox_view: InboxView
 var _player_profile_modal: PlayerProfileModal
+var _competitions_view: CompetitionsView
 
 # Overlays
 var _manager_profile_modal: PanelContainer
@@ -118,6 +119,8 @@ func _init_career_state() -> void:
 		_inbox_view.career_state = career_state
 	if is_instance_valid(_player_profile_modal):
 		_player_profile_modal.career_state = career_state
+	if is_instance_valid(_competitions_view):
+		_competitions_view.career_state = career_state
 
 	_bind_career_signals()
 	refresh_all_views()
@@ -424,6 +427,12 @@ func _create_route_view(route_id: String, route_title: String) -> Control:
 					_squad_view.refresh_squad()
 			)
 			return _tactics_view
+		
+		"competitions":
+			_competitions_view = CompetitionsView.new()
+			_competitions_view.route_requested.connect(navigate_to)
+			_competitions_view.player_profile_requested.connect(open_player_profile)
+			return _competitions_view
 
 		"youth":
 			_youth_view = YouthView.new()
