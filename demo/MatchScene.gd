@@ -221,7 +221,23 @@ func _process_final_whistle(final_home: int, final_away: int) -> void:
 	pending_match_ended = false
 
 	if is_instance_valid(career_state) and not active_match_context.is_empty():
-		var summary: Dictionary = career_state.commit_match_result(match_engine)
+		# The native CareerState commit API returns bool, not a report Dictionary.
+		var committed: bool = career_state.commit_match_result(match_engine)
+		if not committed:
+			push_warning("CareerState could not commit this match result; showing the match report without a confirmed career update.")
+
+		var summary: Dictionary = {
+			"home_club": String(active_match_context.get("home_club", "Home")),
+			"away_club": String(active_match_context.get("away_club", "Away")),
+			"home_goals": final_home,
+			"away_goals": final_away,
+			"user_is_home": bool(active_match_context.get("user_is_home", true)),
+			"stats": match_engine.get_match_stats() if is_instance_valid(match_engine) else {},
+			"stamina_report": [],
+			"new_injuries": [],
+			"skip_tokens": match_engine.get_skip_tokens() if is_instance_valid(match_engine) else 0,
+			"manual_matches_played": match_engine.get_manual_matches_played() if is_instance_valid(match_engine) else 0,
+		}
 		if is_instance_valid(career_shell):
 			career_shell.refresh_all_views()
 		if is_instance_valid(post_match_modal):
