@@ -15,6 +15,7 @@ var cached_final_home: int = 0
 var cached_final_away: int = 0
 
 func _ready() -> void:
+	add_to_group("match_scene")
 	match_engine = get_node_or_null("MatchEngine") as MatchEngine
 	if not is_instance_valid(match_engine):
 		match_engine = find_child("MatchEngine", true, false) as MatchEngine
