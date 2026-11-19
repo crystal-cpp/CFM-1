@@ -37,8 +37,10 @@ func _ready() -> void:
 	add_child(career_shell)
 
 	if is_instance_valid(match_scene):
-		career_shell.match_scene = match_scene
-		match_scene.career_shell = career_shell
+		if "match_scene" in career_shell:
+			career_shell.match_scene = match_scene
+		if "career_shell" in match_scene:
+			match_scene.career_shell = career_shell
 
 	if career_shell.has_signal("main_menu_requested"):
 		career_shell.main_menu_requested.connect(_on_career_shell_main_menu_requested)

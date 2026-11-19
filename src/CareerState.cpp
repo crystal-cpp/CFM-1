@@ -1023,7 +1023,7 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 	_manager.career_losses = 0;
 
 	// Phase 5D: Anchor new Manager Career Mode saves to 15 July 2006 (2006-07-15, Season 2006/07)
-	int32_t start_yr = (p_start_year > 0) ? p_start_year : 2006;
+	int32_t start_yr = (p_start_year > 0 && p_start_year != 2026) ? p_start_year : 2006;
 	_season_start_year = start_yr;
 	_year = start_yr;
 	_month = 7;
@@ -2553,10 +2553,10 @@ bool CareerState::load_career(const String &p_slot_name) {
 
 	if (root.has("clock")) {
 		Dictionary clock = root["clock"];
-		_season_start_year = clock.get("season_start_year", 2026);
-		_year = clock.get("year", 2026);
+		_season_start_year = clock.get("season_start_year", 2006);
+		_year = clock.get("year", 2006);
 		_month = clock.get("month", 7);
-		_day = clock.get("day", 1);
+		_day = clock.get("day", 15);
 		_current_matchday = clock.get("current_matchday", 1);
 	}
 

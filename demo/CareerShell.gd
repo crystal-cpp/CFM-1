@@ -1,6 +1,15 @@
 class_name CareerShell
 extends Control
 
+signal main_menu_requested()
+signal match_requested()
+signal promo_code_redeemed(result: Dictionary)
+
+var new_career_view: Control
+var active_save_slot: String = "career_autosave"
+
+var match_scene: Node
+
 signal route_changed(route_name: String)
 signal player_profile_requested(player_id: int, context_mode: String)
 
@@ -26,7 +35,9 @@ var _inbox_btn: Button
 var _inbox_badge: Label
 var _manager_btn: Button
 var _advance_day_btn: Button
+var _codes_btn: Button
 var _save_btn: Button
+var _menu_btn: Button
 var _menu_toggle_btn: Button
 
 # Route Buttons & Views
@@ -60,6 +71,7 @@ var _competitions_view: CompetitionsView
 
 # Overlays
 var _manager_profile_modal: PanelContainer
+var _redeem_code_modal: RedeemCodeModal
 var _toast_label: Label
 var _toast_timer: Timer
 
@@ -78,7 +90,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var ke := event as InputEventKey
 		if ke.keycode == KEY_ESCAPE:
-			if is_instance_valid(_player_profile_modal) and _player_profile_modal.visible:
+			if is_instance_valid(_redeem_code_modal) and _redeem_code_modal.visible:
+				_redeem_code_modal.close_modal()
+				get_viewport().set_input_as_handled()
+			elif is_instance_valid(_player_profile_modal) and _player_profile_modal.visible:
 				_player_profile_modal.close_modal()
 				get_viewport().set_input_as_handled()
 			elif is_instance_valid(_manager_profile_modal) and _manager_profile_modal.visible:
@@ -103,7 +118,7 @@ func _init_career_state() -> void:
 			career_state = CareerState.new()
 			career_state.name = "CareerState"
 			add_child(career_state)
-			career_state.start_new_career(1, "Manager", 2026)
+			career_state.start_new_career(1, "Manager", 2006)
 
 	if is_instance_valid(_dashboard_view):
 		_dashboard_view.career_state = career_state
@@ -119,6 +134,8 @@ func _init_career_state() -> void:
 		_inbox_view.career_state = career_state
 	if is_instance_valid(_player_profile_modal):
 		_player_profile_modal.career_state = career_state
+	if is_instance_valid(_redeem_code_modal):
+		_redeem_code_modal.career_state = career_state
 	if is_instance_valid(_competitions_view):
 		_competitions_view.career_state = career_state
 
@@ -154,10 +171,10 @@ func _style_shell_button(btn: Button, bg: Color, border: Color, text_col: Color 
 	normal.border_color = border
 	normal.set_border_width_all(1)
 	normal.set_corner_radius_all(6)
-	normal.content_margin_left = 10
-	normal.content_margin_right = 10
-	normal.content_margin_top = 5
-	normal.content_margin_bottom = 5
+	normal.content_margin_left = 8
+	normal.content_margin_right = 8
+	normal.content_margin_top = 4
+	normal.content_margin_bottom = 4
 
 	var hover := normal.duplicate()
 	hover.bg_color = bg.lightened(0.10)
@@ -195,31 +212,32 @@ func _build_ui() -> void:
 	_build_content_area(_body_hsplit)
 	_build_manager_modal()
 	_build_player_modal()
+	_build_redeem_code_modal()
 	_build_toast()
 
 func _build_header(parent: Control) -> void:
 	_header_panel = PanelContainer.new()
-	_header_panel.custom_minimum_size = Vector2(0, 56)
+	_header_panel.custom_minimum_size = Vector2(0, 52)
 	_header_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var hdr_style := StyleBoxFlat.new()
 	hdr_style.bg_color = Color(0.045, 0.065, 0.105, 0.98)
 	hdr_style.border_color = Color(0.12, 0.18, 0.28, 0.85)
 	hdr_style.set_border_width_all(1)
-	hdr_style.content_margin_left = 14
-	hdr_style.content_margin_right = 14
-	hdr_style.content_margin_top = 8
-	hdr_style.content_margin_bottom = 8
+	hdr_style.content_margin_left = 10
+	hdr_style.content_margin_right = 10
+	hdr_style.content_margin_top = 6
+	hdr_style.content_margin_bottom = 6
 	_header_panel.add_theme_stylebox_override("panel", hdr_style)
 	parent.add_child(_header_panel)
 
 	var hbox := HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 10)
+	hbox.add_theme_constant_override("separation", 6)
 	_header_panel.add_child(hbox)
 
 	_menu_toggle_btn = Button.new()
 	_menu_toggle_btn.text = "☰"
-	_menu_toggle_btn.custom_minimum_size = Vector2(36, 34)
+	_menu_toggle_btn.custom_minimum_size = Vector2(32, 32)
 	_menu_toggle_btn.focus_mode = Control.FOCUS_NONE
 	_style_shell_button(_menu_toggle_btn, Color(0.07, 0.10, 0.17, 0.9), Color(0.16, 0.24, 0.38, 0.8))
 	_menu_toggle_btn.pressed.connect(_toggle_sidebar)
@@ -231,27 +249,27 @@ func _build_header(parent: Control) -> void:
 	b_style.border_color = Color(0.12, 0.88, 0.52, 0.9)
 	b_style.set_border_width_all(1)
 	b_style.set_corner_radius_all(6)
-	b_style.set_content_margin_all(5)
+	b_style.set_content_margin_all(4)
 	badge_panel.add_theme_stylebox_override("panel", b_style)
 	_club_badge_lbl = Label.new()
 	_club_badge_lbl.text = "ARS"
 	_club_badge_lbl.add_theme_color_override("font_color", Color(0.15, 0.95, 0.60))
-	_club_badge_lbl.add_theme_font_size_override("font_size", 12)
+	_club_badge_lbl.add_theme_font_size_override("font_size", 11)
 	badge_panel.add_child(_club_badge_lbl)
 	hbox.add_child(badge_panel)
 
 	_club_name_lbl = Label.new()
 	_club_name_lbl.text = "Arsenal"
 	_club_name_lbl.add_theme_color_override("font_color", Color.WHITE)
-	_club_name_lbl.add_theme_font_size_override("font_size", 16)
+	_club_name_lbl.add_theme_font_size_override("font_size", 15)
 	hbox.add_child(_club_name_lbl)
 
 	hbox.add_child(VSeparator.new())
 
-	_season_lbl = _create_pill("2026/27", Color(0.20, 0.45, 0.75), Color(0.65, 0.82, 1.0))
+	_season_lbl = _create_pill("2006/07", Color(0.20, 0.45, 0.75), Color(0.65, 0.82, 1.0))
 	hbox.add_child(_season_lbl)
 
-	_date_lbl = _create_pill("2026-07-01", Color(0.18, 0.30, 0.48), Color(0.85, 0.92, 1.0))
+	_date_lbl = _create_pill("2006-07-15", Color(0.18, 0.30, 0.48), Color(0.85, 0.92, 1.0))
 	hbox.add_child(_date_lbl)
 
 	_rank_lbl = _create_pill("Rank #1", Color(0.65, 0.48, 0.12), Color(1.0, 0.85, 0.30))
@@ -266,22 +284,30 @@ func _build_header(parent: Control) -> void:
 
 	_advance_day_btn = Button.new()
 	_advance_day_btn.text = "⏩ +1 Day"
-	_advance_day_btn.custom_minimum_size = Vector2(88, 34)
+	_advance_day_btn.custom_minimum_size = Vector2(78, 32)
 	_advance_day_btn.focus_mode = Control.FOCUS_NONE
 	_style_shell_button(_advance_day_btn, Color(0.08, 0.22, 0.38, 0.9), Color(0.20, 0.48, 0.80, 0.85))
 	_advance_day_btn.pressed.connect(_on_advance_day_pressed)
 	hbox.add_child(_advance_day_btn)
 
+	_codes_btn = Button.new()
+	_codes_btn.text = "🎟️ Codes"
+	_codes_btn.custom_minimum_size = Vector2(78, 32)
+	_codes_btn.focus_mode = Control.FOCUS_NONE
+	_style_shell_button(_codes_btn, Color(0.18, 0.14, 0.34, 0.92), Color(0.55, 0.40, 0.95, 0.88), Color(0.88, 0.82, 1.0))
+	_codes_btn.pressed.connect(open_redeem_code_modal)
+	hbox.add_child(_codes_btn)
+
 	_save_btn = Button.new()
 	_save_btn.text = "💾 Save"
-	_save_btn.custom_minimum_size = Vector2(76, 34)
+	_save_btn.custom_minimum_size = Vector2(68, 32)
 	_save_btn.focus_mode = Control.FOCUS_NONE
 	_style_shell_button(_save_btn, Color(0.08, 0.42, 0.25, 0.9), Color(0.16, 0.85, 0.50, 0.85))
 	_save_btn.pressed.connect(_on_save_pressed)
 	hbox.add_child(_save_btn)
 
 	var inbox_container := Control.new()
-	inbox_container.custom_minimum_size = Vector2(92, 34)
+	inbox_container.custom_minimum_size = Vector2(80, 32)
 
 	_inbox_btn = Button.new()
 	_inbox_btn.text = "✉️ Inbox"
@@ -298,24 +324,33 @@ func _build_header(parent: Control) -> void:
 	var ib_style := StyleBoxFlat.new()
 	ib_style.bg_color = Color(0.92, 0.22, 0.28, 0.98)
 	ib_style.set_corner_radius_all(8)
-	ib_style.content_margin_left = 5
-	ib_style.content_margin_right = 5
+	ib_style.content_margin_left = 4
+	ib_style.content_margin_right = 4
 	ib_style.content_margin_top = 1
 	ib_style.content_margin_bottom = 1
 	_inbox_badge.add_theme_stylebox_override("normal", ib_style)
 	_inbox_badge.add_theme_color_override("font_color", Color.WHITE)
 	_inbox_badge.add_theme_font_size_override("font_size", 10)
-	_inbox_badge.position = Vector2(72, -4)
+	_inbox_badge.position = Vector2(62, -4)
 	inbox_container.add_child(_inbox_badge)
 	hbox.add_child(inbox_container)
 
 	_manager_btn = Button.new()
 	_manager_btn.text = "👔 Manager"
-	_manager_btn.custom_minimum_size = Vector2(104, 34)
+	_manager_btn.custom_minimum_size = Vector2(92, 32)
+	_manager_btn.clip_text = true
 	_manager_btn.focus_mode = Control.FOCUS_NONE
 	_style_shell_button(_manager_btn, Color(0.07, 0.11, 0.18, 0.9), Color(0.18, 0.26, 0.40, 0.85))
 	_manager_btn.pressed.connect(_open_manager_profile)
 	hbox.add_child(_manager_btn)
+
+	_menu_btn = Button.new()
+	_menu_btn.text = "🏠 Menu"
+	_menu_btn.custom_minimum_size = Vector2(74, 32)
+	_menu_btn.focus_mode = Control.FOCUS_NONE
+	_style_shell_button(_menu_btn, Color(0.14, 0.10, 0.16, 0.9), Color(0.45, 0.25, 0.35, 0.85))
+	_menu_btn.pressed.connect(func() -> void: main_menu_requested.emit())
+	hbox.add_child(_menu_btn)
 
 func _create_pill(text: String, bg_color: Color, text_color: Color) -> Label:
 	var lbl := Label.new()
@@ -325,13 +360,13 @@ func _create_pill(text: String, bg_color: Color, text_color: Color) -> Label:
 	style.border_color = bg_color
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(6)
-	style.content_margin_left = 8
-	style.content_margin_right = 8
-	style.content_margin_top = 4
-	style.content_margin_bottom = 4
+	style.content_margin_left = 7
+	style.content_margin_right = 7
+	style.content_margin_top = 3
+	style.content_margin_bottom = 3
 	lbl.add_theme_stylebox_override("normal", style)
 	lbl.add_theme_color_override("font_color", text_color)
-	lbl.add_theme_font_size_override("font_size", 12)
+	lbl.add_theme_font_size_override("font_size", 11)
 	return lbl
 
 func _build_sidebar(parent: Control) -> void:
@@ -427,7 +462,7 @@ func _create_route_view(route_id: String, route_title: String) -> Control:
 					_squad_view.refresh_squad()
 			)
 			return _tactics_view
-		
+
 		"competitions":
 			_competitions_view = CompetitionsView.new()
 			_competitions_view.route_requested.connect(navigate_to)
@@ -618,6 +653,30 @@ func _build_player_modal() -> void:
 	_player_profile_modal.action_triggered.connect(_on_player_modal_action)
 	add_child(_player_profile_modal)
 
+func _build_redeem_code_modal() -> void:
+	_redeem_code_modal = RedeemCodeModal.new()
+	_redeem_code_modal.name = "RedeemCodeModal"
+	_redeem_code_modal.code_redeemed.connect(_on_promo_code_redeemed)
+	add_child(_redeem_code_modal)
+
+func open_redeem_code_modal() -> void:
+	if not is_instance_valid(_redeem_code_modal):
+		_build_redeem_code_modal()
+	_redeem_code_modal.career_state = career_state
+	_redeem_code_modal.open_modal()
+
+func _on_promo_code_redeemed(result: Dictionary) -> void:
+	show_toast(String(result.get("message", "Promo code redeemed!")), 3.0)
+	refresh_all_views()
+	if is_instance_valid(new_career_view) and new_career_view.has_method("refresh_clubs"):
+		new_career_view.call("refresh_clubs")
+	var tree := get_tree()
+	if is_instance_valid(tree):
+		for node in tree.get_nodes_in_group("new_career_view"):
+			if is_instance_valid(node) and node.has_method("refresh_clubs"):
+				node.call("refresh_clubs")
+	promo_code_redeemed.emit(result)
+
 func open_player_profile(player_id: int, context_mode: String = "SQUAD") -> void:
 	if not is_instance_valid(_player_profile_modal):
 		_build_player_modal()
@@ -735,6 +794,16 @@ func _toggle_sidebar() -> void:
 	_sidebar_visible = not _sidebar_visible
 	_sidebar_panel.visible = _sidebar_visible
 
+func _normalize_season_2006(s: String) -> String:
+	if s.begins_with("2026/"):
+		return "2006" + s.substr(4)
+	return s
+
+func _normalize_date_2006(d: String) -> String:
+	if d.begins_with("2026-"):
+		return "2006-" + d.substr(5)
+	return d
+
 func refresh_header() -> void:
 	if not is_instance_valid(career_state) or not career_state.is_career_active():
 		return
@@ -745,8 +814,8 @@ func refresh_header() -> void:
 	var club_name: String = _club_name_lbl.text
 	_club_badge_lbl.text = club_name.substr(0, 3).to_upper()
 
-	_season_lbl.text = String(summary.get("season_label", "2026/27"))
-	_date_lbl.text = String(summary.get("current_date", "2026-07-01"))
+	_season_lbl.text = _normalize_season_2006(String(summary.get("season_label", "2006/07")))
+	_date_lbl.text = _normalize_date_2006(String(summary.get("current_date", "2006-07-15")))
 	_rank_lbl.text = "Rank #%d" % int(summary.get("league_rank", 1))
 
 	var balance: int = int(summary.get("total_balance", 0))
@@ -785,9 +854,9 @@ func _format_currency(amount: int) -> String:
 		return "$%d" % amount
 
 func _on_date_changed(new_date_iso: String) -> void:
-	_date_lbl.text = new_date_iso
+	_date_lbl.text = _normalize_date_2006(new_date_iso)
 	if is_instance_valid(career_state):
-		_season_lbl.text = career_state.get_season_label()
+		_season_lbl.text = _normalize_season_2006(career_state.get_season_label())
 	refresh_all_views()
 
 func _on_balance_changed(total_balance: int, _transfer_budget: int, _wage_budget: int) -> void:
@@ -830,6 +899,7 @@ func _on_tactics_updated(_club_id: int) -> void:
 func _on_youth_updated() -> void:
 	if is_instance_valid(_youth_view):
 		_youth_view.refresh_youth()
+
 func _on_career_saved(slot_name: String) -> void:
 	show_toast("Career saved to slot '%s'" % slot_name, 2.0)
 
@@ -840,13 +910,19 @@ func _on_career_loaded(slot_name: String) -> void:
 func _on_advance_day_pressed() -> void:
 	if is_instance_valid(career_state):
 		career_state.advance_day(1)
-		show_toast("Advanced 1 Day: %s" % career_state.get_current_date_iso(), 1.5)
+		show_toast("Advanced 1 Day: %s" % _normalize_date_2006(career_state.get_current_date_iso()), 1.5)
 
 func _on_save_pressed() -> void:
 	if is_instance_valid(career_state):
-		career_state.save_career("career_autosave")
+		var slot := active_save_slot.strip_edges()
+		if slot.is_empty():
+			slot = "career_autosave"
+		career_state.save_career(slot)
 
 func _find_match_scene() -> Node:
+	if is_instance_valid(match_scene) and match_scene.has_method("open_pre_match_center"):
+		return match_scene
+
 	# Prefer an ancestor so nested CareerShell instances resolve their owner.
 	var node: Node = get_parent()
 	while is_instance_valid(node):
@@ -866,12 +942,12 @@ func _find_match_scene() -> Node:
 			return current
 	return null
 
-
 func _on_pre_match_requested() -> void:
-	var match_scene := _find_match_scene()
-	if is_instance_valid(match_scene):
-		if match_scene.open_pre_match_center(career_state):
+	var ms := _find_match_scene()
+	if is_instance_valid(ms):
+		if ms.open_pre_match_center(career_state):
 			visible = false
+			match_requested.emit()
 		else:
 			show_toast("Unable to open Pre-Match Center. Check the upcoming fixtures.", 2.5)
 	else:
