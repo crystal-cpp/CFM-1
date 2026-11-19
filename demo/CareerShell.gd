@@ -433,7 +433,6 @@ func _create_route_view(route_id: String, route_title: String) -> Control:
 		"schedule":
 			_schedule_view = ScheduleView.new()
 			_schedule_view.route_requested.connect(navigate_to)
-			_schedule_view.player_profile_requested.connect(open_player_profile)
 			_schedule_view.match_launch_requested.connect(_on_pre_match_requested)
 			return _schedule_view
 
