@@ -2,11 +2,11 @@
 
 **Last Updated**: 2026-11-19
 
-**Reviewed Repository Baseline**: `391ed123ab1a93984abadefa55099a24e445ec5b` *(latest reviewed code commit: career pre-match routing; includes MatchScene and MatchPitch match-flow integration)*
+**Reviewed Repository Baseline**: `c6dc09cc410a8732274980adf8a1402733f748f5` *(latest reviewed code commit: post-match commit return-type correction; includes MatchScene career match-flow integration)*
 
 **Current Phase**: Phase 5
 
-**Current Milestone**: **Phase 5C — Pre-match context launch, MatchScene career-result commit, and PostMatchModal report integration; runtime QA pending.**
+**Current Milestone**: **Phase 5C-2 — Main Menu & Application Startup / Career Entry Flow specification; implementation pending. Phase 5C pre/post-match integration remains committed with runtime QA pending.**
 
 ## 1. Milestone & Subsystem Status Matrix
 
@@ -27,6 +27,7 @@
 | **Phase 5B-1: Domestic Competition Foundation** | Both | **UI implemented in repository** | **Runtime / data QA pending** | `CompetitionView.gd` builds the domestic league table and reads live `CareerState.get_league_standings()` data when available, with CSV fallback. This does not imply UCL fixtures are complete. |
 | **Phase 5B-2: CompetitionsView Integration & Responsive UI** | GDScript | **Implemented in repository** | **Source inspection complete; runtime QA pending** | `CareerShell.gd` calls `_competitions_view.refresh_competitions()` when navigating to Competitions, in `refresh_all_views()`, and in `_on_standings_updated()` (commit `d43ba52`). `ScheduleView` responsive layout refinements are in `018eef5`. Verify live updates and desktop/narrow viewport behavior in Godot. UCL fixture generation, qualification and authoritative results remain deferred. |
 | **Phase 5C: Pre-Match Center & Post-Match Pipeline** | GDScript / CareerState | **Integration committed** | **Source inspection complete; runtime QA pending** | Dashboard / Schedule requests open `PreMatchView`; `MatchScene.launch_career_match()` applies the context before kickoff, passes primary kit colors to 2D outfield markers, commits the result after the final-whistle chance deferral, and displays `PostMatchModal.show_report(summary)`. Continue returns to CareerShell and refreshes views. Validate the full flow and result mapping in Godot. |
+| **Phase 5C-2: Main Menu & Application Startup / Career Entry Flow** | GDScript / Scene Architecture | **Specification added; not implemented** | **Not started** | Dedicated F5 Main Menu (New / Continue / Load / Settings / Exit), save-aware routing, automatic CareerShell Dashboard entry after new/load, and stable app-root/scene-coordinator ownership of CareerShell and MatchScene. `project.godot` currently starts `demo/match_scene.tscn`; replacing this with the application entry scene is a future implementation task. Phase 5D remains responsible for the authoritative 15 July 2006 data-backed New Career selector. | 
 | **Phase 5D: Historical 15 July 2006 `clubs.csv`, Player Metadata & Codes** | Both | **Partially Implemented** | **Build Verification Pending** | Runtime CSV loader now reads `Club`, `League`, `Nationality`, and `Playstyle 1..3`, and normalizes `RetirementAge = 37` in CSV import and career saves (`res://data/players_2006_with_price.csv` is the runtime dataset; `Players_Database/players_2006_with_price.csv` is retained as a separate preventive/source copy). Historical **15 July 2006** `clubs.csv` + kit colours, existing CSV `Stamina` attribute binding, New Career `League -> Club` selection, `Tuesday League` / `11A7` lock, and `NHHA72528` Codes modal remain planned. | 
 | **Phase 5E: `MatchEngine` Realism, Stamina Drain & Controls Cleanup** | Both | **Spec Ready** | **Scheduled (Phase 5)** | CSV `Stamina`-driven match drain, attribute-coupled attack/defense chances, scaled opponent defensive AI, balanced chance probability, real-time steering movement, and removal of Advanced Dribbling (`R`). | 
 | **Phase 5F: Stamina Persistence,** $\approx 30\%$**/Day Recovery & Injury System** | Both | **Spec Ready** | **Scheduled (Phase 5)** | Post-match stamina preservation, configurable $\approx 30\%$/day calendar recovery, and World Soccer Champs-inspired injury generation & calendar recovery. | 
@@ -114,7 +115,7 @@
 
 ## 3. Upcoming Engineering Blueprints & Technical Dependencies (Phases 5–7)
 
-> **Status Note**: Phase 5A Schedule / season-calendar code and the Phase 5B competitions UI are present in the repository. `CareerShell.gd` refresh wiring for `CompetitionsView` is committed in `d43ba52`; responsive ScheduleView layout changes are committed in `018eef5`. These changes have been inspected at source/diff level only; runtime behavior and data correctness still require Godot testing. Phase 5C is the current milestone; pre-match launch and post-match report integration is committed, but runtime QA is pending. Authoritative UCL fixture generation and related competition progression remain deferred. Other Phase 5 systems below remain planned or partially implemented as individually stated; do not infer completion from roadmap specifications.
+> **Status Note**: Phase 5A Schedule / season-calendar code and the Phase 5B competitions UI are present in the repository. `CareerShell.gd` refresh wiring for `CompetitionsView` is committed in `d43ba52`; responsive ScheduleView layout changes are committed in `018eef5`. These changes have been inspected at source/diff level only; runtime behavior and data correctness still require Godot testing. Phase 5C pre-match launch and post-match report integration is committed, but runtime QA is pending. Phase 5C-2 Main Menu / startup flow is specification-only and has not been implemented; `project.godot` currently starts `demo/match_scene.tscn` (UID `uid://cthguvliskfj6`), so F5 does not yet open a dedicated Main Menu. Authoritative UCL fixture generation and related competition progression remain deferred. Other Phase 5 systems below remain planned or partially implemented as individually stated; do not infer completion from roadmap specifications.
 
 ### Phase 5A–5B — Season Calendar Cycle & UEFA Champions League Specification
 1. **July–May Season Calendar (`src/CareerState.cpp` & `demo/ScheduleView.gd`)**:
@@ -122,6 +123,16 @@
    * **Week 3+ (Mid-August `Aug 15` – `May 23`)**: Double round-robin domestic league season ending in **May** (`May 31` end-of-season review & champion crowning), followed by a June summer break before the July 1 rollover.
 2. **UEFA Champions League Fixtures (`CompetitionRegistry` & `ScheduleView` / `CompetitionsView`)**:
    * Midweek continental fixtures (`September – May Final`) populated from the **top clubs of each European league** in `res://data/clubs.csv` (`Premier League`, `La Liga`, `Serie A`, `Bundesliga`, `Ligue 1`, `Primeira Liga`, `Eredivisie`, `Scottish Premiership`, `Belgian Pro League`, `Ukrainian Premier League`, `Danish Superliga`, `Süper Lig`, `Croatian First Football League`, `Eliteserien`, `Allsvenskan`).
+
+### Phase 5C-2 — Main Menu, Application Startup & Career Entry Flow `[SPECIFICATION ADDED; NOT IMPLEMENTED]`
+
+- Make a dedicated application root / scene coordinator the `project.godot` main scene. F5 should open **New Career**, **Continue Career**, **Load Career**, **Settings**, and **Exit**.
+- Continue is available only when a valid save exists; Load lists save slots and metadata and handles invalid/incompatible saves safely.
+- New Career opens the setup wizard. Phase 5D supplies the historical 15 July 2006 club/league registry and completes `League -> Club -> Manager Name`.
+- After successful career creation or save loading, automatically open the `CareerShell` Dashboard. `KEY_C` must not be required to access the primary career interface.
+- The app root/coordinator owns Main Menu, CareerShell, and MatchScene transitions. It provides an explicit MatchScene reference or persistent scene lifecycle; do not rely on standalone-scene assumptions, fragile parent traversal, or a global group lookup alone.
+- Preserve Dashboard / Schedule -> Pre-Match -> Match -> Post-Match -> refreshed CareerShell. Handle missing saves, failed transitions, and unsaved progress safely.
+- Acceptance tests: F5 with no saves; New / Continue / Load; automatic Dashboard entry; match launch from Dashboard and Schedule; PostMatchModal return; desktop and narrow viewport transitions. Update `project.godot` only after the new coordinator and routes are implemented. Source inspection alone is not runtime QA.
 
 ### Phase 5D — Historical 15 July 2006 `res://data/clubs.csv`, Player CSV Metadata (`Stamina` + `Club`/`League`/`Nationality`) & Codes (`NHHA72528`)
 
