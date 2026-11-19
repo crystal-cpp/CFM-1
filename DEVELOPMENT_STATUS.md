@@ -124,7 +124,7 @@
 2. **UEFA Champions League Fixtures (`CompetitionRegistry` & `ScheduleView` / `CompetitionsView`)**:
    * Midweek continental fixtures (`September – May Final`) populated from the **top clubs of each European league** in `res://data/clubs.csv` (`Premier League`, `La Liga`, `Serie A`, `Bundesliga`, `Ligue 1`, `Primeira Liga`, `Eredivisie`, `Scottish Premiership`, `Belgian Pro League`, `Ukrainian Premier League`, `Danish Superliga`, `Süper Lig`, `Croatian First Football League`, `Eliteserien`, `Allsvenskan`).
 
-### Phase 5C-2 — Main Menu, Application Startup & Career Entry Flow `[SPECIFICATION ADDED; NOT IMPLEMENTED]`
+### Phase 5C-2 — Main Menu, Application Startup & Career Entry Flow `[IMPLEMENTED IN SOURCE; RUNTIME QA PENDING]`
 
 - Make a dedicated application root / scene coordinator the `project.godot` main scene. F5 should open **New Career**, **Continue Career**, **Load Career**, **Settings**, and **Exit**.
 - Continue is available only when a valid save exists; Load lists save slots and metadata and handles invalid/incompatible saves safely.
@@ -146,9 +146,9 @@
 
      * `res://data/players_2006_with_price.csv` (`demo/data/players_2006_with_price.csv`) is the runtime dataset; `Players_Database/players_2006_with_price.csv` is intentionally retained as a separate preventive/source copy and does not need to mirror the runtime file row-for-row.
 
-   * **Remaining Data-Preparation Requirement (Blocking Phase 5D)**:
+    * **Remaining Data-Preparation Requirement (Blocking Phase 5D):** The club CSV now exists but is incomplete and unaudited.
 
-     * `demo/data/clubs.csv` (`res://data/clubs.csv`) does not yet exist in the repository and must be authored and audited for **15 July 2006** pre-season accuracy (`ClubID,Club,League,ShortCode,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor`), including balanced historical budgets/reputations, valid `formations.csv` formations, and primary/secondary kit colours.
+      * `demo/data/clubs.csv` contains 107 data rows and 7 columns (`Club,League,Country,Reputation,Budget,DefaultFormation,KitColor`). Expand to the target 12-column schema (`ClubID,Club,League,ShortCode,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor`) and audit 15 July 2006 accuracy.
 
    * **Existing CSV `Stamina` Column Mapping**:
 
@@ -156,9 +156,9 @@
 
 2. **Remaining Planned Deliverables**:
 
-   * **Historical 15 July 2006 Start (`NewCareerView.gd` & `CareerState::start_new_career()`)**: Anchors new career saves to **`2006-07-15` (Season `2006/07`)**, renders the `League -> Club -> Manager Name` selector strictly from `res://data/clubs.csv` (eliminating `DEFAULT_CLUB_NAMES[16]` and preventing random club creation), routes CSV players into their matching `Team` (unmatched rows to Free Agents `club_id = 0`), and passes `PrimaryColor` / `SecondaryColor` kit colours into `MatchEngine` match presentation (with automatic away clash-kit switching).
+    * **Historical 15 July 2006 Start — partially implemented:** `start_new_career()` anchors to `2006-07-15`, reads the club CSV and routes player rows by club name. The selector is CSV-backed, but does not yet show all requested club metadata; the hardcoded 16-club fallback remains; and fixtures still assume 16 teams / `Premier Division`.
 
-   * **Codes Mechanism (`NHHA72528`) & `Tuesday League` / `11A7` Lock**: Adds `Codes` button in `CareerShell` + `RedeemCodeModal` backed by `CareerState::redeem_promo_code("NHHA72528")` to unlock `Tuesday League -> 11A7` globally and credit `+$50.0M` Club Balance, `+$35.0M` Transfer Budget, `+$250K/wk` Wage Budget, `+5` Skip Tokens, and `+10` Club Reputation.
+    * **Codes Mechanism — implemented in source:** `CareerShell` opens `RedeemCodeModal`; `redeem_promo_code("NHHA72528")` persists the global unlock and applies balance/transfer/wage/reputation rewards during an active career. The implementation adds five `TrainingPoints`; verify whether these are intended to be skip tokens.
 
    * **Custom Players & Classmates**: Supports appending custom player rows in `res://data/players_2006_with_price.csv` (`Club = "11A7"`, `League = "Tuesday League"`, or any canonical `clubs.csv` club/league), with $\text{BaseOVR} > 96$ players qualifying for Phase 7E Playstyles.
 
