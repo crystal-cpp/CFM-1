@@ -132,8 +132,9 @@ func _ensure_ui_built() -> void:
 	root_panel.add_child(main_vbox)
 
 	# 1. Top Header & Season Window Status
-	var top_hbox := HBoxContainer.new()
-	top_hbox.add_theme_constant_override("separation", 10)
+	var top_hbox := HFlowContainer.new()
+	top_hbox.add_theme_constant_override("h_separation", 10)
+	top_hbox.add_theme_constant_override("v_separation", 8)
 	main_vbox.add_child(top_hbox)
 
 	var title_lbl := Label.new()
@@ -141,10 +142,6 @@ func _ensure_ui_built() -> void:
 	title_lbl.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	title_lbl.add_theme_font_size_override("font_size", 20)
 	top_hbox.add_child(title_lbl)
-
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top_hbox.add_child(spacer)
 
 	_season_pill = _create_badge("2026/27 • Jul – May", Color(0.20, 0.45, 0.75), Color(0.75, 0.88, 1.0))
 	top_hbox.add_child(_season_pill)
@@ -174,8 +171,11 @@ func _ensure_ui_built() -> void:
 	strip_panel.add_child(strip_hbox)
 
 	var timeline_lbl := Label.new()
-	timeline_lbl.text = "Season Structure:  Weeks 1–2 (July Friendlies)  →  Week 3 / Mid-Aug (Matchday 1)  →  May (Season Finale)"
+	timeline_lbl.text = "Season: Jul Friendlies  →  Mid-Aug League  →  May Finale"
+	timeline_lbl.tooltip_text = "Season Structure: Weeks 1–2 (July Friendlies) → Week 3 / Mid-Aug (Matchday 1) → May (Season Finale)"
 	timeline_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	timeline_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	timeline_lbl.custom_minimum_size = Vector2(260, 0)
 	timeline_lbl.add_theme_color_override("font_color", Color(0.75, 0.84, 0.95))
 	timeline_lbl.add_theme_font_size_override("font_size", 12)
 	strip_hbox.add_child(timeline_lbl)
@@ -195,8 +195,9 @@ func _ensure_ui_built() -> void:
 	strip_hbox.add_child(_play_next_btn)
 
 	# 3. Tabbed View Navigation: My Club Fixtures | League Matchdays | Results Archive
-	var tabs_hbox := HBoxContainer.new()
-	tabs_hbox.add_theme_constant_override("separation", 8)
+	var tabs_hbox := HFlowContainer.new()
+	tabs_hbox.add_theme_constant_override("h_separation", 8)
+	tabs_hbox.add_theme_constant_override("v_separation", 6)
 	main_vbox.add_child(tabs_hbox)
 
 	var tab_defs: Array[Dictionary] = [
@@ -234,8 +235,9 @@ func _build_my_fixtures_tab(parent: Control) -> void:
 	parent.add_child(panel)
 	_tab_panels["my_fixtures"] = panel
 
-	var filter_hbox := HBoxContainer.new()
-	filter_hbox.add_theme_constant_override("separation", 6)
+	var filter_hbox := HFlowContainer.new()
+	filter_hbox.add_theme_constant_override("h_separation", 6)
+	filter_hbox.add_theme_constant_override("v_separation", 6)
 	panel.add_child(filter_hbox)
 
 	var filters: Array[Dictionary] = [
@@ -275,8 +277,9 @@ func _build_league_matchdays_tab(parent: Control) -> void:
 	parent.add_child(panel)
 	_tab_panels["league_matchdays"] = panel
 
-	var nav_hbox := HBoxContainer.new()
-	nav_hbox.add_theme_constant_override("separation", 8)
+	var nav_hbox := HFlowContainer.new()
+	nav_hbox.add_theme_constant_override("h_separation", 8)
+	nav_hbox.add_theme_constant_override("v_separation", 6)
 	panel.add_child(nav_hbox)
 
 	_md_prev_btn = Button.new()
@@ -344,8 +347,9 @@ func _build_results_archive_tab(parent: Control) -> void:
 	parent.add_child(panel)
 	_tab_panels["results_archive"] = panel
 
-	var bar := HBoxContainer.new()
-	bar.add_theme_constant_override("separation", 8)
+	var bar := HFlowContainer.new()
+	bar.add_theme_constant_override("h_separation", 8)
+	bar.add_theme_constant_override("v_separation", 6)
 	panel.add_child(bar)
 
 	for sc in [{ "id": "MY_CLUB", "label": "My Club Results" }, { "id": "ALL_LEAGUE", "label": "All League Results" }]:
@@ -499,18 +503,23 @@ func refresh_schedule() -> void:
 
 	var phase: Dictionary = career_state.get_season_phase_info()
 	_season_pill.text = "%s • Jul – May" % String(phase.get("season_label", "2026/27"))
-	_phase_pill.text = "Wk %d • %s" % [int(phase.get("week", 1)), String(phase.get("phase_label", "Pre-Season"))]
+	var full_phase_label: String = String(phase.get("phase_label", "Pre-Season"))
+	var compact_phase_label: String = "Pre-Season" if full_phase_label.to_lower().contains("pre-season") else ("League" if full_phase_label.to_lower().contains("league") else full_phase_label)
+	_phase_pill.text = "Wk %d • %s" % [int(phase.get("week", 1)), compact_phase_label]
+	_phase_pill.tooltip_text = full_phase_label
 
 	var next_fix: Dictionary = career_state.get_next_fixture()
 	if next_fix.is_empty():
-		_next_match_pill.text = "Season Complete (May)"
+		_next_match_pill.text = "Season Complete"
+		_next_match_pill.tooltip_text = "Season Complete (May)"
 		_sim_next_btn.disabled = true
 		_play_next_btn.disabled = true
 	else:
 		var is_home: bool = bool(next_fix.get("is_home", true))
 		var opp: String = String(next_fix.get("away_club_name", "Opponent")) if is_home else String(next_fix.get("home_club_name", "Opponent"))
 		var tag: String = "Friendly" if bool(next_fix.get("is_friendly", false)) else ("MD %d" % int(next_fix.get("matchday", 1)))
-		_next_match_pill.text = "Next (%s): %s %s (%s)" % [tag, "vs" if is_home else "@", opp, String(next_fix.get("date_iso", ""))]
+		_next_match_pill.text = "Next: %s %s %s" % [tag, "vs" if is_home else "@", opp]
+		_next_match_pill.tooltip_text = "Next (%s): %s %s (%s)" % [tag, "vs" if is_home else "@", opp, String(next_fix.get("date_iso", ""))]
 		_sim_next_btn.disabled = false
 		_play_next_btn.disabled = false
 
@@ -679,6 +688,7 @@ func _create_section_header(text: String) -> Label:
 
 func _create_fixture_card(fix: Dictionary, is_next_match: bool) -> PanelContainer:
 	var card := PanelContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var is_user: bool = bool(fix.get("is_user_match", false))
 	var is_friendly: bool = bool(fix.get("is_friendly", false))
 
@@ -693,8 +703,9 @@ func _create_fixture_card(fix: Dictionary, is_next_match: bool) -> PanelContaine
 	style.content_margin_bottom = 10
 	card.add_theme_stylebox_override("panel", style)
 
-	var hbox := HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 12)
+	var hbox := HFlowContainer.new()
+	hbox.add_theme_constant_override("h_separation", 12)
+	hbox.add_theme_constant_override("v_separation", 6)
 	card.add_child(hbox)
 
 	var wk: int = int(fix.get("week", 1))
@@ -717,12 +728,17 @@ func _create_fixture_card(fix: Dictionary, is_next_match: bool) -> PanelContaine
 	var match_lbl := Label.new()
 	match_lbl.text = "%s  vs  %s" % [String(fix.get("home_club_name", "Home")), String(fix.get("away_club_name", "Away"))]
 	match_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	match_lbl.custom_minimum_size = Vector2(180, 0)
+	match_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	match_lbl.add_theme_color_override("font_color", Color.WHITE if is_user else Color(0.85, 0.90, 0.96))
 	match_lbl.add_theme_font_size_override("font_size", 13)
 	hbox.add_child(match_lbl)
 
 	var stad_lbl := Label.new()
 	stad_lbl.text = String(fix.get("stadium", ""))
+	stad_lbl.custom_minimum_size = Vector2(100, 0)
+	stad_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	stad_lbl.tooltip_text = stad_lbl.text
 	stad_lbl.add_theme_color_override("font_color", Color(0.55, 0.66, 0.80))
 	stad_lbl.add_theme_font_size_override("font_size", 11)
 	hbox.add_child(stad_lbl)
