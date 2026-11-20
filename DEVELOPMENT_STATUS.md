@@ -2,7 +2,7 @@
 
 **Last Updated**: 2026-11-20
 
-**Reviewed Source Baseline**: `626f2d50bd502286b4cf54aa46448131eb87f98b` *(includes active-career league standings selection synchronization in CompetitionsView, in addition to the canonical registry integration and earlier ClubRecord / CSV ClubID fixes)*
+**Reviewed Source Baseline**: `18606ff0311b577916d2094a4c9da9e841574da4` *(includes active-career league standings selection synchronization and the bound managed-club ID lookup in CompetitionsView, in addition to the canonical registry integration and earlier ClubRecord / CSV ClubID fixes)*
 
 **Current Phase**: Phase 5
 
