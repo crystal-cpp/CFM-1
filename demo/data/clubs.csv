@@ -23,10 +23,10 @@ ClubID,Club,League,ShortCode,Country,Reputation,TotalBalance,TransferBudget,Wage
 1022,Palmeiras,Campeonato Brasileiro Série A,SEP,Brazil,80,46000000,15000000,460000,4-4-2,#006437,#FFFFFF
 1023,Santos FC,Campeonato Brasileiro Série A,SAN,Brazil,80,45000000,15000000,450000,4-3-3,#FFFFFF,#111111
 1024,Sao Paulo,Campeonato Brasileiro Série A,SAO,Brazil,83,58000000,20000000,580000,3-5-2,#FE0000,#111111
-1025,Birmingham City,Championship,BIR,England,73,30000000,10000000,300000,4-4-2,#0033A0,#FFFFFF
-1026,Leeds United,Championship,LEE,England,74,28000000,9500000,280000,4-4-2,#FFFFFF,#1D428A
-1027,Southampton FC,Championship,SOU,England,73,29000000,9500000,290000,4-4-2,#D71920,#FFFFFF
-1028,Sunderland AFC,Championship,SUN,England,73,30000000,10000000,300000,4-4-2,#EB172B,#FFFFFF
+1025,Birmingham City,Premier League,BIR,England,73,30000000,10000000,300000,4-4-2,#0033A0,#FFFFFF
+1026,Leeds United,Premier League,LEE,England,74,28000000,9500000,280000,4-4-2,#FFFFFF,#1D428A
+1027,Southampton FC,Premier League,SOU,England,73,29000000,9500000,290000,4-4-2,#D71920,#FFFFFF
+1028,Sunderland AFC,Premier League,SUN,England,73,30000000,10000000,300000,4-4-2,#EB172B,#FFFFFF
 1029,Dinamo Zagreb,Croatian First Football League,DZG,Croatia,75,26000000,9000000,260000,4-2-3-1,#0051A5,#FFFFFF
 1030,Hajduk Split,Croatian First Football League,HAJ,Croatia,73,20000000,7000000,200000,4-4-2,#FFFFFF,#0051A5
 1031,FC Copenhagen,Danish Superliga,FCK,Denmark,75,30000000,10000000,300000,4-4-2,#FFFFFF,#003399
@@ -98,7 +98,7 @@ ClubID,Club,League,ShortCode,Country,Reputation,TotalBalance,TransferBudget,Wage
 1097,Galatasaray,Süper Lig,GAL,Turkey,80,65000000,22000000,650000,4-4-2,#A90432,#FDB912
 1098,11A7,Tuesday League,1A7,Vietnam,99,999999999,999999999,9999999,4-3-3,#1A1A2E,#E94560
 1099,Shakhtar Donetsk,Ukrainian Premier League,SHK,Ukraine,80,80000000,27000000,800000,4-2-3-1,#FF6600,#111111
-1100,Brighton & Hove Albion,League One,BHA,England,72,30000000,10000000,300000,4-4-2,#0057B8,#FFFFFF
+1100,Brighton & Hove Albion,Premier League,BHA,England,72,30000000,10000000,300000,4-4-2,#0057B8,#FFFFFF
 1101,FC Basel,Swiss Super League,BAS,Switzerland,76,38000000,13000000,380000,4-4-2,#E30613,#003399
 1102,FC Groningen,Eredivisie,GRO,Netherlands,73,26000000,9000000,260000,4-3-3,#008B45,#FFFFFF
 1103,FC Nurnberg,Bundesliga,FCN,Germany,74,32000000,11000000,320000,4-4-2,#8B0000,#FFFFFF
