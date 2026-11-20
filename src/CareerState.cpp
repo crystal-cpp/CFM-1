@@ -1165,14 +1165,14 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 				s_kit = compute_secondary_kit_color(p_kit);
 			}
 
-			auto team = std::make_unique<Team>(cname, static_cast<double>(total_bal));
+			auto team = std::make_unique<Team>(cname, static_cast<double>(trans_bud));
 			team->SetId(cid);
 			team->League = cleague;
 			team->ShortCode = cshort;
 			team->Country = ccountry;
 			team->Reputation = crep;
 			team->TotalBalance = total_bal;
-			team->TransferBudget = trans_bud;
+			// Transfer budget is initialized through Team's public constructor/API.
 			team->WageBudget = wage_bud;
 			team->KitColor = p_kit;
 			team->SecondaryColor = s_kit;
@@ -1356,8 +1356,8 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 	_finances.total_balance = managed_team->TotalBalance > 0
 		? managed_team->TotalBalance
 		: static_cast<int64_t>(std::max(15000000.0, managed_team->GetBudget()));
-	_finances.transfer_budget = managed_team->TransferBudget > 0
-		? managed_team->TransferBudget
+	_finances.transfer_budget = managed_team->GetBudget() > 0
+		? static_cast<int64_t>(managed_team->GetBudget())
 		: static_cast<int64_t>(std::max(10000000.0, _finances.total_balance * 0.35));
 	_finances.wage_budget = managed_team->WageBudget > 0 ? managed_team->WageBudget : 650000;
 	_finances.weekly_wage_bill = 0;
@@ -1456,7 +1456,7 @@ Dictionary CareerState::get_club_info(int32_t p_club_id) const {
 		d["country"] = String(it->second->Country.c_str());
 		d["reputation"] = it->second->Reputation;
 		d["total_balance"] = it->second->TotalBalance;
-		d["transfer_budget"] = it->second->TransferBudget;
+		d["transfer_budget"] = static_cast<int64_t>(it->second->GetBudget());
 		d["wage_budget"] = it->second->WageBudget;
 		d["budget"] = it->second->GetBudget();
 		d["formation"] = String(it->second->Formation.c_str());
