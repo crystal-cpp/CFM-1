@@ -6,10 +6,10 @@ uid="uid://doh8ng3bdslvr"
 
 [deps]
 
-files=["res://data/clubs.League.translation", "res://data/clubs.Country.translation", "res://data/clubs.Reputation.translation", "res://data/clubs.Budget.translation", "res://data/clubs.DefaultFormation.translation", "res://data/clubs.KitColor.translation"]
+files=["res://data/clubs.Club.translation", "res://data/clubs.League.translation", "res://data/clubs.ShortCode.translation", "res://data/clubs.Country.translation", "res://data/clubs.Reputation.translation", "res://data/clubs.TotalBalance.translation", "res://data/clubs.TransferBudget.translation", "res://data/clubs.WageBudget.translation", "res://data/clubs.DefaultFormation.translation", "res://data/clubs.PrimaryColor.translation", "res://data/clubs.SecondaryColor.translation"]
 
 source_file="res://data/clubs.csv"
-dest_files=["res://data/clubs.League.translation", "res://data/clubs.Country.translation", "res://data/clubs.Reputation.translation", "res://data/clubs.Budget.translation", "res://data/clubs.DefaultFormation.translation", "res://data/clubs.KitColor.translation"]
+dest_files=["res://data/clubs.Club.translation", "res://data/clubs.League.translation", "res://data/clubs.ShortCode.translation", "res://data/clubs.Country.translation", "res://data/clubs.Reputation.translation", "res://data/clubs.TotalBalance.translation", "res://data/clubs.TransferBudget.translation", "res://data/clubs.WageBudget.translation", "res://data/clubs.DefaultFormation.translation", "res://data/clubs.PrimaryColor.translation", "res://data/clubs.SecondaryColor.translation"]
 
 [params]
 

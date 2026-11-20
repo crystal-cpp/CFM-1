@@ -522,8 +522,13 @@ Dictionary CareerState::get_season_phase_info() const {
 	d["week"] = week;
 	d["season_label"] = get_season_label();
 	d["current_date"] = get_current_date_iso();
+	String managed_league_str = "Premier Division";
+	auto club_it = _clubs.find(_managed_club_id);
+	if (club_it != _clubs.end() && club_it->second && !club_it->second->League.empty()) {
+		managed_league_str = String(club_it->second->League.c_str());
+	}
 	d["current_matchday"] = get_current_matchday();
-	d["total_matchdays"] = get_total_matchdays("Premier Division");
+	d["total_matchdays"] = get_total_matchdays(managed_league_str);
 	d["friendlies_month"] = String("July");
 	d["league_start_date"] = String(format_ymd_iso(_season_start_year, 8, 15).c_str());
 	d["season_end_date"] = String(format_ymd_iso(_season_start_year + 1, 5, 31).c_str());
@@ -548,12 +553,70 @@ Dictionary CareerState::get_season_phase_info() const {
 void CareerState::_generate_season_fixtures(int32_t start_year) {
 	_fixtures.clear();
 
-	const int teams_count = 16;
-	std::vector<int> team_ids;
-	team_ids.reserve(teams_count);
-	for (int i = 1; i <= teams_count; i++) {
-		team_ids.push_back(i);
+	std::string league_comp = "Premier Division";
+	auto managed_it = _clubs.find(_managed_club_id);
+	if (managed_it != _clubs.end() && managed_it->second && !managed_it->second->League.empty()) {
+		league_comp = managed_it->second->League;
 	}
+
+	std::vector<int> team_ids;
+	for (const auto &kv : _clubs) {
+		if (!kv.second) continue;
+		if (to_lower_str(kv.second->League) == to_lower_str(league_comp)) {
+			team_ids.push_back(kv.first);
+		}
+	}
+	std::sort(team_ids.begin(), team_ids.end());
+
+	// Fallback for single-club leagues (e.g., Tuesday League / 11A7) or missing league filter
+	if (team_ids.size() < 2 && _clubs.size() >= 2) {
+		std::unordered_set<int> existing(team_ids.begin(), team_ids.end());
+		std::vector<std::pair<int, int>> candidates; // (-reputation, club_id)
+		for (const auto &kv : _clubs) {
+			if (!kv.second || existing.count(kv.first)) continue;
+			if (_is_club_or_league_locked(kv.second->GetName(), kv.second->League)) continue;
+			candidates.emplace_back(-kv.second->Reputation, kv.first);
+		}
+		std::sort(candidates.begin(), candidates.end());
+		for (const auto &cand : candidates) {
+			if (team_ids.size() >= 16) break;
+			team_ids.push_back(cand.second);
+			existing.insert(cand.second);
+		}
+		std::sort(team_ids.begin(), team_ids.end());
+
+		if (_standings.size() < 2) {
+			_standings.clear();
+			for (int cid : team_ids) {
+				auto cit = _clubs.find(cid);
+				if (cit != _clubs.end() && cit->second) {
+					LeagueStandingRow row;
+					row.club_id = cid;
+					row.club_name = cit->second->GetName();
+					_standings.push_back(row);
+				}
+			}
+		}
+	}
+
+	const int teams_count = static_cast<int>(team_ids.size());
+	if (teams_count < 2) {
+		return;
+	}
+
+	auto resolve_stadium = [&](int home_id) -> std::string {
+		auto cit = _clubs.find(home_id);
+		if (cit != _clubs.end() && cit->second) {
+			if (home_id >= 1 && home_id <= 16 && cit->second->GetName() == DEFAULT_CLUB_NAMES[home_id - 1]) {
+				return DEFAULT_STADIUM_NAMES[home_id - 1];
+			}
+			return cit->second->GetName() + " Stadium";
+		}
+		if (home_id >= 1 && home_id <= 16) {
+			return DEFAULT_STADIUM_NAMES[home_id - 1];
+		}
+		return "Main Stadium";
+	};
 
 	int fix_id = 1;
 
@@ -565,14 +628,13 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 		int f_day = (pre_wk == 1) ? 8 : 15;
 		std::string f_date = format_ymd_iso(start_year, 7, f_day);
 
-		for (int m = 0; m < teams_count / 2; m++) {
-			int idx_a = (m * 2 + (pre_wk - 1)) % teams_count;
-			int idx_b = (idx_a + 1 + (pre_wk * 2)) % teams_count;
-			if (idx_a == idx_b) {
-				idx_b = (idx_a + 1) % teams_count;
-			}
-			int home = team_ids[idx_a];
-			int away = team_ids[idx_b];
+		std::vector<int> f_rot = team_ids;
+		int shift = (pre_wk - 1) % teams_count;
+		std::rotate(f_rot.begin(), f_rot.begin() + shift, f_rot.end());
+
+		for (int m = 0; m + 1 < teams_count; m += 2) {
+			int home = f_rot[m];
+			int away = f_rot[m + 1];
 			if (pre_wk == 2) {
 				std::swap(home, away);
 			}
@@ -589,9 +651,31 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 			fix.away_goals = -1;
 			fix.played = false;
 			fix.is_friendly = true;
-			if (home >= 1 && home <= 16) {
-				fix.stadium = DEFAULT_STADIUM_NAMES[home - 1];
+			fix.stadium = resolve_stadium(home);
+			fix.match_importance = "FRIENDLY";
+			_fixtures.push_back(fix);
+		}
+
+		// Ensure the trailing team in an odd-sized league also gets a pre-season friendly
+		if (teams_count % 2 == 1) {
+			int home = f_rot.back();
+			int away = f_rot.front();
+			if (pre_wk == 2) {
+				std::swap(home, away);
 			}
+			FixtureRecord fix;
+			fix.fixture_id = fix_id++;
+			fix.week = pre_wk;
+			fix.matchday = 0;
+			fix.date_iso = f_date;
+			fix.competition = "Pre-Season Friendly";
+			fix.home_club_id = home;
+			fix.away_club_id = away;
+			fix.home_goals = -1;
+			fix.away_goals = -1;
+			fix.played = false;
+			fix.is_friendly = true;
+			fix.stadium = resolve_stadium(home);
 			fix.match_importance = "FRIENDLY";
 			_fixtures.push_back(fix);
 		}
@@ -599,19 +683,26 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 
 	// -------------------------------------------------------------------------
 	// 2. COMPETITIVE LEAGUE SEASON (Week 3+ • Mid-August to May)
-	//    Full Double Round-Robin (30 Matchdays):
+	//    Full Double Round-Robin (handles both even and odd team counts via bye):
 	//      - Matchday 1 kicks off Mid-August (start_year-08-15, Week 3)
-	//      - Matchday 30 concludes in May ((start_year + 1)-05-23, Week 32)
+	//      - Final Matchday concludes in May ((start_year + 1)-05-23)
 	// -------------------------------------------------------------------------
 	std::vector<std::vector<std::pair<int, int>>> first_half_pairs;
 	std::vector<int> rot = team_ids;
-	const int rounds_per_half = teams_count - 1; // 15 rounds per half -> 30 matchdays total
+	if (rot.size() % 2 == 1) {
+		rot.push_back(-1); // Bye sentinel for odd-numbered leagues
+	}
+	const int n_even = static_cast<int>(rot.size());
+	const int rounds_per_half = n_even - 1;
 
 	for (int round = 0; round < rounds_per_half; round++) {
 		std::vector<std::pair<int, int>> round_matches;
-		for (int m = 0; m < teams_count / 2; m++) {
+		for (int m = 0; m < n_even / 2; m++) {
 			int home = rot[m];
-			int away = rot[teams_count - 1 - m];
+			int away = rot[n_even - 1 - m];
+			if (home == -1 || away == -1) {
+				continue;
+			}
 			if (m == 0 && (round % 2 == 1)) {
 				std::swap(home, away);
 			}
@@ -624,7 +715,7 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 		rot.insert(rot.begin() + 1, last);
 	}
 
-	const int total_matchdays = rounds_per_half * 2; // 30 matchdays
+	const int total_matchdays = rounds_per_half * 2;
 	const int64_t md1_days = civil_to_days(start_year, 8, 15);
 	const int64_t md_end_days = civil_to_days(start_year + 1, 5, 23);
 	const int span_days = static_cast<int>(md_end_days - md1_days); // 281 days
@@ -632,7 +723,9 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 	for (int md_idx = 0; md_idx < total_matchdays; md_idx++) {
 		int matchday = md_idx + 1;
 		int week = 3 + md_idx; // Matchday 1 starts on Week 3
-		int day_offset = static_cast<int>(std::llround((static_cast<double>(md_idx) * span_days) / (total_matchdays - 1)));
+		int day_offset = (total_matchdays > 1)
+			? static_cast<int>(std::llround((static_cast<double>(md_idx) * span_days) / (total_matchdays - 1)))
+			: 0;
 
 		int y = start_year;
 		int m = 8;
@@ -652,16 +745,14 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 			fix.week = week;
 			fix.matchday = matchday;
 			fix.date_iso = md_date;
-			fix.competition = "Premier Division";
+			fix.competition = league_comp;
 			fix.home_club_id = home;
 			fix.away_club_id = away;
 			fix.home_goals = -1;
 			fix.away_goals = -1;
 			fix.played = false;
 			fix.is_friendly = false;
-			if (home >= 1 && home <= 16) {
-				fix.stadium = DEFAULT_STADIUM_NAMES[home - 1];
-			}
+			fix.stadium = resolve_stadium(home);
 			fix.match_importance = _classify_match_importance(home, away, matchday, fix.competition);
 			_fixtures.push_back(fix);
 		}
@@ -1119,28 +1210,65 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 	}
 
 	// Route CSV players into their matching Club by Club name (unmatched -> Free Agent club_id = 0)
+	// Route CSV players into their matching Club by Club name (unmatched -> Free Agent club_id = 0)
 	if (db_loaded) {
 		for (const auto &src : _player_db->get_raw_players()) {
 			int pid = _next_player_id++;
+			std::string p_name = src.name.utf8().get_data();
+			std::string p_pos_str = src.position.strip_edges().to_upper().utf8().get_data();
+			Position p_pos = string_to_position(p_pos_str);
+
+			PlayerAttributes attrs;
+			if (p_pos == Position::GK) {
+				attrs.Pace = std::clamp(src.diving, 1, 99);
+				attrs.Shooting = std::clamp(src.kicking, 1, 99);
+				attrs.Passing = std::clamp(src.positioning, 1, 99);
+				attrs.Dribbling = std::clamp(src.reflex, 1, 99);
+				attrs.Defending = std::clamp(src.reaction, 1, 99);
+				attrs.Physical = std::clamp(src.overall, 1, 99);
+			} else {
+				attrs.Pace = std::clamp(src.pace, 1, 99);
+				attrs.Shooting = std::clamp(src.shooting, 1, 99);
+				attrs.Passing = std::clamp(src.passing, 1, 99);
+				attrs.Dribbling = std::clamp(src.dribbling, 1, 99);
+				attrs.Defending = std::clamp(src.defending, 1, 99);
+				attrs.Physical = std::clamp(src.physical, 1, 99);
+			}
+
+			int p_age = std::clamp(src.age, 15, 45);
+			int p_pot = std::clamp(src.potential, src.overall, 99);
+			int debut_age = std::clamp(p_age - 3, 15, 22);
+
 			auto p_ptr = std::make_shared<Player>(
-				src.GetName(), src.GetPosition(), src.GetAttributes(),
-				src.GetAge(), src.GetPotential(), src.GetDebutAge(), 37
+				p_name, p_pos, attrs, p_age, p_pot, debut_age, 37
 			);
 			p_ptr->SetId(pid);
-			p_ptr->SetStamina(src.GetStamina());
-			p_ptr->SetClubName(src.GetClubName());
-			p_ptr->SetLeagueName(src.GetLeagueName());
-			p_ptr->SetNationality(src.GetNationality());
-			p_ptr->SetPlaystyles(src.GetPlaystyles());
-			if (src.GetMarketValue() > 0.0) {
-				p_ptr->SetMarketValue(src.GetMarketValue());
+			p_ptr->SetStamina(std::clamp(src.stamina, 1, 99));
+
+			std::string p_club = src.club.strip_edges().utf8().get_data();
+			std::string p_league = src.league.strip_edges().utf8().get_data();
+			std::string p_nat = src.nationality.strip_edges().utf8().get_data();
+			std::string p_style = src.playstyle.strip_edges().utf8().get_data();
+
+			p_ptr->SetClubName(p_club.empty() ? "Free Agent" : p_club);
+			p_ptr->SetLeagueName(p_league.empty() ? "Free Agents" : p_league);
+			p_ptr->SetNationality(p_nat.empty() ? "Unknown" : p_nat);
+
+			std::vector<std::string> styles;
+			if (!p_style.empty() && p_style != "Balanced") {
+				styles.push_back(p_style);
+			}
+			p_ptr->SetPlaystyles(styles);
+
+			if (src.price > 0) {
+				p_ptr->SetMarketValue(static_cast<double>(src.price));
 			}
 			p_ptr->SetCondition(100);
 			p_ptr->SetMorale(85);
-			p_ptr->SetWage(std::max<int64_t>(1500, static_cast<int64_t>(p_ptr->GetOVR()) * 850));
+			p_ptr->SetWage(src.wage > 0 ? src.wage : std::max<int64_t>(1500, static_cast<int64_t>(p_ptr->GetOVR()) * 850));
 			p_ptr->SetContractYears(3);
 
-			std::string c_key = to_lower_str(src.GetClubName());
+			std::string c_key = to_lower_str(p_club);
 			auto c_it = _club_id_by_name_lower.find(c_key);
 			if (c_it != _club_id_by_name_lower.end() && _clubs.count(c_it->second) && _clubs[c_it->second]) {
 				int32_t target_cid = c_it->second;
@@ -1603,7 +1731,12 @@ int32_t CareerState::get_current_matchday() const {
 			return fix.matchday;
 		}
 	}
-	return get_total_matchdays("Premier Division");
+	String managed_league_str = "Premier Division";
+	auto club_it = _clubs.find(_managed_club_id);
+	if (club_it != _clubs.end() && club_it->second && !club_it->second->League.empty()) {
+		managed_league_str = String(club_it->second->League.c_str());
+	}
+	return get_total_matchdays(managed_league_str);
 }
 
 Dictionary CareerState::get_club_info(int32_t p_club_id) const {
@@ -2445,7 +2578,7 @@ bool CareerState::save_career(const String &p_slot_name) {
 		pd["position"] = String(position_to_string(p->GetPosition()).c_str());
 		pd["age"] = p->GetAge();
 		pd["debut_age"] = p->GetDebutAge();
-		pd["retirement_age"] = 37;
+		pd["retirement_age"] = p->GetRetirementAge();
 		pd["potential"] = p->GetPotential();
 		pd["club_name"] = String(p->GetClubName().c_str());
 		pd["league"] = String(p->GetLeagueName().c_str());
@@ -2629,7 +2762,7 @@ bool CareerState::load_career(const String &p_slot_name) {
 			int age = pd.get("age", 24);
 			int potential = pd.get("potential", 75);
 			int debut_age = pd.get("debut_age", 16);
-			int ret_age = 37;
+			int ret_age = pd.get("retirement_age", 37);
 
 			auto player_ptr = std::make_shared<Player>(name, pos, attrs, age, potential, debut_age, ret_age);
 			player_ptr->SetClubName(String(pd.get("club_name", "Free Agent")).utf8().get_data());
@@ -2653,7 +2786,7 @@ bool CareerState::load_career(const String &p_slot_name) {
 			player_ptr->SetAssists(pd.get("assists", 0));
 			player_ptr->SetIsStartingXI(pd.get("is_starting_xi", false));
 			player_ptr->SetMarketValue(pd.get("market_value", 0.0));
-			player_ptr->SetRetired(pd.get("is_retired", false) || age >= 37);
+			player_ptr->SetRetired(pd.get("is_retired", false) || age >= ret_age);
 
 			_players_by_id[pid] = player_ptr;
 		}

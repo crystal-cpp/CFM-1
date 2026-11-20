@@ -1,447 +1,599 @@
+// player_database.cpp
+// Crystal Football Manager 1 (CFM-1) — C++23 GDExtension (Godot 4.7.2)
+
 #include "player_database.h"
+
+#include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/packed_string_array.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
+
 #include <algorithm>
-#include <cctype>
-#include <unordered_map>
+#include <cmath>
+#include <cstdint>
+#include <unordered_set>
+#include <vector>
 
 using namespace godot;
 
+PlayerDatabase *PlayerDatabase::singleton = nullptr;
+
 namespace {
-std::string to_lower_ascii(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
-    return s;
+
+int position_priority(const String &pos) {
+    const String p = pos.strip_edges().to_upper();
+    if (p == "GK") return 0;
+    if (p == "CB" || p == "LB" || p == "RB" || p == "LWB" || p == "RWB" || p == "SW") return 1;
+    if (p == "CDM" || p == "CM" || p == "CAM" || p == "LM" || p == "RM") return 2;
+    if (p == "LW" || p == "RW" || p == "CF" || p == "ST" || p == "LF" || p == "RF") return 3;
+    return 4;
 }
 
-int find_first_column(const std::unordered_map<std::string, int>& cols, const std::vector<std::string>& candidates) {
-    for (const auto& name : candidates) {
-        auto it = cols.find(name);
-        if (it != cols.end()) {
-            return it->second;
+PackedStringArray parse_csv_line(const String &line) {
+    PackedStringArray fields;
+    String current;
+    bool in_quotes = false;
+
+    for (int i = 0; i < line.length(); ++i) {
+        const char32_t c = line[i];
+        if (c == U'"') {
+            if (in_quotes && i + 1 < line.length() && line[i + 1] == U'"') {
+                current += U'"';
+                ++i;
+            } else {
+                in_quotes = !in_quotes;
+            }
+        } else if (c == U',' && !in_quotes) {
+            fields.append(current.strip_edges());
+            current = "";
+        } else if (c != U'\r' && c != U'\n') {
+            current += c;
         }
     }
-    return -1;
+    fields.append(current.strip_edges());
+    return fields;
 }
+
+int find_col(const PackedStringArray &headers, const std::vector<const char *> &aliases, int fallback_idx = -1) {
+    for (int i = 0; i < headers.size(); ++i) {
+        const String h = headers[i].strip_edges().to_lower();
+        for (const char *alias : aliases) {
+            if (h == alias) {
+                return i;
+            }
+        }
+    }
+    return fallback_idx;
+}
+
+String get_str(const PackedStringArray &row, int idx, const String &def_val = "") {
+    if (idx >= 0 && idx < row.size() && !row[idx].is_empty()) {
+        return row[idx];
+    }
+    return def_val;
+}
+
+int get_int(const PackedStringArray &row, int idx, int def_val = 0) {
+    if (idx >= 0 && idx < row.size() && row[idx].is_valid_int()) {
+        return row[idx].to_int();
+    }
+    if (idx >= 0 && idx < row.size() && row[idx].is_valid_float()) {
+        return static_cast<int>(std::llround(row[idx].to_float()));
+    }
+    return def_val;
+}
+
+int64_t get_i64(const PackedStringArray &row, int idx, int64_t def_val = 0) {
+    if (idx >= 0 && idx < row.size() && row[idx].is_valid_int()) {
+        return row[idx].to_int();
+    }
+    if (idx >= 0 && idx < row.size() && row[idx].is_valid_float()) {
+        return static_cast<int64_t>(std::llround(row[idx].to_float()));
+    }
+    return def_val;
+}
+
 } // namespace
 
-void PlayerDatabase::_bind_methods() {
-    ClassDB::bind_method(D_METHOD("load_from_csv", "filepath"), &PlayerDatabase::load_from_csv);
-    ClassDB::bind_method(D_METHOD("load_players_from_csv", "filepath"), &PlayerDatabase::load_players_from_csv);
-    ClassDB::bind_method(D_METHOD("clear_database"), &PlayerDatabase::clear_database);
-    ClassDB::bind_method(D_METHOD("get_player_count"), &PlayerDatabase::get_player_count);
-    ClassDB::bind_method(D_METHOD("get_player", "name"), &PlayerDatabase::get_player);
-    ClassDB::bind_method(D_METHOD("get_player_by_name", "name"), &PlayerDatabase::get_player_by_name);
-    ClassDB::bind_method(D_METHOD("get_all_players"), &PlayerDatabase::get_all_players);
-    ClassDB::bind_method(D_METHOD("get_active_market_players"), &PlayerDatabase::get_active_market_players);
-
-    ClassDB::bind_method(D_METHOD("load_clubs_from_csv", "filepath"), &PlayerDatabase::load_clubs_from_csv);
-    ClassDB::bind_method(D_METHOD("clear_clubs"), &PlayerDatabase::clear_clubs);
-    ClassDB::bind_method(D_METHOD("get_club_count"), &PlayerDatabase::get_club_count);
-    ClassDB::bind_method(D_METHOD("get_club", "name"), &PlayerDatabase::get_club);
-    ClassDB::bind_method(D_METHOD("get_all_clubs"), &PlayerDatabase::get_all_clubs);
-    ClassDB::bind_method(D_METHOD("get_clubs_by_league", "league"), &PlayerDatabase::get_clubs_by_league);
-    ClassDB::bind_method(D_METHOD("get_all_leagues"), &PlayerDatabase::get_all_leagues);
-    ClassDB::bind_method(D_METHOD("sync_clubs_from_players"), &PlayerDatabase::sync_clubs_from_players);
-
-    ClassDB::bind_static_method("PlayerDatabase", D_METHOD("is_valid_position", "pos"), &PlayerDatabase::is_valid_position);
+PlayerDatabase::PlayerDatabase() {
+    singleton = this;
 }
 
-PlayerDatabase::PlayerDatabase() {}
-PlayerDatabase::~PlayerDatabase() {}
+PlayerDatabase::~PlayerDatabase() {
+    if (singleton == this) {
+        singleton = nullptr;
+    }
+}
 
-bool PlayerDatabase::is_valid_position(const String& p_pos) {
-    String pos = p_pos.strip_edges().to_upper();
-    return (pos == "GK"  || pos == "CB"  || pos == "LB"  || pos == "RB"  || 
-            pos == "LWB" || pos == "RWB" || pos == "CDM" || pos == "CM"  || 
-            pos == "CAM" || pos == "LM"  || pos == "RM"  || pos == "LW"  || 
-            pos == "RW"  || pos == "ST"  || pos == "CF");
+PlayerDatabase *PlayerDatabase::get_singleton() {
+    return singleton;
+}
+
+void PlayerDatabase::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("load_databases", "clubs_csv_path", "players_csv_path"), &PlayerDatabase::load_databases);
+    ClassDB::bind_method(D_METHOD("load_clubs_from_csv", "csv_path"), &PlayerDatabase::load_clubs_from_csv);
+    ClassDB::bind_method(D_METHOD("load_players_from_csv", "csv_path"), &PlayerDatabase::load_players_from_csv);
+    ClassDB::bind_method(D_METHOD("load_from_csv", "filepath"), &PlayerDatabase::load_from_csv);
+    ClassDB::bind_method(D_METHOD("sync_clubs_from_players"), &PlayerDatabase::sync_clubs_from_players);
+    ClassDB::bind_method(D_METHOD("clear_database"), &PlayerDatabase::clear_database);
+
+    ClassDB::bind_method(D_METHOD("get_all_leagues"), &PlayerDatabase::get_all_leagues);
+    ClassDB::bind_method(D_METHOD("get_league_count"), &PlayerDatabase::get_league_count);
+    ClassDB::bind_method(D_METHOD("get_clubs_by_league", "league_name"), &PlayerDatabase::get_clubs_by_league);
+    ClassDB::bind_method(D_METHOD("get_club_record", "club_name"), &PlayerDatabase::get_club_record);
+    ClassDB::bind_method(D_METHOD("get_club_by_id", "club_id"), &PlayerDatabase::get_club_by_id);
+    ClassDB::bind_method(D_METHOD("get_club", "club_name"), &PlayerDatabase::get_club);
+    ClassDB::bind_method(D_METHOD("get_all_clubs"), &PlayerDatabase::get_all_clubs);
+
+    ClassDB::bind_method(D_METHOD("get_players_by_club", "club_name"), &PlayerDatabase::get_players_by_club);
+    ClassDB::bind_method(D_METHOD("get_player_by_id", "player_id"), &PlayerDatabase::get_player_by_id);
+    ClassDB::bind_method(D_METHOD("get_player", "player_name"), &PlayerDatabase::get_player);
+    ClassDB::bind_method(D_METHOD("get_player_by_name", "player_name"), &PlayerDatabase::get_player_by_name);
+    ClassDB::bind_method(D_METHOD("get_all_players"), &PlayerDatabase::get_all_players);
+
+    ClassDB::bind_method(D_METHOD("get_total_club_count"), &PlayerDatabase::get_total_club_count);
+    ClassDB::bind_method(D_METHOD("get_club_count"), &PlayerDatabase::get_club_count);
+    ClassDB::bind_method(D_METHOD("get_total_player_count"), &PlayerDatabase::get_total_player_count);
+    ClassDB::bind_method(D_METHOD("get_player_count"), &PlayerDatabase::get_player_count);
+}
+
+bool PlayerDatabase::load_databases(const String &clubs_csv_path, const String &players_csv_path) {
+    const bool clubs_ok = load_clubs_from_csv(clubs_csv_path);
+    const bool players_ok = load_players_from_csv(players_csv_path);
+    sync_clubs_from_players();
+    return clubs_ok && players_ok;
+}
+
+bool PlayerDatabase::load_from_csv(const String &p_filepath) {
+    return load_players_from_csv(p_filepath);
 }
 
 void PlayerDatabase::clear_database() {
-    player_objects.clear();
-    loaded_player_names.clear();
+    clubs.clear();
+    club_index_by_name.clear();
+    club_index_by_id.clear();
+    league_order.clear();
+
+    players.clear();
+    player_index_by_id.clear();
+    players_by_club_map.clear();
 }
 
-int PlayerDatabase::get_player_count() const {
-    return static_cast<int>(player_objects.size());
-}
+bool PlayerDatabase::load_clubs_from_csv(const String &csv_path) {
+    if (!FileAccess::file_exists(csv_path)) {
+        UtilityFunctions::push_error("PlayerDatabase::load_clubs_from_csv — File not found: " + csv_path);
+        return false;
+    }
 
-bool PlayerDatabase::load_players_from_csv(const String& p_filepath) {
-    return load_from_csv(p_filepath);
-}
-
-bool PlayerDatabase::load_from_csv(const String& p_filepath) {
-    Ref<FileAccess> file = FileAccess::open(p_filepath, FileAccess::READ);
+    Ref<FileAccess> file = FileAccess::open(csv_path, FileAccess::READ);
     if (file.is_null()) {
-        UtilityFunctions::printerr("PlayerDatabase: Failed to open CSV at: ", p_filepath);
+        UtilityFunctions::push_error("PlayerDatabase::load_clubs_from_csv — Unable to open: " + csv_path);
         return false;
     }
 
-    clear_database();
+    clubs.clear();
+    club_index_by_name.clear();
+    club_index_by_id.clear();
+    league_order.clear();
+
     if (file->eof_reached()) {
-        UtilityFunctions::printerr("PlayerDatabase: CSV file is empty: ", p_filepath);
         return false;
     }
 
-    PackedStringArray header = file->get_csv_line();
-    std::unordered_map<std::string, int> column_indices;
-    for (int i = 0; i < header.size(); ++i) {
-        String column_name = header[i].strip_edges();
-        if (i == 0) {
-            column_name = column_name.replace(String::utf8("\xEF\xBB\xBF"), "");
-        }
-        column_indices[column_name.to_lower().utf8().get_data()] = i;
-    }
+    const PackedStringArray headers = parse_csv_line(file->get_line());
 
-    const auto find_column = [&column_indices](const std::string& name) -> int {
-        auto it = column_indices.find(name);
-        return it == column_indices.end() ? -1 : it->second;
-    };
-    const int name_col = find_column("name");
-    const int age_col = find_column("age");
-    const int debut_col = find_column("debutage");
-    const int potential_col = find_column("potential");
-    const int position_col = find_column("position");
-    const int pace_col = find_column("pace");
-    const int shooting_col = find_column("shooting");
-    const int passing_col = find_column("passing");
-    const int dribbling_col = find_column("dribbling");
-    const int defending_col = find_column("defending");
-    const int physical_col = find_column("physical");
+    const int col_club_id         = find_col(headers, { "clubid", "club_id", "id" }, 0);
+    const int col_club_name       = find_col(headers, { "club", "clubname", "club_name", "name" }, 1);
+    const int col_league          = find_col(headers, { "league", "leaguename", "league_name" }, 2);
+    const int col_short_code      = find_col(headers, { "shortcode", "short_code", "code", "abbr" }, 3);
+    const int col_country         = find_col(headers, { "country", "nation" }, 4);
+    const int col_reputation      = find_col(headers, { "reputation", "rep" }, 5);
+    const int col_total_balance   = find_col(headers, { "totalbalance", "total_balance", "balance" }, 6);
+    const int col_transfer_budget = find_col(headers, { "transferbudget", "transfer_budget" }, 7);
+    const int col_wage_budget     = find_col(headers, { "wagebudget", "wage_budget" }, 8);
+    const int col_formation       = find_col(headers, { "defaultformation", "default_formation", "formation" }, 9);
+    const int col_primary_color   = find_col(headers, { "primarycolor", "primary_color", "kitprimary" }, 10);
+    const int col_secondary_color = find_col(headers, { "secondarycolor", "secondary_color", "kitsecondary" }, 11);
 
-    if (name_col < 0 || age_col < 0 || debut_col < 0 || potential_col < 0 ||
-        position_col < 0 || pace_col < 0 || shooting_col < 0 || passing_col < 0 ||
-        dribbling_col < 0 || defending_col < 0 || physical_col < 0) {
-        UtilityFunctions::printerr("PlayerDatabase: CSV is missing one or more required core columns.");
-        return false;
-    }
+    std::unordered_set<std::string> seen_leagues;
+    int next_auto_id = 1001;
 
-    const auto get_value = [](const PackedStringArray& row, int index, const String& fallback = String()) -> String {
-        return (index >= 0 && index < row.size()) ? row[index].strip_edges() : fallback;
-    };
-
-    const int stamina_col = find_column("stamina");
-    const int price_col = find_column("price");
-    const int club_col = find_column("club");
-    const int league_col = find_column("league");
-    const int nationality_col = find_column("nationality");
-    const int playstyle1_col = find_column("playstyle 1");
-    const int playstyle2_col = find_column("playstyle 2");
-    const int playstyle3_col = find_column("playstyle 3");
-
-    int loaded_count = 0;
-    int row_index = 1;
     while (!file->eof_reached()) {
-        PackedStringArray row = file->get_csv_line();
-        ++row_index;
-        if (row.size() <= name_col) continue;
-
-        String name = get_value(row, name_col);
-        if (name.is_empty()) continue;
-
-        std::string std_name = name.utf8().get_data();
-        if (loaded_player_names.find(std_name) != loaded_player_names.end()) {
-            UtilityFunctions::print("PlayerDatabase: Duplicate player skipped at row ", row_index, ": ", name);
+        const String raw_line = file->get_line();
+        if (raw_line.strip_edges().is_empty()) {
             continue;
         }
 
-        String pos_str = get_value(row, position_col).to_upper();
-        if (!is_valid_position(pos_str)) {
-            UtilityFunctions::printerr("PlayerDatabase: Invalid position '", pos_str, "' for player '", name, "' at row ", row_index, ". Skipping row.");
+        const PackedStringArray row = parse_csv_line(raw_line);
+        const String club_name = get_str(row, col_club_name);
+        if (club_name.is_empty()) {
             continue;
         }
 
-        Position pos_enum = string_to_position(pos_str.utf8().get_data());
-        PlayerAttributes attrs;
-        attrs.Pace      = std::clamp(static_cast<int>(get_value(row, pace_col, "60").to_int()), 1, 99);
-        attrs.Shooting  = std::clamp(static_cast<int>(get_value(row, shooting_col, "60").to_int()), 1, 99);
-        attrs.Passing   = std::clamp(static_cast<int>(get_value(row, passing_col, "60").to_int()), 1, 99);
-        attrs.Dribbling = std::clamp(static_cast<int>(get_value(row, dribbling_col, "60").to_int()), 1, 99);
-        attrs.Defending = std::clamp(static_cast<int>(get_value(row, defending_col, "60").to_int()), 1, 99);
-        attrs.Physical  = std::clamp(static_cast<int>(get_value(row, physical_col, "60").to_int()), 1, 99);
-        const int stamina_val = std::clamp(static_cast<int>(get_value(row, stamina_col, "75").to_int()), 1, 99);
-        attrs.Stamina   = stamina_val;
+        ClubRecord rec;
+        rec.club_id = get_int(row, col_club_id, next_auto_id);
+        next_auto_id = std::max(next_auto_id + 1, rec.club_id + 1);
+        rec.club_name = club_name;
+        rec.league = get_str(row, col_league, "Independent League");
+        rec.short_code = get_str(row, col_short_code, club_name.substr(0, 3).to_upper());
+        rec.country = get_str(row, col_country, "Unknown");
+        rec.reputation = std::clamp(get_int(row, col_reputation, 50), 1, 100);
+        rec.total_balance = get_i64(row, col_total_balance, 5000000);
+        rec.transfer_budget = get_i64(row, col_transfer_budget, 1500000);
+        rec.wage_budget = get_i64(row, col_wage_budget, 50000);
+        rec.default_formation = get_str(row, col_formation, "4-4-2");
+        rec.primary_color = get_str(row, col_primary_color, "#1E3A8A");
+        rec.secondary_color = get_str(row, col_secondary_color, "#FFFFFF");
 
-        const int age = get_value(row, age_col, "24").to_int();
-        const int debut_age = get_value(row, debut_col, "16").to_int();
-        const int potential = std::clamp(static_cast<int>(get_value(row, potential_col, "75").to_int()), 1, 99);
+        const int idx = static_cast<int>(clubs.size());
+        clubs.push_back(rec);
+        club_index_by_name[rec.club_name.to_lower().utf8().get_data()] = idx;
+        club_index_by_id[rec.club_id] = idx;
 
-        Player player(name.utf8().get_data(), pos_enum, attrs, age, potential, debut_age, 37);
-        player.SetStamina(stamina_val);
-        player.SetClubName(get_value(row, club_col, "Free Agent").utf8().get_data());
-        player.SetLeagueName(get_value(row, league_col, "Free Agent").utf8().get_data());
-        player.SetNationality(get_value(row, nationality_col, "Unknown").utf8().get_data());
+        const std::string league_key = rec.league.utf8().get_data();
+        if (seen_leagues.insert(league_key).second) {
+            league_order.push_back(rec.league);
+        }
+    }
 
-        std::vector<std::string> playstyles;
-        for (int index : {playstyle1_col, playstyle2_col, playstyle3_col}) {
-            String style = get_value(row, index);
-            if (!style.is_empty()) {
-                std::string style_name = style.utf8().get_data();
-                if (std::find(playstyles.begin(), playstyles.end(), style_name) == playstyles.end()) {
-                    playstyles.push_back(style_name);
-                }
+    UtilityFunctions::print(vformat("PlayerDatabase: Loaded %d clubs across %d leagues from %s",
+            static_cast<int>(clubs.size()), static_cast<int>(league_order.size()), csv_path));
+    return true;
+}
+
+bool PlayerDatabase::load_players_from_csv(const String &csv_path) {
+    if (!FileAccess::file_exists(csv_path)) {
+        UtilityFunctions::push_error("PlayerDatabase::load_players_from_csv — File not found: " + csv_path);
+        return false;
+    }
+
+    Ref<FileAccess> file = FileAccess::open(csv_path, FileAccess::READ);
+    if (file.is_null()) {
+        UtilityFunctions::push_error("PlayerDatabase::load_players_from_csv — Unable to open: " + csv_path);
+        return false;
+    }
+
+    players.clear();
+    player_index_by_id.clear();
+    players_by_club_map.clear();
+
+    if (file->eof_reached()) {
+        return false;
+    }
+
+    const PackedStringArray headers = parse_csv_line(file->get_line());
+
+    const int col_id        = find_col(headers, { "playerid", "player_id", "id" }, 0);
+    const int col_name      = find_col(headers, { "name", "playername", "player_name" }, 1);
+    const int col_age       = find_col(headers, { "age" }, 2);
+    const int col_nation    = find_col(headers, { "nationality", "country", "nation" }, 3);
+    const int col_club      = find_col(headers, { "club", "clubname", "club_name" }, 4);
+    const int col_league    = find_col(headers, { "league", "leaguename", "league_name" }, 5);
+    const int col_pos       = find_col(headers, { "position", "pos" }, 6);
+    const int col_ovr       = find_col(headers, { "overall", "ovr" }, 7);
+    const int col_pot       = find_col(headers, { "potential", "pot" }, 8);
+    const int col_playstyle = find_col(headers, { "playstyle", "play_style", "style" }, -1);
+    const int col_price     = find_col(headers, { "price", "value", "marketvalue" }, -1);
+    const int col_wage      = find_col(headers, { "wage", "salary" }, -1);
+    const int col_stamina   = find_col(headers, { "stamina", "sta" }, -1);
+
+    // Outfield attributes
+    const int col_pace      = find_col(headers, { "pace", "pac" }, -1);
+    const int col_shooting  = find_col(headers, { "shooting", "sho" }, -1);
+    const int col_passing   = find_col(headers, { "passing", "pas" }, -1);
+    const int col_dribbling = find_col(headers, { "dribbling", "dri" }, -1);
+    const int col_defending = find_col(headers, { "defending", "def" }, -1);
+    const int col_physical  = find_col(headers, { "physical", "phy" }, -1);
+
+    // Goalkeeper attributes
+    const int col_diving      = find_col(headers, { "diving", "gk_diving", "div" }, -1);
+    const int col_reflex      = find_col(headers, { "reflex", "reflexes", "gk_reflex", "ref" }, -1);
+    const int col_positioning = find_col(headers, { "positioning", "gk_positioning", "pos_gk" }, -1);
+    const int col_reaction    = find_col(headers, { "reaction", "reactions", "gk_reaction", "rea" }, -1);
+    const int col_kicking     = find_col(headers, { "kicking", "gk_kicking", "kic" }, -1);
+
+    int auto_player_id = 1;
+
+    while (!file->eof_reached()) {
+        const String raw_line = file->get_line();
+        if (raw_line.strip_edges().is_empty()) {
+            continue;
+        }
+
+        const PackedStringArray row = parse_csv_line(raw_line);
+        const String player_name = get_str(row, col_name);
+        if (player_name.is_empty()) {
+            continue;
+        }
+
+        PlayerRecord p;
+        p.player_id = get_int(row, col_id, auto_player_id);
+        auto_player_id = std::max(auto_player_id + 1, p.player_id + 1);
+        p.name = player_name;
+        p.age = get_int(row, col_age, 22);
+        p.nationality = get_str(row, col_nation, "Unknown");
+        p.club = get_str(row, col_club, "Free Agent");
+        p.league = get_str(row, col_league, "Free Agents");
+        p.position = get_str(row, col_pos, "CM").to_upper();
+        p.overall = std::clamp(get_int(row, col_ovr, 65), 1, 99);
+        p.potential = std::clamp(get_int(row, col_pot, p.overall), p.overall, 99);
+        p.playstyle = get_str(row, col_playstyle, "Balanced");
+        p.price = get_i64(row, col_price, 500000);
+        p.wage = get_i64(row, col_wage, 5000);
+        p.stamina = std::clamp(get_int(row, col_stamina, 75), 1, 99);
+
+        const bool is_gk = (p.position == "GK");
+        if (is_gk) {
+            p.diving = std::clamp(get_int(row, col_diving, p.overall), 1, 99);
+            p.reflex = std::clamp(get_int(row, col_reflex, p.overall), 1, 99);
+            p.positioning = std::clamp(get_int(row, col_positioning, p.overall), 1, 99);
+            p.reaction = std::clamp(get_int(row, col_reaction, p.overall), 1, 99);
+            p.kicking = std::clamp(get_int(row, col_kicking, std::max(45, p.overall - 4)), 1, 99);
+
+            p.pace = 0;
+            p.shooting = 0;
+            p.passing = 0;
+            p.dribbling = 0;
+            p.defending = 0;
+            p.physical = 0;
+        } else {
+            p.pace = std::clamp(get_int(row, col_pace, p.overall), 1, 99);
+            p.shooting = std::clamp(get_int(row, col_shooting, p.overall), 1, 99);
+            p.passing = std::clamp(get_int(row, col_passing, p.overall), 1, 99);
+            p.dribbling = std::clamp(get_int(row, col_dribbling, p.overall), 1, 99);
+            p.defending = std::clamp(get_int(row, col_defending, p.overall), 1, 99);
+            p.physical = std::clamp(get_int(row, col_physical, p.overall), 1, 99);
+
+            p.diving = 0;
+            p.reflex = 0;
+            p.positioning = 0;
+            p.reaction = 0;
+            p.kicking = 0;
+        }
+
+        const int idx = static_cast<int>(players.size());
+        players.push_back(p);
+        player_index_by_id[p.player_id] = idx;
+        players_by_club_map[p.club.to_lower().utf8().get_data()].push_back(idx);
+    }
+
+    for (auto &kv : players_by_club_map) {
+        auto &indices = kv.second;
+        std::sort(indices.begin(), indices.end(), [this](int a, int b) {
+            const PlayerRecord &pa = players[a];
+            const PlayerRecord &pb = players[b];
+            const int rank_a = position_priority(pa.position);
+            const int rank_b = position_priority(pb.position);
+            if (rank_a != rank_b) {
+                return rank_a < rank_b;
+            }
+            if (pa.overall != pb.overall) {
+                return pa.overall > pb.overall;
+            }
+            return pa.name < pb.name;
+        });
+    }
+
+    UtilityFunctions::print(vformat("PlayerDatabase: Loaded %d players from %s",
+            static_cast<int>(players.size()), csv_path));
+    return true;
+}
+
+void PlayerDatabase::sync_clubs_from_players() {
+    int max_id = 1000;
+    for (const auto &c : clubs) {
+        max_id = std::max(max_id, c.club_id);
+    }
+
+    std::unordered_set<std::string> existing_leagues;
+    for (const auto &l : league_order) {
+        existing_leagues.insert(l.utf8().get_data());
+    }
+
+    for (const auto &p : players) {
+        if (p.club.is_empty() || p.club.nocasecmp_to("Free Agent") == 0) {
+            continue;
+        }
+        const std::string key = p.club.to_lower().utf8().get_data();
+        if (club_index_by_name.find(key) == club_index_by_name.end()) {
+            ClubRecord fallback;
+            fallback.club_id = ++max_id;
+            fallback.club_name = p.club;
+            fallback.league = p.league.is_empty() ? String("Independent League") : p.league;
+            fallback.short_code = p.club.substr(0, 3).to_upper();
+            fallback.country = p.nationality;
+            fallback.reputation = 55;
+            fallback.total_balance = 5000000;
+            fallback.transfer_budget = 1500000;
+            fallback.wage_budget = 50000;
+            fallback.default_formation = "4-4-2";
+            fallback.primary_color = "#1F2937";
+            fallback.secondary_color = "#FFFFFF";
+
+            const int idx = static_cast<int>(clubs.size());
+            clubs.push_back(fallback);
+            club_index_by_name[key] = idx;
+            club_index_by_id[fallback.club_id] = idx;
+
+            const std::string l_key = fallback.league.utf8().get_data();
+            if (existing_leagues.insert(l_key).second) {
+                league_order.push_back(fallback.league);
             }
         }
-        player.SetPlaystyles(playstyles);
-
-        if (price_col >= 0) {
-            const double price = get_value(row, price_col, "0").to_float();
-            if (price > 0.0) player.SetMarketValue(price);
-        }
-
-        player_objects.push_back(player);
-        loaded_player_names.insert(std_name);
-        ++loaded_count;
     }
-
-    UtilityFunctions::print("PlayerDatabase: Successfully loaded ", loaded_count, " players from ", p_filepath, " into Godot DB.");
-    return true;
 }
 
-void PlayerDatabase::clear_clubs() {
-    club_objects.clear();
-    club_index_by_name.clear();
-}
-
-int PlayerDatabase::get_club_count() const {
-    return static_cast<int>(club_objects.size());
-}
-
-bool PlayerDatabase::load_clubs_from_csv(const String& p_filepath) {
-    Ref<FileAccess> file = FileAccess::open(p_filepath, FileAccess::READ);
-    if (file.is_null()) {
-        UtilityFunctions::printerr("PlayerDatabase: Failed to open clubs CSV at: ", p_filepath);
-        return false;
-    }
-
-    clear_clubs();
-    if (file->eof_reached()) {
-        UtilityFunctions::printerr("PlayerDatabase: Clubs CSV file is empty: ", p_filepath);
-        return false;
-    }
-
-    PackedStringArray header = file->get_csv_line();
-    std::unordered_map<std::string, int> column_indices;
-    for (int i = 0; i < header.size(); ++i) {
-        String column_name = header[i].strip_edges();
-        if (i == 0) {
-            column_name = column_name.replace(String::utf8("\xEF\xBB\xBF"), "");
-        }
-        column_indices[column_name.to_lower().utf8().get_data()] = i;
-    }
-
-    const int name_col = find_first_column(column_indices, {"club", "club_name", "name", "team"});
-    const int league_col = find_first_column(column_indices, {"league", "league_name", "division", "competition"});
-    if (name_col < 0 || league_col < 0) {
-        UtilityFunctions::printerr("PlayerDatabase: Clubs CSV is missing required 'club'/'name' or 'league' column.");
-        return false;
-    }
-
-    const int country_col = find_first_column(column_indices, {"country", "nation", "nationality"});
-    const int rating_col = find_first_column(column_indices, {"rating", "ovr", "overall", "reputation", "prestige"});
-    const int budget_col = find_first_column(column_indices, {"budget", "transfer_budget", "balance", "finances"});
-    const int stadium_col = find_first_column(column_indices, {"stadium", "venue", "ground"});
-    const int primary_color_col = find_first_column(column_indices, {"primary_color", "color", "kit_color"});
-    const int secondary_color_col = find_first_column(column_indices, {"secondary_color", "accent_color"});
-
-    const auto get_value = [](const PackedStringArray& row, int index, const String& fallback = String()) -> String {
-        return (index >= 0 && index < row.size()) ? row[index].strip_edges() : fallback;
-    };
-
-    int loaded_count = 0;
-    int row_index = 1;
-    while (!file->eof_reached()) {
-        PackedStringArray row = file->get_csv_line();
-        ++row_index;
-        if (row.size() <= std::max(name_col, league_col)) continue;
-
-        String name = get_value(row, name_col);
-        String league = get_value(row, league_col);
-        if (name.is_empty() || league.is_empty()) continue;
-
-        std::string key = to_lower_ascii(name.utf8().get_data());
-        if (club_index_by_name.find(key) != club_index_by_name.end()) {
-            UtilityFunctions::print("PlayerDatabase: Duplicate club skipped at row ", row_index, ": ", name);
-            continue;
-        }
-
-        ClubRecord record;
-        record.name = name.utf8().get_data();
-        record.league = league.utf8().get_data();
-        record.country = get_value(row, country_col, "Unknown").utf8().get_data();
-        record.stadium = get_value(row, stadium_col, "").utf8().get_data();
-        record.primary_color = get_value(row, primary_color_col, "#FFFFFF").utf8().get_data();
-        record.secondary_color = get_value(row, secondary_color_col, "#111111").utf8().get_data();
-        record.rating = std::clamp(static_cast<int>(get_value(row, rating_col, "70").to_int()), 1, 99);
-        record.budget = std::max(0.0, static_cast<double>(get_value(row, budget_col, "0").to_float()));
-
-        club_index_by_name[key] = club_objects.size();
-        club_objects.push_back(std::move(record));
-        ++loaded_count;
-    }
-
-    UtilityFunctions::print("PlayerDatabase: Successfully loaded ", loaded_count, " clubs from ", p_filepath, ".");
-    return true;
-}
-
-int PlayerDatabase::sync_clubs_from_players() {
-    struct Accumulator {
-        std::string name;
-        std::string league;
-        int ovr_sum = 0;
-        int count = 0;
-    };
-
-    std::unordered_map<std::string, Accumulator> discovered;
-    for (const auto& player : player_objects) {
-        const std::string& club_name = player.GetClubName();
-        const std::string& league_name = player.GetLeagueName();
-        if (club_name.empty() || league_name.empty()) continue;
-
-        std::string club_lower = to_lower_ascii(club_name);
-        std::string league_lower = to_lower_ascii(league_name);
-        if (club_lower == "free agent" || league_lower == "free agent") continue;
-        if (club_index_by_name.find(club_lower) != club_index_by_name.end()) continue;
-
-        auto& acc = discovered[club_lower];
-        if (acc.count == 0) {
-            acc.name = club_name;
-            acc.league = league_name;
-        }
-        acc.ovr_sum += player.GetOVR();
-        acc.count += 1;
-    }
-
-    int added = 0;
-    for (const auto& [key, acc] : discovered) {
-        ClubRecord record;
-        record.name = acc.name;
-        record.league = acc.league;
-        record.country = "Unknown";
-        record.rating = acc.count > 0 ? std::clamp(acc.ovr_sum / acc.count, 1, 99) : 70;
-        club_index_by_name[key] = club_objects.size();
-        club_objects.push_back(std::move(record));
-        ++added;
-    }
-    return added;
-}
-
-Dictionary PlayerDatabase::_club_to_dict(const ClubRecord& c) const {
+Dictionary PlayerDatabase::club_to_dict(const ClubRecord &rec) const {
     Dictionary d;
-    d["name"] = String(c.name.c_str());
-    d["league"] = String(c.league.c_str());
-    d["country"] = String(c.country.c_str());
-    d["stadium"] = String(c.stadium.c_str());
-    d["primary_color"] = String(c.primary_color.c_str());
-    d["secondary_color"] = String(c.secondary_color.c_str());
-    d["rating"] = c.rating;
-    d["budget"] = c.budget;
+    d["club_id"] = rec.club_id;
+    d["club"] = rec.club_name;
+    d["league"] = rec.league;
+    d["short_code"] = rec.short_code;
+    d["country"] = rec.country;
+    d["reputation"] = rec.reputation;
+    d["total_balance"] = rec.total_balance;
+    d["transfer_budget"] = rec.transfer_budget;
+    d["wage_budget"] = rec.wage_budget;
+    d["default_formation"] = rec.default_formation;
+    d["primary_color"] = rec.primary_color;
+    d["secondary_color"] = rec.secondary_color;
     return d;
 }
 
-Dictionary PlayerDatabase::get_club(const String& p_name) const {
-    std::string key = to_lower_ascii(p_name.strip_edges().utf8().get_data());
-    auto it = club_index_by_name.find(key);
-    if (it != club_index_by_name.end()) {
-        return _club_to_dict(club_objects[it->second]);
-    }
-    return Dictionary();
-}
+Dictionary PlayerDatabase::player_to_dict(const PlayerRecord &p) const {
+    Dictionary d;
+    d["player_id"] = p.player_id;
+    d["name"] = p.name;
+    d["age"] = p.age;
+    d["nationality"] = p.nationality;
+    d["club"] = p.club;
+    d["league"] = p.league;
+    d["position"] = p.position;
+    d["overall"] = p.overall;
+    d["potential"] = p.potential;
+    d["playstyle"] = p.playstyle;
+    d["price"] = p.price;
+    d["wage"] = p.wage;
+    d["stamina"] = p.stamina;
 
-Array PlayerDatabase::get_all_clubs() const {
-    Array list;
-    for (const auto& club : club_objects) {
-        list.append(_club_to_dict(club));
+    const bool is_gk = (p.position == "GK");
+    d["is_gk"] = is_gk;
+    if (is_gk) {
+        d["diving"] = p.diving;
+        d["reflex"] = p.reflex;
+        d["positioning"] = p.positioning;
+        d["reaction"] = p.reaction;
+        d["kicking"] = p.kicking;
+    } else {
+        d["pace"] = p.pace;
+        d["shooting"] = p.shooting;
+        d["passing"] = p.passing;
+        d["dribbling"] = p.dribbling;
+        d["defending"] = p.defending;
+        d["physical"] = p.physical;
     }
-    return list;
-}
-
-Array PlayerDatabase::get_clubs_by_league(const String& p_league) const {
-    std::string target = to_lower_ascii(p_league.strip_edges().utf8().get_data());
-    Array list;
-    for (const auto& club : club_objects) {
-        if (to_lower_ascii(club.league) == target) {
-            list.append(_club_to_dict(club));
-        }
-    }
-    return list;
+    return d;
 }
 
 Array PlayerDatabase::get_all_leagues() const {
-    Array leagues;
-    std::unordered_set<std::string> seen;
-    for (const auto& club : club_objects) {
-        std::string key = to_lower_ascii(club.league);
-        if (seen.insert(key).second) {
-            leagues.append(String(club.league.c_str()));
+    Array out;
+    for (const auto &league : league_order) {
+        out.append(league);
+    }
+    return out;
+}
+
+int PlayerDatabase::get_league_count() const {
+    return static_cast<int>(league_order.size());
+}
+
+Array PlayerDatabase::get_clubs_by_league(const String &league_name) const {
+    std::vector<ClubRecord> matching;
+    for (const auto &c : clubs) {
+        if (c.league.nocasecmp_to(league_name.strip_edges()) == 0) {
+            matching.push_back(c);
         }
     }
-    return leagues;
+
+    std::sort(matching.begin(), matching.end(), [](const ClubRecord &a, const ClubRecord &b) {
+        if (a.reputation != b.reputation) {
+            return a.reputation > b.reputation;
+        }
+        return a.club_name < b.club_name;
+    });
+
+    Array out;
+    for (const auto &c : matching) {
+        out.append(club_to_dict(c));
+    }
+    return out;
 }
 
-Dictionary PlayerDatabase::_player_to_dict(const Player& p) const {
-    Dictionary d;
-    d["name"] = String(p.GetName().c_str());
-    d["age"] = p.GetAge();
-    d["debut_age"] = p.GetDebutAge();
-    d["potential"] = p.GetPotential();
-    d["retirement_age"] = p.GetRetirementAge();
-    d["club_name"] = String(p.GetClubName().c_str());
-    d["league"] = String(p.GetLeagueName().c_str());
-    d["nationality"] = String(p.GetNationality().c_str());
-    Array playstyles;
-    for (const auto& style : p.GetPlaystyles()) playstyles.append(String(style.c_str()));
-    d["playstyles"] = playstyles;
-    d["position"] = String(position_to_string(p.GetPosition()).c_str());
-    
-    PlayerAttributes attrs = p.GetAttributes();
-    d["pace"] = attrs.Pace;
-    d["shooting"] = attrs.Shooting;
-    d["passing"] = attrs.Passing;
-    d["dribbling"] = attrs.Dribbling;
-    d["defending"] = attrs.Defending;
-    d["physical"] = attrs.Physical;
-    d["stamina"] = p.GetStamina();
-    
-    d["ovr"] = p.GetOVR();
-    d["market_value"] = p.GetMarketValue();
-    d["is_retired"] = p.IsRetired();
-    d["is_available_transfer"] = p.IsAvailableForTransfer();
-    d["status"] = static_cast<int>(p.GetStatus());
-    return d;
+Dictionary PlayerDatabase::get_club_record(const String &club_name) const {
+    const std::string key = club_name.strip_edges().to_lower().utf8().get_data();
+    auto it = club_index_by_name.find(key);
+    if (it == club_index_by_name.end()) {
+        return Dictionary();
+    }
+    return club_to_dict(clubs[it->second]);
 }
 
-Dictionary PlayerDatabase::get_player(const String& p_name) const {
-    return get_player_by_name(p_name);
+Dictionary PlayerDatabase::get_club_by_id(int club_id) const {
+    auto it = club_index_by_id.find(club_id);
+    if (it == club_index_by_id.end()) {
+        return Dictionary();
+    }
+    return club_to_dict(clubs[it->second]);
 }
 
-Dictionary PlayerDatabase::get_player_by_name(const String& p_name) const {
-    std::string search_name = p_name.strip_edges().to_lower().utf8().get_data();
-    for (const auto& player : player_objects) {
-        std::string p_name_lower = player.GetName();
-        std::transform(p_name_lower.begin(), p_name_lower.end(), p_name_lower.begin(), ::tolower);
-        if (p_name_lower == search_name) {
-            return _player_to_dict(player);
+Dictionary PlayerDatabase::get_club(const String &p_name) const {
+    return get_club_record(p_name);
+}
+
+Array PlayerDatabase::get_all_clubs() const {
+    Array out;
+    for (const auto &c : clubs) {
+        out.append(club_to_dict(c));
+    }
+    return out;
+}
+
+Array PlayerDatabase::get_players_by_club(const String &club_name) const {
+    const std::string key = club_name.strip_edges().to_lower().utf8().get_data();
+    auto it = players_by_club_map.find(key);
+    if (it == players_by_club_map.end()) {
+        return Array();
+    }
+
+    Array out;
+    for (int idx : it->second) {
+        out.append(player_to_dict(players[idx]));
+    }
+    return out;
+}
+
+Dictionary PlayerDatabase::get_player_by_id(int player_id) const {
+    auto it = player_index_by_id.find(player_id);
+    if (it == player_index_by_id.end()) {
+        return Dictionary();
+    }
+    return player_to_dict(players[it->second]);
+}
+
+Dictionary PlayerDatabase::get_player(const String &p_name) const {
+    const String target = p_name.strip_edges();
+    for (const auto &p : players) {
+        if (p.name.nocasecmp_to(target) == 0) {
+            return player_to_dict(p);
         }
     }
     return Dictionary();
 }
 
-Array PlayerDatabase::get_all_players() const {
-    Array list;
-    for (const auto& player : player_objects) {
-        list.append(_player_to_dict(player));
-    }
-    return list;
+Dictionary PlayerDatabase::get_player_by_name(const String &p_name) const {
+    return get_player(p_name);
 }
 
-Array PlayerDatabase::get_active_market_players() const {
-    Array list;
-    for (const auto& player : player_objects) {
-        if (player.IsAvailableForTransfer()) {
-            list.append(_player_to_dict(player));
-        }
+Array PlayerDatabase::get_all_players() const {
+    Array out;
+    for (const auto &p : players) {
+        out.append(player_to_dict(p));
     }
-    return list;
+    return out;
+}
+
+int PlayerDatabase::get_total_club_count() const {
+    return static_cast<int>(clubs.size());
+}
+
+int PlayerDatabase::get_club_count() const {
+    return get_total_club_count();
+}
+
+int PlayerDatabase::get_total_player_count() const {
+    return static_cast<int>(players.size());
+}
+
+int PlayerDatabase::get_player_count() const {
+    return get_total_player_count();
 }
