@@ -495,6 +495,7 @@ TypedArray<Dictionary> CareerState::get_leagues_and_clubs() const {
 		entry["default_formation"] = String(team->Formation.c_str());
 		entry["primary_color"] = String(team->KitColor.c_str());
 		entry["secondary_color"] = String(team->SecondaryColor.c_str());
+		entry["team_rating"] = team->GetTeamRating();
 		entry["is_locked"] = _is_club_or_league_locked(team->GetName(), team->League);
 		out.append(entry);
 	}
@@ -2577,9 +2578,11 @@ bool CareerState::save_career(const String &p_slot_name) {
 		if (!team) continue;
 		Dictionary cd;
 		cd["club_id"] = team->GetId();
+		cd["club"] = String(team->GetName().c_str());
 		cd["captain_id"] = get_club_captain(team->GetId());
 		cd["name"] = String(team->GetName().c_str());
 		cd["budget"] = team->GetBudget();
+		cd["default_formation"] = String(team->Formation.c_str());
 		cd["short_code"] = String(team->ShortCode.c_str());
 		cd["league"] = String(team->League.c_str());
 		cd["country"] = String(team->Country.c_str());
@@ -2872,8 +2875,8 @@ bool CareerState::load_career(const String &p_slot_name) {
 			int cid = cd.get("club_id", 0);
 			if (cid <= 0) continue;
 
-			std::string cname = String(cd.get("name", "Club")).utf8().get_data();
-			double budget = cd.get("budget", 20000000.0);
+			std::string cname = String(cd.get("club", cd.get("name", "Club"))).utf8().get_data();
+			double budget = cd.get("budget", cd.get("transfer_budget", 20000000.0));
 			auto team = std::make_unique<Team>(cname, budget);
 			team->SetId(cid);
 			team->ShortCode = String(cd.get("short_code", "")).utf8().get_data();
