@@ -86,10 +86,18 @@ PackedStringArray parse_csv_line(const String &line) {
 }
 
 int find_col(const PackedStringArray &headers, const std::vector<const char *> &aliases, int fallback_idx = -1) {
+    // Normalize header spelling so CSV exports using spaces, underscores, or
+    // hyphens resolve to the same canonical column name.
+    const auto normalize_header = [](String value) {
+        value = value.strip_edges().to_lower();
+        value = value.replace("_", "").replace(" ", "").replace("-", "");
+        return value;
+    };
+
     for (int i = 0; i < headers.size(); ++i) {
-        const String h = headers[i].strip_edges().to_lower();
+        const String header = normalize_header(headers[i]);
         for (const char *alias : aliases) {
-            if (h == alias) {
+            if (header == normalize_header(String(alias))) {
                 return i;
             }
         }
@@ -269,6 +277,10 @@ bool PlayerDatabase::load_clubs_from_csv(const String &csv_path) {
 
     UtilityFunctions::print(vformat("PlayerDatabase: Loaded %d clubs across %d leagues from %s",
             static_cast<int>(clubs.size()), static_cast<int>(league_order.size()), csv_path));
+    if (clubs.empty()) {
+        UtilityFunctions::push_error("PlayerDatabase::load_clubs_from_csv — No valid club rows found in: " + csv_path);
+        return false;
+    }
     return true;
 }
 
