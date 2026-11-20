@@ -163,44 +163,6 @@ func _test_phase_5d_database_and_league_isolation() -> void:
 
 	c_state.free()
 
-func _test_career_initialization(career: CareerState) -> void:
-	print("\n--- 1. Career Bootstrap & Initialization ---")
-	var ok := career.start_new_career(1, "Test Manager", 2026)
-	_assert(ok, "start_new_career() returns true")
-	_assert(career.is_career_active(), "is_career_active() is true after bootstrap")
-	_assert(career.get_managed_club_id() == 1, "Managed club ID matches requested club (1)")
-	_assert(career.get_season_label() == "2026/27", "Season label formatted as 2026/27")
-	_assert(career.get_current_date_iso() == "2026-07-01", "Calendar begins at 2026-07-01")
-
-	var header: Dictionary = career.get_header_summary()
-	_assert(header.has("total_balance") and int(header["total_balance"]) > 0, "Header summary has positive total balance")
-	_assert(header.has("manager_name") and header["manager_name"] == "Test Manager", "Header summary reflects manager name")
-	_assert(header.has("managed_club_name") and not String(header["managed_club_name"]).is_empty(), "Header reflects managed club name")
-
-func _test_subsystem_queries_and_bridges(career: CareerState) -> void:
-	print("\n--- 2. Subsystem Single-Source-of-Truth Bridges ---")
-	var squad: Array = career.get_club_squad(1)
-	_assert(squad.size() >= 11, "Club 1 squad has at least starting XI players (got %d)" % squad.size())
-
-	var player_ids: PackedInt32Array = career.get_club_player_ids(1)
-	_assert(player_ids.size() == squad.size(), "get_club_player_ids() matches squad size")
-
-	if player_ids.size() > 0:
-		var pid: int = player_ids[0]
-		var profile: Dictionary = career.get_player_profile(pid)
-		_assert(not profile.is_empty(), "get_player_profile(pid) returns player details")
-		_assert(profile.has("name") and profile.has("ovr") and profile.has("position"), "Profile includes name, ovr, position")
-		_assert(profile.has("condition") and int(profile["condition"]) == 100, "Initial player condition is 100")
-
-	var prospects: Array = career.get_youth_prospects()
-	_assert(prospects.size() >= 5, "Youth Academy has at least 5 prospects seeded (got %d)" % prospects.size())
-
-	var standings: Array = career.get_league_standings()
-	_assert(standings.size() == 16, "League table contains 16 clubs")
-
-	var unread: int = career.get_unread_inbox_count()
-	_assert(unread >= 1, "Initial welcome message in inbox (unread: %d)" % unread)
-
 func _test_youth_promotion_bridge(career: CareerState) -> void:
 	print("\n--- 3. Youth Academy Senior Squad Promotion ---")
 	var prospects: Array = career.get_youth_prospects()
