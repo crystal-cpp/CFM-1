@@ -6,7 +6,7 @@
 
 **Current Phase**: Phase 5
 
-**Current Milestone**: **Phase 5D-2 implementation complete in source, including New Career league-registry parsing hardening; final MinGW/UCRT64 build and Godot regression/runtime acceptance pending. Phase 5D-1 historical accuracy review remains open. Phase 5C-2 startup flow is implemented in source; runtime QA pending.**
+**Current Milestone**: **Phase 5D-2 implementation complete in source, including New Career league-registry parsing hardening; CompetitionsView club-registry / standings integration fix committed; final MinGW/UCRT64 build and Godot regression/runtime acceptance pending. Phase 5D-1 historical accuracy review remains open. Phase 5C-2 startup flow is implemented in source; runtime QA pending.**
 
 ## 1. Milestone & Subsystem Status Matrix
 
