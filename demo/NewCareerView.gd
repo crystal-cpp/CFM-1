@@ -38,6 +38,7 @@ func refresh_clubs() -> void:
 			default_clubs.append({ "club_id": cid, "club_name": cname, "league": "Premier League" })
 		_clubs_by_league["Premier League"] = default_clubs
 
+	print("NewCareerView: loaded %d playable leagues: %s" % [_clubs_by_league.size(), ", ".join(PackedStringArray(_clubs_by_league.keys()))])
 	for league_key in _clubs_by_league.keys():
 		var club_list: Array = _clubs_by_league[league_key]
 		club_list.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
