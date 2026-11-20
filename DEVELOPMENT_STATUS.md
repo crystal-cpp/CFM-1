@@ -6,7 +6,7 @@
 
 **Current Phase**: Phase 5
 
-**Current Milestone**: **Phase 5D-2 implementation complete in source; final MinGW/UCRT64 build and Godot regression/runtime acceptance pending. Phase 5D-1 historical accuracy review remains open. Phase 5C-2 startup flow is implemented in source; runtime QA pending.**
+**Current Milestone**: **Phase 5D-2 implementation complete in source, including New Career league-registry parsing hardening; final MinGW/UCRT64 build and Godot regression/runtime acceptance pending. Phase 5D-1 historical accuracy review remains open. Phase 5C-2 startup flow is implemented in source; runtime QA pending.**
 
 ## 1. Milestone & Subsystem Status Matrix
 
@@ -144,6 +144,7 @@
 - Historical correctness of all clubs, league labels, memberships, finances, formations and kit colours as of **15 July 2006** is not yet independently verified. NHHA72528 reward mapping also remains subject to QA.
 
 **5D-2 — Structured Bootstrap & League-Scoped Fixture Generation [IMPLEMENTED IN SOURCE; ACCEPTANCE QA PENDING]**
+- **New Career league registry follow-up:** hardened `find_col()` to normalize spaces/underscores/hyphens in CSV headers and made `load_clubs_from_csv()` fail when it loads zero valid club rows. `NewCareerView.gd` now prints the playable league count/names at startup. This is a source-level fix/diagnostic; rebuild the MinGW GDExtension and confirm the real leagues appear before marking runtime QA complete.
 - **Canonical ClubRecord integration:** CareerState consumes the canonical club dictionary fields (club, reputation, total_balance, transfer_budget, wage_budget, default_formation, primary_color, secondary_color) and uses normalized club-name matching.
 - **Stable identity and metadata:** CSV ClubIDs are preserved through CareerState and New Career UI; club metadata is propagated into Team and career save data. NewCareerView accepts canonical club / club_name fields and does not fabricate sequential IDs.
 - **Finance accessor correction:** CareerState uses Team::GetBudget() rather than directly accessing the private TransferBudget member.
