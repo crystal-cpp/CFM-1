@@ -3,7 +3,7 @@
 **Repository / Organization**: `crystal-cpp` · **Engine**: Godot 4.7 (`api_version=4.7`) + C++23 GDExtension  
 **Target Platforms**: Windows (MinGW/GCC 16.1.0 UCRT64) & Android (Touchscreen / Adaptive Aspect Ratios)  
 **Visual Identity**: Dark-Navy (`#06090E` / `#0B101B`) & Pitch-Green (`#10AC84` / `#1DD1A1`) · Zero-3D UI Architecture · Crisp Football-Management Typography  
-**Current Milestone**: **Phase 5D-2 implementation complete in source; final SCons build and Godot regression/runtime acceptance pending. Phase 5D-1 historical accuracy review remains open. Phase 5C-2 startup flow is implemented in source; runtime QA pending.**
+**Current Milestone**: **Phase 5D-2 implementation complete in source, including the New Career league-registry parsing hardening; rebuild and Godot regression/runtime acceptance pending. Phase 5D-1 historical accuracy review remains open. Phase 5C-2 startup flow is implemented in source; runtime QA pending.**
 
 ---
 
@@ -161,7 +161,8 @@ This milestone's startup shell, routing, save-slot entry points and scene owners
     * **Team metadata and finance access:** complete club metadata is propagated into Team/career save data. CareerState reads the public Team::GetBudget() accessor rather than accessing private TransferBudget directly.
     * **League-scoped competition generation:** fixtures and standings are derived from the selected club's league; single-club leagues do not borrow teams from another league. Odd-sized league scheduling uses bye-aware round-robin handling, and pre-season pairings avoid scheduling a club twice in the same round.
     * **CareerState source cleanup:** removed the orphaned duplicate career-start block and duplicate get_header_summary() / get_club_info() definitions that caused C++ global-scope and redefinition errors.
-    * **Regression suite additions:** Phase 5D checks cover the current 156-club / 30-league registry, CSV ClubID 1098 for 11A7, 21-team La Liga scheduling, no double-booking in the tested odd-sized league, and single-club Allsvenskan isolation. A duplicate GDScript declaration in CareerRegressionTest.gd was removed in commit c5cd7b6c44eda90581ad91b8c44363c6dd62fab6; Godot must still reload and execute the suite.
+    * **New Career league-registry fix (source committed):** normalized CSV header matching now tolerates spaces, underscores and hyphens; an empty club registry no longer reports a successful load. NewCareerView logs the playable league names/count at startup so a stale DLL or incorrect runtime data path can be distinguished from a source parsing issue. Rebuild the GDExtension and verify the dropdown lists all expected leagues before considering this runtime issue closed.
+  * **Regression suite additions:** Phase 5D checks cover the current 156-club / 30-league registry, CSV ClubID 1098 for 11A7, 21-team La Liga scheduling, no double-booking in the tested odd-sized league, and single-club Allsvenskan isolation. A duplicate GDScript declaration in CareerRegressionTest.gd was removed in commit c5cd7b6c44eda90581ad91b8c44363c6dd62fab6; Godot must still reload and execute the suite.
     * **Relevant source-fix commits:** 0c25cc8, 97bd023, 40fb353, 760aeaf, f363c28, 5504b33, 2204a80, and c5cd7b6. These are source changes, not evidence of a successful local build.
   * **Remaining acceptance work**:
     1. Run the configured Windows MinGW/UCRT64 SCons build.
