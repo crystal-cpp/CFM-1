@@ -3,7 +3,7 @@
 **Repository / Organization**: `crystal-cpp` · **Engine**: Godot 4.7 (`api_version=4.7`) + C++23 GDExtension  
 **Target Platforms**: Windows (MinGW/GCC 16.1.0 UCRT64) & Android (Touchscreen / Adaptive Aspect Ratios)  
 **Visual Identity**: Dark-Navy (`#06090E` / `#0B101B`) & Pitch-Green (`#10AC84` / `#1DD1A1`) · Zero-3D UI Architecture · Crisp Football-Management Typography  
-**Current Milestone**: **Phase 5D-2 implementation complete in source, including New Career league-registry parsing hardening; CompetitionsView now uses the canonical CareerState club registry and corrected standings API/schema; rebuild and Godot regression/runtime acceptance pending. Phase 5D-1 historical accuracy review remains open. Phase 5C-2 startup flow is implemented in source; runtime QA pending.**
+**Current Milestone**: **Phase 5D implementation is complete in source; Phase 5E (`MatchEngine` realism, attribute-driven attack/defense, stamina endurance and controls cleanup) is the next active development phase. Phase 5D build/regression/runtime acceptance and the 15 July 2006 historical-data audit remain outstanding unless separately verified. The latest source baseline is `0ea259c0acaca7a2eff35bad55fca6bf9b91118d`.**
 
 ---
 
@@ -156,19 +156,20 @@ This milestone's startup shell, routing, save-slot entry points and scene owners
     * demo/data/players_2006_with_price.csv contains **1,706 player rows**. Every player Club value maps to a registry club, and all **156 clubs have at least one imported player row**. This confirms dataset coverage, not historical accuracy.
     * The club schema preserves ClubID, Club, League, ShortCode, Country, Reputation, TotalBalance, TransferBudget, WageBudget, DefaultFormation, PrimaryColor and SecondaryColor. Player metadata includes IDs, age, nationality, club/league, outfield and goalkeeper attributes, price, wage, Stamina and Playstyle fields. Do not duplicate the existing Stamina column.
     * NHHA72528 persistence, Tuesday League / 11A7 gating and RedeemCodeModal are present in source; reward mapping still requires QA.
-  * **5D-2 — Structured Bootstrap & League-Scoped Fixtures [IMPLEMENTED IN SOURCE; ACCEPTANCE QA PENDING]**:
+  * **5D-2 — Structured Bootstrap & League-Scoped Fixtures [SOURCE IMPLEMENTATION COMPLETE; ACCEPTANCE QA PENDING]**:
     * **Canonical club data integration:** CareerState consumes the canonical ClubRecord dictionary contract (club, reputation, total_balance, transfer_budget, wage_budget, default_formation, primary_color, secondary_color) and maintains a normalized CSV ClubID mapping. New Career UI accepts the canonical club-name fields without fabricating sequential IDs.
     * **Team metadata and finance access:** complete club metadata is propagated into Team/career save data. CareerState reads the public Team::GetBudget() accessor rather than accessing private TransferBudget directly.
     * **League-scoped competition generation:** fixtures and standings are derived from the selected club's league; single-club leagues do not borrow teams from another league. Odd-sized league scheduling uses bye-aware round-robin handling, and pre-season pairings avoid scheduling a club twice in the same round.
     * **CareerState source cleanup:** removed the orphaned duplicate career-start block and duplicate get_header_summary() / get_club_info() definitions that caused C++ global-scope and redefinition errors.
-    * **New Career league-registry fix (source committed):** normalized CSV header matching now tolerates spaces, underscores and hyphens; an empty club registry no longer reports a successful load. NewCareerView logs the playable league names/count at startup so a stale DLL or incorrect runtime data path can be distinguished from a source parsing issue. Rebuild the GDExtension and verify the dropdown lists all expected leagues before considering this runtime issue closed.
+    * **New Career league-registry fix:** normalized CSV header matching tolerates spaces, underscores and hyphens; an empty club registry no longer reports a successful load. NewCareerView logs playable league names/count at startup.
+    * **Latest match/bootstrap integration (`0ea259c`):** ClubRecord now carries stadium metadata into the canonical club dictionary; CareerState adds formation-aware Starting XI selection and hidden youth-prospect evaluation/age progression support; MatchEngine lineup setters initialize safely and consume non-empty player names; MatchHUD and MatchScene display the selected home/away club names and scorer attribution. PreMatchView now loads available formations and synchronizes its match context with CareerState. These are source-level changes and still require runtime validation.
   * **Regression suite additions:** Phase 5D checks cover the current 156-club / 30-league registry, CSV ClubID 1098 for 11A7, 21-team La Liga scheduling, no double-booking in the tested odd-sized league, and single-club Allsvenskan isolation. A duplicate GDScript declaration in CareerRegressionTest.gd was removed in commit c5cd7b6c44eda90581ad91b8c44363c6dd62fab6; Godot must still reload and execute the suite.
     * **Relevant source-fix commits:** 0c25cc8, 97bd023, 40fb353, 760aeaf, f363c28, 5504b33, 2204a80, and c5cd7b6. These are source changes, not evidence of a successful local build.
   * **Remaining acceptance work**:
     1. Run the configured Windows MinGW/UCRT64 SCons build.
     2. Open the Godot 4.7 project, confirm all scripts parse, run CareerRegressionTest.gd (F10), and resolve any runtime/test failures.
     3. Manually verify New Career League -> Club selection, displayed club metadata, player-to-club assignment, selected-league standings/fixtures, odd-team byes, pre-season pairings, and Save/Load persistence.
-    4. Audit all 156 clubs, 30 league labels, finances, colours, formations and player memberships for historical accuracy on **15 July 2006**. Dataset coverage is now complete at the club level, but historical correctness is not yet certified.
+    4. Audit all 156 clubs, 30 league labels, finances, colours, formations, stadiums and player memberships for historical accuracy on **15 July 2006**. Dataset coverage is complete at the club level, but historical correctness is not yet certified.
   * **Tuesday League / Custom Players:** keep Club = 11A7, League = Tuesday League and the NHHA72528 access gate consistent in New Career and future Transfer Market search.
 
 * **5E. `MatchEngine` Simulation Realism, Attribute-Driven Chances, Stamina Endurance & Controls Cleanup**:
