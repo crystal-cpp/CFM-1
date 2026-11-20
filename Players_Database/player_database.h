@@ -8,9 +8,8 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
-#include <vector>
-
 #include <unordered_set>
+#include <vector>
 
 namespace godot {
 
@@ -33,6 +32,7 @@ struct PlayerRecord {
     int player_id = 0;
     String name;
     int age = 22;
+    int debut_age = 18;
     String nationality = "Unknown";
     String club = "Free Agent";
     String league = "Free Agents";
@@ -40,6 +40,7 @@ struct PlayerRecord {
     int overall = 65;
     int potential = 65;
     String playstyle = "Balanced";
+    std::vector<String> playstyles;
     int64_t price = 500000;
     int64_t wage = 5000;
     int stamina = 75;

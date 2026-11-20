@@ -29,6 +29,37 @@ int position_priority(const String &pos) {
     return 4;
 }
 
+int compute_derived_ovr(const PlayerRecord &p) {
+    if (p.position == "GK") {
+        const double raw = (p.diving * 0.22) +
+                           (p.reflex * 0.24) +
+                           (p.positioning * 0.22) +
+                           (p.reaction * 0.18) +
+                           (p.kicking * 0.07) +
+                           (p.physical * 0.07);
+        return std::clamp(static_cast<int>(std::llround(raw)), 1, 99);
+    }
+
+    const String pos = p.position;
+    double raw = 0.0;
+    if (pos == "CB" || pos == "SW") {
+        raw = p.defending * 0.42 + p.physical * 0.26 + p.passing * 0.14 + p.pace * 0.10 + p.dribbling * 0.08;
+    } else if (pos == "LB" || pos == "RB" || pos == "LWB" || pos == "RWB") {
+        raw = p.pace * 0.22 + p.defending * 0.28 + p.passing * 0.20 + p.dribbling * 0.16 + p.physical * 0.14;
+    } else if (pos == "CDM") {
+        raw = p.defending * 0.30 + p.passing * 0.26 + p.physical * 0.20 + p.dribbling * 0.14 + p.pace * 0.10;
+    } else if (pos == "CM") {
+        raw = p.passing * 0.30 + p.dribbling * 0.24 + p.defending * 0.16 + p.physical * 0.12 + p.shooting * 0.10 + p.pace * 0.08;
+    } else if (pos == "CAM") {
+        raw = p.passing * 0.30 + p.dribbling * 0.30 + p.shooting * 0.20 + p.pace * 0.12 + p.physical * 0.08;
+    } else if (pos == "LM" || pos == "RM" || pos == "LW" || pos == "RW" || pos == "LF" || pos == "RF") {
+        raw = p.pace * 0.26 + p.dribbling * 0.28 + p.passing * 0.20 + p.shooting * 0.18 + p.physical * 0.08;
+    } else { // ST, CF
+        raw = p.shooting * 0.34 + p.pace * 0.22 + p.dribbling * 0.22 + p.physical * 0.14 + p.passing * 0.08;
+    }
+    return std::clamp(static_cast<int>(std::llround(raw)), 1, 99);
+}
+
 PackedStringArray parse_csv_line(const String &line) {
     PackedStringArray fields;
     String current;
@@ -263,27 +294,33 @@ bool PlayerDatabase::load_players_from_csv(const String &csv_path) {
 
     const PackedStringArray headers = parse_csv_line(file->get_line());
 
-    const int col_id        = find_col(headers, { "playerid", "player_id", "id" }, 0);
-    const int col_name      = find_col(headers, { "name", "playername", "player_name" }, 1);
-    const int col_age       = find_col(headers, { "age" }, 2);
-    const int col_nation    = find_col(headers, { "nationality", "country", "nation" }, 3);
-    const int col_club      = find_col(headers, { "club", "clubname", "club_name" }, 4);
-    const int col_league    = find_col(headers, { "league", "leaguename", "league_name" }, 5);
-    const int col_pos       = find_col(headers, { "position", "pos" }, 6);
-    const int col_ovr       = find_col(headers, { "overall", "ovr" }, 7);
-    const int col_pot       = find_col(headers, { "potential", "pot" }, 8);
-    const int col_playstyle = find_col(headers, { "playstyle", "play_style", "style" }, -1);
-    const int col_price     = find_col(headers, { "price", "value", "marketvalue" }, -1);
-    const int col_wage      = find_col(headers, { "wage", "salary" }, -1);
-    const int col_stamina   = find_col(headers, { "stamina", "sta" }, -1);
+    // Use -1 fallback for optional columns (PlayerID, Overall, Playstyle 1..3, Wage)
+    // so positional fallbacks never collide with Passing or Name columns.
+    const int col_id         = find_col(headers, { "playerid", "player_id", "id" }, -1);
+    const int col_name       = find_col(headers, { "name", "playername", "player_name" }, 0);
+    const int col_age        = find_col(headers, { "age" }, 1);
+    const int col_debut_age  = find_col(headers, { "debutage", "debut_age" }, -1);
+    const int col_pot        = find_col(headers, { "potential", "pot" }, -1);
+    const int col_pos        = find_col(headers, { "position", "pos" }, -1);
+    const int col_ovr        = find_col(headers, { "overall", "ovr" }, -1);
+    const int col_nation     = find_col(headers, { "nationality", "country", "nation" }, -1);
+    const int col_club       = find_col(headers, { "club", "clubname", "club_name" }, -1);
+    const int col_league     = find_col(headers, { "league", "leaguename", "league_name" }, -1);
+    const int col_playstyle  = find_col(headers, { "playstyle", "play_style", "style" }, -1);
+    const int col_ps1        = find_col(headers, { "playstyle 1", "playstyle1", "playstyle_1" }, -1);
+    const int col_ps2        = find_col(headers, { "playstyle 2", "playstyle2", "playstyle_2" }, -1);
+    const int col_ps3        = find_col(headers, { "playstyle 3", "playstyle3", "playstyle_3" }, -1);
+    const int col_price      = find_col(headers, { "price", "value", "marketvalue" }, -1);
+    const int col_wage       = find_col(headers, { "wage", "salary" }, -1);
+    const int col_stamina    = find_col(headers, { "stamina", "sta" }, -1);
 
     // Outfield attributes
-    const int col_pace      = find_col(headers, { "pace", "pac" }, -1);
-    const int col_shooting  = find_col(headers, { "shooting", "sho" }, -1);
-    const int col_passing   = find_col(headers, { "passing", "pas" }, -1);
-    const int col_dribbling = find_col(headers, { "dribbling", "dri" }, -1);
-    const int col_defending = find_col(headers, { "defending", "def" }, -1);
-    const int col_physical  = find_col(headers, { "physical", "phy" }, -1);
+    const int col_pace       = find_col(headers, { "pace", "pac" }, -1);
+    const int col_shooting   = find_col(headers, { "shooting", "sho" }, -1);
+    const int col_passing    = find_col(headers, { "passing", "pas" }, -1);
+    const int col_dribbling  = find_col(headers, { "dribbling", "dri" }, -1);
+    const int col_defending  = find_col(headers, { "defending", "def" }, -1);
+    const int col_physical   = find_col(headers, { "physical", "phy" }, -1);
 
     // Goalkeeper attributes
     const int col_diving      = find_col(headers, { "diving", "gk_diving", "div" }, -1);
@@ -311,38 +348,52 @@ bool PlayerDatabase::load_players_from_csv(const String &csv_path) {
         auto_player_id = std::max(auto_player_id + 1, p.player_id + 1);
         p.name = player_name;
         p.age = get_int(row, col_age, 22);
+        p.debut_age = get_int(row, col_debut_age, std::clamp(p.age - 3, 15, 22));
         p.nationality = get_str(row, col_nation, "Unknown");
         p.club = get_str(row, col_club, "Free Agent");
         p.league = get_str(row, col_league, "Free Agents");
         p.position = get_str(row, col_pos, "CM").to_upper();
-        p.overall = std::clamp(get_int(row, col_ovr, 65), 1, 99);
-        p.potential = std::clamp(get_int(row, col_pot, p.overall), p.overall, 99);
-        p.playstyle = get_str(row, col_playstyle, "Balanced");
         p.price = get_i64(row, col_price, 500000);
         p.wage = get_i64(row, col_wage, 5000);
         p.stamina = std::clamp(get_int(row, col_stamina, 75), 1, 99);
 
+        // Parse Playstyles (single column or Playstyle 1..3)
+        p.playstyles.clear();
+        const int ps_cols[4] = { col_playstyle, col_ps1, col_ps2, col_ps3 };
+        for (int c_idx : ps_cols) {
+            if (c_idx >= 0) {
+                const String ps_val = get_str(row, c_idx).strip_edges();
+                if (!ps_val.is_empty() && ps_val.nocasecmp_to("None") != 0 && ps_val.nocasecmp_to("Balanced") != 0) {
+                    p.playstyles.push_back(ps_val);
+                }
+            }
+        }
+        p.playstyle = p.playstyles.empty() ? String("Balanced") : p.playstyles[0];
+
+        const int raw_ovr = get_int(row, col_ovr, 0);
+        const int fallback_stat = raw_ovr > 0 ? raw_ovr : 65;
+
         const bool is_gk = (p.position == "GK");
         if (is_gk) {
-            p.diving = std::clamp(get_int(row, col_diving, p.overall), 1, 99);
-            p.reflex = std::clamp(get_int(row, col_reflex, p.overall), 1, 99);
-            p.positioning = std::clamp(get_int(row, col_positioning, p.overall), 1, 99);
-            p.reaction = std::clamp(get_int(row, col_reaction, p.overall), 1, 99);
-            p.kicking = std::clamp(get_int(row, col_kicking, std::max(45, p.overall - 4)), 1, 99);
+            p.diving = std::clamp(get_int(row, col_diving, fallback_stat), 1, 99);
+            p.reflex = std::clamp(get_int(row, col_reflex, fallback_stat), 1, 99);
+            p.positioning = std::clamp(get_int(row, col_positioning, fallback_stat), 1, 99);
+            p.reaction = std::clamp(get_int(row, col_reaction, fallback_stat), 1, 99);
+            p.kicking = std::clamp(get_int(row, col_kicking, std::max(45, fallback_stat - 4)), 1, 99);
+            p.physical = std::clamp(get_int(row, col_physical, fallback_stat), 1, 99);
 
             p.pace = 0;
             p.shooting = 0;
             p.passing = 0;
             p.dribbling = 0;
             p.defending = 0;
-            p.physical = 0;
         } else {
-            p.pace = std::clamp(get_int(row, col_pace, p.overall), 1, 99);
-            p.shooting = std::clamp(get_int(row, col_shooting, p.overall), 1, 99);
-            p.passing = std::clamp(get_int(row, col_passing, p.overall), 1, 99);
-            p.dribbling = std::clamp(get_int(row, col_dribbling, p.overall), 1, 99);
-            p.defending = std::clamp(get_int(row, col_defending, p.overall), 1, 99);
-            p.physical = std::clamp(get_int(row, col_physical, p.overall), 1, 99);
+            p.pace = std::clamp(get_int(row, col_pace, fallback_stat), 1, 99);
+            p.shooting = std::clamp(get_int(row, col_shooting, fallback_stat), 1, 99);
+            p.passing = std::clamp(get_int(row, col_passing, fallback_stat), 1, 99);
+            p.dribbling = std::clamp(get_int(row, col_dribbling, fallback_stat), 1, 99);
+            p.defending = std::clamp(get_int(row, col_defending, fallback_stat), 1, 99);
+            p.physical = std::clamp(get_int(row, col_physical, fallback_stat), 1, 99);
 
             p.diving = 0;
             p.reflex = 0;
@@ -350,6 +401,9 @@ bool PlayerDatabase::load_players_from_csv(const String &csv_path) {
             p.reaction = 0;
             p.kicking = 0;
         }
+
+        p.overall = (raw_ovr > 0) ? std::clamp(raw_ovr, 1, 99) : compute_derived_ovr(p);
+        p.potential = std::clamp(get_int(row, col_pot, p.overall), p.overall, 99);
 
         const int idx = static_cast<int>(players.size());
         players.push_back(p);
@@ -445,6 +499,7 @@ Dictionary PlayerDatabase::player_to_dict(const PlayerRecord &p) const {
     d["player_id"] = p.player_id;
     d["name"] = p.name;
     d["age"] = p.age;
+    d["debut_age"] = p.debut_age;
     d["nationality"] = p.nationality;
     d["club"] = p.club;
     d["league"] = p.league;
@@ -452,6 +507,11 @@ Dictionary PlayerDatabase::player_to_dict(const PlayerRecord &p) const {
     d["overall"] = p.overall;
     d["potential"] = p.potential;
     d["playstyle"] = p.playstyle;
+    Array ps_arr;
+    for (const auto &ps : p.playstyles) {
+        ps_arr.append(ps);
+    }
+    d["playstyles"] = ps_arr;
     d["price"] = p.price;
     d["wage"] = p.wage;
     d["stamina"] = p.stamina;
@@ -464,6 +524,7 @@ Dictionary PlayerDatabase::player_to_dict(const PlayerRecord &p) const {
         d["positioning"] = p.positioning;
         d["reaction"] = p.reaction;
         d["kicking"] = p.kicking;
+        d["physical"] = p.physical;
     } else {
         d["pace"] = p.pace;
         d["shooting"] = p.shooting;

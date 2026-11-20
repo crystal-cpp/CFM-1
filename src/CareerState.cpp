@@ -449,53 +449,73 @@ TypedArray<Dictionary> CareerState::get_leagues_and_clubs() const {
 	if (_clubs.empty()) {
 		Ref<PlayerDatabase> temp_db;
 		temp_db.instantiate();
-		const char *club_paths[] = { "res://data/clubs.csv", "res://clubs.csv", "clubs.csv", "demo/data/clubs.csv" };
-		for (const char *p : club_paths) { if (temp_db->load_clubs_from_csv(p)) break; }
+		const char *club_paths[] = {
+			"res://data/clubs.csv",
+			"res://clubs.csv",
+			"clubs.csv",
+			"demo/data/clubs.csv"
+		};
+		for (const char *p : club_paths) {
+			if (temp_db->load_clubs_from_csv(p)) break;
+		}
 		Array all_c = temp_db->get_all_clubs();
 		for (int i = 0; i < all_c.size(); ++i) {
 			Dictionary c = all_c[i];
-			const int32_t csv_club_id = static_cast<int32_t>(c.get("club_id", i + 1001));
-			const String club_name = String(c.get("club", "")).strip_edges();
-			const String league_name = String(c.get("league", "Independent League")).strip_edges();
-			if (csv_club_id <= 0 || club_name.is_empty()) continue;
+			int32_t cid = static_cast<int32_t>(c.get("club_id", 1001 + i));
+			std::string cname = String(c.get("club", c.get("name", ""))).utf8().get_data();
+			std::string cleague = String(c.get("league", "Independent League")).utf8().get_data();
+			std::string p_kit = String(c.get("primary_color", "#1E3A8A")).utf8().get_data();
+			std::string s_kit = String(c.get("secondary_color", "")).utf8().get_data();
+			if (s_kit.empty()) {
+				s_kit = compute_secondary_kit_color(p_kit);
+			}
+
 			Dictionary entry;
-			entry["club_id"] = csv_club_id;
-			entry["club"] = club_name;
-			entry["club_name"] = club_name;
-			entry["league"] = league_name;
-			entry["short_code"] = c.get("short_code", "");
+			entry["club_id"] = cid;
+			entry["club_name"] = String(cname.c_str());
+			entry["club"] = String(cname.c_str());
+			entry["league"] = String(cleague.c_str());
+			entry["short_code"] = c.get("short_code", String(cname.c_str()).substr(0, 3).to_upper());
 			entry["country"] = c.get("country", "Unknown");
 			entry["reputation"] = c.get("reputation", 50);
-			entry["total_balance"] = static_cast<int64_t>(c.get("total_balance", 5000000));
-			entry["transfer_budget"] = static_cast<int64_t>(c.get("transfer_budget", 1500000));
-			entry["wage_budget"] = static_cast<int64_t>(c.get("wage_budget", 50000));
+			entry["total_balance"] = c.get("total_balance", 5000000);
+			entry["transfer_budget"] = c.get("transfer_budget", 1500000);
+			entry["wage_budget"] = c.get("wage_budget", 50000);
+			entry["budget"] = c.get("total_balance", 5000000);
 			entry["default_formation"] = c.get("default_formation", "4-4-2");
-			entry["primary_color"] = c.get("primary_color", "#1E3A8A");
-			entry["secondary_color"] = c.get("secondary_color", "#FFFFFF");
-			entry["is_locked"] = _is_club_or_league_locked(club_name.utf8().get_data(), league_name.utf8().get_data());
+			entry["primary_color"] = String(p_kit.c_str());
+			entry["secondary_color"] = String(s_kit.c_str());
+			entry["is_locked"] = _is_club_or_league_locked(cname, cleague);
 			out.append(entry);
 		}
 		return out;
 	}
+
+	std::vector<int32_t> sorted_ids;
+	sorted_ids.reserve(_clubs.size());
 	for (const auto &kv : _clubs) {
-		const auto &team = kv.second;
-		if (!team) continue;
-		const String club_name(team->GetName().c_str());
+		if (kv.second) sorted_ids.push_back(kv.first);
+	}
+	std::sort(sorted_ids.begin(), sorted_ids.end());
+
+	for (int32_t cid : sorted_ids) {
+		const auto &team = _clubs.at(cid);
 		Dictionary entry;
 		entry["club_id"] = team->GetId();
-		entry["club"] = club_name;
-		entry["club_name"] = club_name;
+		entry["club_name"] = String(team->GetName().c_str());
+		entry["club"] = String(team->GetName().c_str());
 		entry["league"] = String(team->League.c_str());
 		entry["short_code"] = String(team->ShortCode.c_str());
 		entry["country"] = String(team->Country.c_str());
 		entry["reputation"] = team->Reputation;
-		entry["total_balance"] = (team->GetId() == _managed_club_id) ? _finances.total_balance : team->TotalBalance;
-		entry["transfer_budget"] = (team->GetId() == _managed_club_id) ? _finances.transfer_budget : static_cast<int64_t>(team->GetBudget());
-		entry["wage_budget"] = (team->GetId() == _managed_club_id) ? _finances.wage_budget : team->WageBudget;
+		entry["total_balance"] = team->TotalBalance;
+		entry["transfer_budget"] = static_cast<int64_t>(team->GetBudget());
+		entry["wage_budget"] = team->WageBudget;
+		entry["budget"] = team->GetBudget();
+		entry["team_rating"] = team->GetTeamRating();
 		entry["default_formation"] = String(team->Formation.c_str());
 		entry["primary_color"] = String(team->KitColor.c_str());
 		entry["secondary_color"] = String(team->SecondaryColor.c_str());
-		entry["team_rating"] = team->GetTeamRating();
 		entry["is_locked"] = _is_club_or_league_locked(team->GetName(), team->League);
 		out.append(entry);
 	}
@@ -567,7 +587,7 @@ Dictionary CareerState::get_season_phase_info() const {
 void CareerState::_generate_season_fixtures(int32_t start_year) {
 	_fixtures.clear();
 
-	std::string league_comp = "Premier Division";
+	std::string league_comp = "Premier League";
 	auto managed_it = _clubs.find(_managed_club_id);
 	if (managed_it != _clubs.end() && managed_it->second && !managed_it->second->League.empty()) {
 		league_comp = managed_it->second->League;
@@ -582,37 +602,7 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 	}
 	std::sort(team_ids.begin(), team_ids.end());
 
-	// Fallback for single-club leagues (e.g., Tuesday League / 11A7) or missing league filter
-	if (team_ids.size() < 2 && _clubs.size() >= 2) {
-		std::unordered_set<int> existing(team_ids.begin(), team_ids.end());
-		std::vector<std::pair<int, int>> candidates; // (-reputation, club_id)
-		for (const auto &kv : _clubs) {
-			if (!kv.second || existing.count(kv.first)) continue;
-			if (_is_club_or_league_locked(kv.second->GetName(), kv.second->League)) continue;
-			candidates.emplace_back(-kv.second->Reputation, kv.first);
-		}
-		std::sort(candidates.begin(), candidates.end());
-		for (const auto &cand : candidates) {
-			if (team_ids.size() >= 16) break;
-			team_ids.push_back(cand.second);
-			existing.insert(cand.second);
-		}
-		std::sort(team_ids.begin(), team_ids.end());
-
-		if (_standings.size() < 2) {
-			_standings.clear();
-			for (int cid : team_ids) {
-				auto cit = _clubs.find(cid);
-				if (cit != _clubs.end() && cit->second) {
-					LeagueStandingRow row;
-					row.club_id = cid;
-					row.club_name = cit->second->GetName();
-					_standings.push_back(row);
-				}
-			}
-		}
-	}
-
+	// Strict league isolation: single-club leagues do not borrow clubs from other leagues
 	const int teams_count = static_cast<int>(team_ids.size());
 	if (teams_count < 2) {
 		return;
@@ -626,20 +616,17 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 			}
 			return cit->second->GetName() + " Stadium";
 		}
-		if (home_id >= 1 && home_id <= 16) {
-			return DEFAULT_STADIUM_NAMES[home_id - 1];
-		}
 		return "Main Stadium";
 	};
 
 	int fix_id = 1;
 
 	// -------------------------------------------------------------------------
-	// 1. PRE-SEASON WINDOW (Weeks 1–2 in July: Friendly 1 on Jul 8, Friendly 2 on Jul 15)
-	//    Matchday 1 of the competitive league begins on Week 3 (Mid-August: Aug 15).
+	// 1. PRE-SEASON WINDOW (Weeks 1–2 in July: Friendly 1 on Jul 18, Friendly 2 on Jul 25)
+	//    In odd-sized leagues, the trailing club receives a single bye (no double-booking).
 	// -------------------------------------------------------------------------
 	for (int pre_wk = 1; pre_wk <= 2; pre_wk++) {
-		int f_day = (pre_wk == 1) ? 8 : 15;
+		int f_day = (pre_wk == 1) ? 18 : 25;
 		std::string f_date = format_ymd_iso(start_year, 7, f_day);
 
 		std::vector<int> f_rot = team_ids;
@@ -653,30 +640,6 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 				std::swap(home, away);
 			}
 
-			FixtureRecord fix;
-			fix.fixture_id = fix_id++;
-			fix.week = pre_wk;
-			fix.matchday = 0; // 0 indicates Pre-Season Friendly before League MD 1
-			fix.date_iso = f_date;
-			fix.competition = "Pre-Season Friendly";
-			fix.home_club_id = home;
-			fix.away_club_id = away;
-			fix.home_goals = -1;
-			fix.away_goals = -1;
-			fix.played = false;
-			fix.is_friendly = true;
-			fix.stadium = resolve_stadium(home);
-			fix.match_importance = "FRIENDLY";
-			_fixtures.push_back(fix);
-		}
-
-		// Ensure the trailing team in an odd-sized league also gets a pre-season friendly
-		if (teams_count % 2 == 1) {
-			int home = f_rot.back();
-			int away = f_rot.front();
-			if (pre_wk == 2) {
-				std::swap(home, away);
-			}
 			FixtureRecord fix;
 			fix.fixture_id = fix_id++;
 			fix.week = pre_wk;
@@ -697,9 +660,7 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 
 	// -------------------------------------------------------------------------
 	// 2. COMPETITIVE LEAGUE SEASON (Week 3+ • Mid-August to May)
-	//    Full Double Round-Robin (handles both even and odd team counts via bye):
-	//      - Matchday 1 kicks off Mid-August (start_year-08-15, Week 3)
-	//      - Final Matchday concludes in May ((start_year + 1)-05-23)
+	//    Full Double Round-Robin (handles both even and odd team counts via bye)
 	// -------------------------------------------------------------------------
 	std::vector<std::vector<std::pair<int, int>>> first_half_pairs;
 	std::vector<int> rot = team_ids;
@@ -732,11 +693,11 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 	const int total_matchdays = rounds_per_half * 2;
 	const int64_t md1_days = civil_to_days(start_year, 8, 15);
 	const int64_t md_end_days = civil_to_days(start_year + 1, 5, 23);
-	const int span_days = static_cast<int>(md_end_days - md1_days); // 281 days
+	const int span_days = static_cast<int>(md_end_days - md1_days);
 
 	for (int md_idx = 0; md_idx < total_matchdays; md_idx++) {
 		int matchday = md_idx + 1;
-		int week = 3 + md_idx; // Matchday 1 starts on Week 3
+		int week = 3 + md_idx;
 		int day_offset = (total_matchdays > 1)
 			? static_cast<int>(std::llround((static_cast<double>(md_idx) * span_days) / (total_matchdays - 1)))
 			: 0;
@@ -1137,7 +1098,6 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 
 	_clubs.clear();
 	_club_id_by_name_lower.clear();
-	_club_id_by_csv_id.clear();
 	_captain_by_club.clear();
 	_players_by_id.clear();
 	_fixtures.clear();
@@ -1187,45 +1147,41 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 		Array raw_clubs = _player_db->get_all_clubs();
 		for (int i = 0; i < raw_clubs.size(); ++i) {
 			Dictionary cdict = raw_clubs[i];
-			const int32_t csv_club_id = static_cast<int32_t>(cdict.get("club_id", 0));
-			const String club_name = String(cdict.get("club", "")).strip_edges();
-			const std::string cname = club_name.utf8().get_data();
-			const std::string cleague = String(cdict.get("league", "Independent League")).strip_edges().utf8().get_data();
-			const std::string cshort = String(cdict.get("short_code", "")).strip_edges().utf8().get_data();
-			const std::string ccountry = String(cdict.get("country", "Unknown")).strip_edges().utf8().get_data();
-			const int32_t crep = static_cast<int32_t>(cdict.get("reputation", 50));
-			const int64_t ctotal_balance = static_cast<int64_t>(cdict.get("total_balance", 5000000));
-			const int64_t ctransfer_budget = static_cast<int64_t>(cdict.get("transfer_budget", 1500000));
-			const int64_t cwage_budget = static_cast<int64_t>(cdict.get("wage_budget", 50000));
-			const std::string cformation = String(cdict.get("default_formation", "4-4-2")).strip_edges().utf8().get_data();
-			const std::string primary_color = String(cdict.get("primary_color", "#1E3A8A")).strip_edges().utf8().get_data();
-			const std::string secondary_color = String(cdict.get("secondary_color", "#FFFFFF")).strip_edges().utf8().get_data();
-			const std::string normalized_name = _normalize_club_key(club_name);
-			if (csv_club_id <= 0 || cname.empty() || normalized_name.empty()) {
-				UtilityFunctions::printerr("CareerState: Skipping club registry row with invalid ClubID or club name.");
-				continue;
+			int32_t cid = static_cast<int32_t>(cdict.get("club_id", 1001 + i));
+			std::string cname = String(cdict.get("club", cdict.get("name", ""))).utf8().get_data();
+			if (cname.empty()) continue;
+
+			std::string cleague = String(cdict.get("league", "Independent League")).utf8().get_data();
+			std::string cshort = String(cdict.get("short_code", String(cname.c_str()).substr(0, 3).to_upper())).utf8().get_data();
+			std::string ccountry = String(cdict.get("country", "Unknown")).utf8().get_data();
+			int crep = static_cast<int>(cdict.get("reputation", 50));
+			int64_t total_bal = static_cast<int64_t>(cdict.get("total_balance", 5000000));
+			int64_t trans_bud = static_cast<int64_t>(cdict.get("transfer_budget", 1500000));
+			int64_t wage_bud = static_cast<int64_t>(cdict.get("wage_budget", 50000));
+			std::string def_form = String(cdict.get("default_formation", "4-3-3")).utf8().get_data();
+			std::string p_kit = String(cdict.get("primary_color", "#1E3A8A")).utf8().get_data();
+			std::string s_kit = String(cdict.get("secondary_color", "")).utf8().get_data();
+			if (s_kit.empty()) {
+				s_kit = compute_secondary_kit_color(p_kit);
 			}
-			if (_clubs.count(csv_club_id) != 0 || _club_id_by_name_lower.count(normalized_name) != 0) {
-				UtilityFunctions::printerr("CareerState: Skipping duplicate club registry ID/name: ", club_name);
-				continue;
-			}
-			auto team = std::make_unique<Team>(cname, static_cast<double>(ctransfer_budget));
-			team->SetId(csv_club_id);
+
+			auto team = std::make_unique<Team>(cname, static_cast<double>(total_bal));
+			team->SetId(cid);
 			team->League = cleague;
-			team->Country = ccountry;
 			team->ShortCode = cshort;
+			team->Country = ccountry;
 			team->Reputation = crep;
-			team->TotalBalance = ctotal_balance;
-			team->WageBudget = cwage_budget;
-			team->KitColor = primary_color;
-			team->SecondaryColor = secondary_color;
-			team->Formation = cformation.empty() ? "4-4-2" : cformation;
-			_club_id_by_csv_id[csv_club_id] = csv_club_id;
-			_club_id_by_name_lower[normalized_name] = csv_club_id;
-			_clubs[csv_club_id] = std::move(team);
+			team->TotalBalance = total_bal;
+			team->TransferBudget = trans_bud;
+			team->WageBudget = wage_bud;
+			team->KitColor = p_kit;
+			team->SecondaryColor = s_kit;
+			team->Formation = def_form.empty() ? "4-3-3" : def_form;
+
+			_club_id_by_name_lower[to_lower_str(cname)] = cid;
+			_clubs[cid] = std::move(team);
 		}
 	}
-
 
 	if (_clubs.empty()) {
 		for (int i = 1; i <= 16; i++) {
@@ -1233,25 +1189,21 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 			double budget = 25000000.0 + (17 - i) * 3000000.0;
 			auto team = std::make_unique<Team>(club_name, budget);
 			team->SetId(i);
-			team->League = "Premier Division";
-			team->Country = "England";
-			team->TotalBalance = static_cast<int64_t>(budget);
-			team->WageBudget = 650000;
+			team->League = "Premier League";
 			team->Formation = "4-3-3";
-			_club_id_by_csv_id[i] = i;
-			_club_id_by_name_lower[_normalize_club_key(String(club_name.c_str()))] = i;
+			_club_id_by_name_lower[to_lower_str(club_name)] = i;
 			_clubs[i] = std::move(team);
 		}
 	}
 
-	// Route CSV players to their registered club by normalized club name.
-	// Unmatched, empty, and explicit Free Agent entries remain unattached.
+	// Route CSV players into their matching Club by Club name (unmatched -> Free Agent club_id = 0)
 	if (db_loaded) {
 		for (const auto &src : _player_db->get_raw_players()) {
 			int pid = _next_player_id++;
 			std::string p_name = src.name.utf8().get_data();
 			std::string p_pos_str = src.position.strip_edges().to_upper().utf8().get_data();
 			Position p_pos = string_to_position(p_pos_str);
+
 			PlayerAttributes attrs;
 			if (p_pos == Position::GK) {
 				attrs.Pace = std::clamp(src.diving, 1, 99);
@@ -1259,7 +1211,7 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 				attrs.Passing = std::clamp(src.positioning, 1, 99);
 				attrs.Dribbling = std::clamp(src.reflex, 1, 99);
 				attrs.Defending = std::clamp(src.reaction, 1, 99);
-				attrs.Physical = std::clamp(src.overall, 1, 99);
+				attrs.Physical = std::clamp(src.physical, 1, 99);
 			} else {
 				attrs.Pace = std::clamp(src.pace, 1, 99);
 				attrs.Shooting = std::clamp(src.shooting, 1, 99);
@@ -1268,49 +1220,256 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 				attrs.Defending = std::clamp(src.defending, 1, 99);
 				attrs.Physical = std::clamp(src.physical, 1, 99);
 			}
+
 			int p_age = std::clamp(src.age, 15, 45);
 			int p_pot = std::clamp(src.potential, src.overall, 99);
-			int debut_age = std::clamp(p_age - 3, 15, 22);
-			auto p_ptr = std::make_shared<Player>(p_name, p_pos, attrs, p_age, p_pot, debut_age, 37);
+			int debut_age = std::clamp(src.debut_age, 15, 25);
+
+			auto p_ptr = std::make_shared<Player>(
+				p_name, p_pos, attrs, p_age, p_pot, debut_age, 37
+			);
 			p_ptr->SetId(pid);
 			p_ptr->SetStamina(std::clamp(src.stamina, 1, 99));
-			const String source_club = src.club.strip_edges();
-			const std::string p_club = source_club.utf8().get_data();
-			const std::string p_league = src.league.strip_edges().utf8().get_data();
-			const std::string p_nat = src.nationality.strip_edges().utf8().get_data();
-			const std::string p_style = src.playstyle.strip_edges().utf8().get_data();
-			const std::string club_key = _normalize_club_key(source_club);
+
+			std::string p_club = src.club.strip_edges().utf8().get_data();
+			std::string p_league = src.league.strip_edges().utf8().get_data();
+			std::string p_nat = src.nationality.strip_edges().utf8().get_data();
+
+			p_ptr->SetClubName(p_club.empty() ? "Free Agent" : p_club);
+			p_ptr->SetLeagueName(p_league.empty() ? "Free Agents" : p_league);
 			p_ptr->SetNationality(p_nat.empty() ? "Unknown" : p_nat);
+
 			std::vector<std::string> styles;
-			if (!p_style.empty() && p_style != "Balanced") styles.push_back(p_style);
+			for (const auto &ps : src.playstyles) {
+				std::string s_val = ps.strip_edges().utf8().get_data();
+				if (!s_val.empty() && s_val != "Balanced") {
+					styles.push_back(s_val);
+				}
+			}
 			p_ptr->SetPlaystyles(styles);
-			if (src.price > 0) p_ptr->SetMarketValue(static_cast<double>(src.price));
+
+			if (src.price > 0) {
+				p_ptr->SetMarketValue(static_cast<double>(src.price));
+			}
 			p_ptr->SetCondition(100);
 			p_ptr->SetMorale(85);
 			p_ptr->SetWage(src.wage > 0 ? src.wage : std::max<int64_t>(1500, static_cast<int64_t>(p_ptr->GetOVR()) * 850));
 			p_ptr->SetContractYears(3);
-			auto club_it = _club_id_by_name_lower.find(club_key);
-			if (!club_key.empty() && club_key != "free agent" && club_it != _club_id_by_name_lower.end()) {
-				auto team_it = _clubs.find(club_it->second);
-				if (team_it != _clubs.end() && team_it->second) {
-					p_ptr->SetClubId(team_it->first);
-					p_ptr->SetClubName(p_club);
-					p_ptr->SetLeagueName(p_league.empty() ? team_it->second->League : p_league);
-					team_it->second->AddPlayer(p_ptr);
-				} else {
-					p_ptr->SetClubId(0);
-					p_ptr->SetClubName("Free Agent");
-					p_ptr->SetLeagueName("Free Agents");
-				}
+
+			std::string c_key = to_lower_str(p_club);
+			auto c_it = _club_id_by_name_lower.find(c_key);
+			if (c_it != _club_id_by_name_lower.end() && _clubs.count(c_it->second) && _clubs[c_it->second]) {
+				int32_t target_cid = c_it->second;
+				p_ptr->SetClubId(target_cid);
+				_clubs[target_cid]->AddPlayer(p_ptr);
 			} else {
 				p_ptr->SetClubId(0);
-				p_ptr->SetClubName("Free Agent");
-				p_ptr->SetLeagueName("Free Agents");
 			}
+
 			_players_by_id[pid] = p_ptr;
 		}
 	}
 
+	// Ensure every club has at least 11 players and auto-picks a valid Best XI with GK in slot 0
+	for (auto &kv : _clubs) {
+		auto &team = kv.second;
+		if (!team) continue;
+		while (team->GetRoster().size() < 11) {
+			int pid = _next_player_id++;
+			Position pos = team->GetRoster().empty() ? Position::GK : Position::CM;
+			PlayerAttributes attrs{ 68, 65, 70, 68, 65, 70, 75 };
+			auto filler = std::make_shared<Player>("Academy Reserve " + std::to_string(pid), pos, attrs, 20, 76, 16, 37);
+			filler->SetId(pid);
+			filler->SetStamina(75);
+			filler->SetClubId(team->GetId());
+			filler->SetClubName(team->GetName());
+			filler->SetLeagueName(team->League);
+			filler->SetCondition(100);
+			filler->SetMorale(80);
+			filler->SetWage(2000);
+			_players_by_id[pid] = filler;
+			team->AddPlayer(filler);
+		}
+		auto_pick_best_xi_433(*team);
+
+		const auto &xi = team->GetStartingXI();
+		int default_captain = (!xi.empty() && xi[0]) ? xi[0]->GetId() : -1;
+		for (const auto &starter : xi) {
+			if (starter && starter->GetPosition() != Position::GK) {
+				default_captain = starter->GetId();
+				break;
+			}
+		}
+		_captain_by_club[team->GetId()] = default_captain;
+	}
+
+	// Validate requested club_id safely without assuming ID 1 exists
+	int32_t chosen_id = p_club_id;
+	auto chosen_it = _clubs.find(chosen_id);
+	if (chosen_it == _clubs.end() || !chosen_it->second) {
+		chosen_id = -1;
+		std::vector<int32_t> sorted_cids;
+		for (const auto &kv : _clubs) {
+			if (kv.second) sorted_cids.push_back(kv.first);
+		}
+		std::sort(sorted_cids.begin(), sorted_cids.end());
+		for (int32_t cid : sorted_cids) {
+			if (!_is_club_or_league_locked(_clubs[cid]->GetName(), _clubs[cid]->League)) {
+				chosen_id = cid;
+				break;
+			}
+		}
+		if (chosen_id < 0 && !sorted_cids.empty()) {
+			chosen_id = sorted_cids.front();
+		}
+	}
+
+	if (chosen_id < 0 || _clubs.find(chosen_id) == _clubs.end() || !_clubs[chosen_id]) {
+		UtilityFunctions::printerr("CareerState: No valid club available to start career.");
+		return false;
+	}
+
+	if (_is_club_or_league_locked(_clubs[chosen_id]->GetName(), _clubs[chosen_id]->League)) {
+		UtilityFunctions::printerr("CareerState: Attempted to start career with locked club/league without redeeming NHHA72528.");
+		return false;
+	}
+	_managed_club_id = chosen_id;
+	_manager.preferred_formation = _clubs[_managed_club_id]->Formation;
+
+	// Build strictly league-isolated standings for the selected club's league
+	std::string managed_league = _clubs[_managed_club_id]->League;
+	for (const auto &kv : _clubs) {
+		if (!kv.second) continue;
+		if (to_lower_str(kv.second->League) != to_lower_str(managed_league)) {
+			continue;
+		}
+		LeagueStandingRow row;
+		row.club_id = kv.second->GetId();
+		row.club_name = kv.second->GetName();
+		_standings.push_back(row);
+	}
+	std::sort(_standings.begin(), _standings.end(), [](const LeagueStandingRow &a, const LeagueStandingRow &b) {
+		return a.club_id < b.club_id;
+	});
+
+	Team *managed_team = _clubs[_managed_club_id].get();
+	_finances.total_balance = managed_team->TotalBalance > 0
+		? managed_team->TotalBalance
+		: static_cast<int64_t>(std::max(15000000.0, managed_team->GetBudget()));
+	_finances.transfer_budget = managed_team->TransferBudget > 0
+		? managed_team->TransferBudget
+		: static_cast<int64_t>(std::max(10000000.0, _finances.total_balance * 0.35));
+	_finances.wage_budget = managed_team->WageBudget > 0 ? managed_team->WageBudget : 650000;
+	_finances.weekly_wage_bill = 0;
+	for (const auto &p : managed_team->GetRoster()) {
+		if (p) _finances.weekly_wage_bill += p->GetWage();
+	}
+
+	struct YouthSeed {
+		const char *name;
+		Position pos;
+		int ovr_seed;
+		int pot;
+	};
+	YouthSeed youth_seeds[6] = {
+		{ "Nguyen Van Son", Position::GK, 62, 86 },
+		{ "Doan Van Tuan", Position::CB, 64, 88 },
+		{ "Tran Hoang Long", Position::LB, 63, 85 },
+		{ "Pham Duc Huy", Position::CM, 66, 90 },
+		{ "Le Minh Quang", Position::CAM, 67, 92 },
+		{ "Nguyen Tien Phat", Position::ST, 65, 89 }
+	};
+
+	for (const auto &ys : youth_seeds) {
+		int y_id = _next_player_id++;
+		PlayerAttributes attrs{ ys.ovr_seed, ys.ovr_seed, ys.ovr_seed, ys.ovr_seed, ys.ovr_seed, ys.ovr_seed, 75 };
+		auto prospect = std::make_shared<Player>(ys.name, ys.pos, attrs, 15, ys.pot, 16, 37);
+		prospect->SetId(y_id);
+		prospect->SetStamina(75);
+		prospect->SetClubId(-1);
+		prospect->SetCondition(100);
+		prospect->SetMorale(90);
+		prospect->SetWage(500);
+		prospect->SetContractYears(2);
+
+		_players_by_id[y_id] = prospect;
+		_youth_academy->AddYouthPlayer(prospect);
+	}
+
+	_youth_academy->HireCoach(Coach{ "Tran Van Phuc", 75, 4500.0, "Attacking" });
+	_youth_academy->HireCoach(Coach{ "Nguyen Sy Hien", 72, 3800.0, "Defending" });
+
+	_generate_season_fixtures(start_yr);
+	_seed_default_objectives();
+	_recalculate_standings();
+
+	push_inbox_message("BOARD", "Welcome to " + String(managed_team->GetName().c_str()) + " (15 July 2006)",
+		"Manager " + String(_manager.manager_name.c_str()) +
+		", your 2006/07 career begins on 15 July 2006 in " + String(managed_team->League.c_str()) + ".",
+		"schedule", _managed_club_id);
+
+	_career_active = true;
+
+	emit_signal("date_changed", get_current_date_iso());
+	emit_signal("balance_changed", _finances.total_balance, _finances.transfer_budget, _finances.wage_budget);
+	emit_signal("inbox_updated", get_unread_inbox_count());
+	emit_signal("standings_updated");
+
+	return true;
+}
+
+Dictionary CareerState::get_header_summary() const {
+	Dictionary d;
+	d["managed_club_id"] = _managed_club_id;
+
+	auto it = _clubs.find(_managed_club_id);
+	d["managed_club_name"] = (it != _clubs.end() && it->second) ? String(it->second->GetName().c_str()) : String("My Club");
+	d["short_code"] = (it != _clubs.end() && it->second && !it->second->ShortCode.empty())
+		? String(it->second->ShortCode.c_str())
+		: String(d["managed_club_name"]).substr(0, 3).to_upper();
+	d["primary_color"] = (it != _clubs.end() && it->second) ? String(it->second->KitColor.c_str()) : String("#1E3A8A");
+	d["secondary_color"] = (it != _clubs.end() && it->second) ? String(it->second->SecondaryColor.c_str()) : String("#FFFFFF");
+	d["manager_name"] = String(_manager.manager_name.c_str());
+	d["season_label"] = get_season_label();
+	d["current_date"] = get_current_date_iso();
+	d["season_week"] = _compute_season_week();
+	d["league_rank"] = get_managed_club_league_rank();
+	d["total_balance"] = _finances.total_balance;
+	d["transfer_budget"] = _finances.transfer_budget;
+	d["wage_budget"] = _finances.wage_budget;
+	d["weekly_wage_bill"] = _finances.weekly_wage_bill;
+	d["unread_inbox_count"] = get_unread_inbox_count();
+	return d;
+}
+
+Dictionary CareerState::get_club_info(int32_t p_club_id) const {
+	Dictionary d;
+	auto it = _clubs.find(p_club_id);
+	if (it != _clubs.end() && it->second) {
+		d["id"] = it->second->GetId();
+		d["club_id"] = it->second->GetId();
+		d["name"] = String(it->second->GetName().c_str());
+		d["club_name"] = String(it->second->GetName().c_str());
+		d["club"] = String(it->second->GetName().c_str());
+		d["league"] = String(it->second->League.c_str());
+		d["short_code"] = String(it->second->ShortCode.c_str());
+		d["country"] = String(it->second->Country.c_str());
+		d["reputation"] = it->second->Reputation;
+		d["total_balance"] = it->second->TotalBalance;
+		d["transfer_budget"] = it->second->TransferBudget;
+		d["wage_budget"] = it->second->WageBudget;
+		d["budget"] = it->second->GetBudget();
+		d["formation"] = String(it->second->Formation.c_str());
+		d["default_formation"] = String(it->second->Formation.c_str());
+		d["primary_color"] = String(it->second->KitColor.c_str());
+		d["secondary_color"] = String(it->second->SecondaryColor.c_str());
+		d["is_locked"] = _is_club_or_league_locked(it->second->GetName(), it->second->League);
+		d["team_rating"] = it->second->GetTeamRating();
+		d["squad_size"] = static_cast<int32_t>(it->second->GetRoster().size());
+		d["captain_id"] = get_club_captain(p_club_id);
+	}
+	return d;
+}
 
 	// Ensure every club has at least 11 players and auto-picks a valid Best XI with GK in slot 0
 	for (auto &kv : _clubs) {
