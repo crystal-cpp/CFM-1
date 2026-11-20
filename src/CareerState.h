@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <godot_cpp/classes/node.hpp>
@@ -144,11 +145,13 @@ private:
 
 	// Phase 5D: Clubs.csv registry, codes & lock state
 	std::unordered_map<std::string, int32_t> _club_id_by_name_lower;
+	std::unordered_map<int32_t, int32_t> _club_id_by_csv_id;
 	std::unordered_set<std::string> _redeemed_codes;
 	bool _tuesday_league_unlocked = false;
 	void _load_unlock_persistence();
 	void _save_unlock_persistence() const;
 	bool _is_club_or_league_locked(const std::string &club_name, const std::string &league_name) const;
+	static std::string _normalize_club_key(const String &p_club_name);
 
 	// Internal Helpers
 	std::string _format_date_iso() const;
