@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <cstdint>
 
 class Team {
 public:
@@ -81,7 +82,10 @@ public:
 
     std::string League = "Premier Division";
     std::string Country = "England";
+    std::string ShortCode;
     int Reputation = 75;
+    int64_t TotalBalance = 0;
+    int64_t WageBudget = 0;
     std::string KitColor = "#FFFFFF";
     std::string SecondaryColor = "#111111";
 
