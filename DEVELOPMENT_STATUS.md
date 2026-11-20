@@ -2,11 +2,11 @@
 
 **Last Updated**: 2026-11-20
 
-**Reviewed Repository Baseline**: `7b2e2e53e20ca03d82ed4e22680ee638ee1d2a61` *(latest main-branch merge; includes the 12-column club registry, structured player/club CSV parsing and league-derived fixture generation from `a32b521fde9cd013edaa8f9c01ab93945666a099`)*
+**Reviewed Source Baseline**: `c5cd7b6c44eda90581ad91b8c44363c6dd62fab6` *(includes canonical ClubRecord / CSV ClubID integration, CareerState parser cleanup, and the duplicate GDScript regression declaration fix; documentation updates follow this source baseline)*
 
 **Current Phase**: Phase 5
 
-**Current Milestone**: **Phase 5D-2 — Structured Player/Club Data & League-Scoped Fixture Generation; source implementation committed, integration corrections and build/runtime verification pending. Phase 5C-2 startup flow is implemented in source; runtime QA pending.**
+**Current Milestone**: **Phase 5D-2 implementation complete in source; final MinGW/UCRT64 build and Godot regression/runtime acceptance pending. Phase 5D-1 historical accuracy review remains open. Phase 5C-2 startup flow is implemented in source; runtime QA pending.**
 
 ## 1. Milestone & Subsystem Status Matrix
 
@@ -28,8 +28,8 @@
 | **Phase 5B-2: CompetitionsView Integration & Responsive UI** | GDScript | **Implemented in repository** | **Source inspection complete; runtime QA pending** | `CareerShell.gd` calls `_competitions_view.refresh_competitions()` when navigating to Competitions, in `refresh_all_views()`, and in `_on_standings_updated()` (commit `d43ba52`). `ScheduleView` responsive layout refinements are in `018eef5`. Verify live updates and desktop/narrow viewport behavior in Godot. UCL fixture generation, qualification and authoritative results remain deferred. |
 | **Phase 5C: Pre-Match Center & Post-Match Pipeline** | GDScript / CareerState | **Integration committed** | **Source inspection complete; runtime QA pending** | Dashboard / Schedule requests open `PreMatchView`; `MatchScene.launch_career_match()` applies the context before kickoff, passes primary kit colors to 2D outfield markers, commits the result after the final-whistle chance deferral, and displays `PostMatchModal.show_report(summary)`. Continue returns to CareerShell and refreshes views. Validate the full flow and result mapping in Godot. |
 | **Phase 5C-2: Main Menu & Application Startup / Career Entry Flow** | GDScript / Scene Architecture | **Implemented in repository** | **Source inspection complete; runtime QA pending** | `demo/project.godot` starts `res://app_root.tscn`; `AppRoot.gd` owns `CareerState`, persistent `MatchScene`, `CareerShell`, `MainMenuView` and `NewCareerView`, with New / Continue / Load / Settings / Exit actions, automatic Dashboard entry, load-error handling and an unsaved-progress confirmation. Settings currently exposes fullscreen only; audio settings remain Phase 5G. Validate all transitions in Godot. |
-| **Phase 5D-1: Club Registry Schema & Player CSV Metadata** | C++23 / CSV | **Implemented in source** | **Data/historical audit pending** | `demo/data/clubs.csv` now has 106 data rows and the 12-column schema across 28 league labels; 802 player rows have Club values matching registry names, but 23 clubs have no player rows. Historical 15 July 2006 accuracy and roster completeness remain unverified. `NHHA72528` code and unlock UI are present. |
-| **Phase 5D-2: Structured Bootstrap & League-Scoped Fixtures** | C++23 / CareerState | **Source implementation committed; integration defects found** | **Build + Godot regression/runtime QA pending** | Commit `a32b521` adds structured PlayerRecord/ClubRecord parsing, league-derived fixture participants, double round-robin generation with odd-team bye support, dynamic competition labels and retirement-age save persistence. Blockers: `club_to_dict()` keys (`club`, `reputation`, `total_balance`) do not match CareerState consumers (`name`, `rating`, `budget`); CSV ClubID and several metadata fields are dropped; leagues with fewer than two clubs borrow teams from other leagues; odd-sized pre-season friendlies double-book the first club. Regression script remains Phase 3-only with stale 2026/16-club expectations. No SCons build or Godot runtime QA was performed in this review. |
+| **Phase 5D-1: Club Registry Schema & Player CSV Metadata** | C++23 / CSV | **Implemented in source; dataset coverage complete** | **Historical/data QA pending** | Current source-level audit: 156 club rows, 12 columns, 30 leagues, 156 unique ClubIDs, 13 single-club leagues, 1,706 player rows, all player Club values matched, and all 156 clubs have at least one imported player. Historical accuracy as of 15 July 2006 remains unverified. NHHA72528 code and unlock UI are present; reward mapping still needs QA. |
+| **Phase 5D-2: Structured Bootstrap & League-Scoped Fixtures** | C++23 / CareerState | **Implemented in source** | **SCons build + Godot regression/runtime acceptance pending** | Canonical ClubRecord fields, stable CSV ClubID mapping, full club metadata propagation, Team::GetBudget() access, strict league isolation, bye-aware odd-team scheduling, and CareerState duplicate/orphan code cleanup are committed. Phase 5D regression coverage now includes the 156-club/30-league registry, 11A7 ClubID 1098, 21-team La Liga, odd-round double-booking and single-club Allsvenskan checks. Fixed duplicate GDScript function declarations in commit c5cd7b6; suite has not yet been run after the fix. |
 | **Phase 5E: `MatchEngine` Realism, Stamina Drain & Controls Cleanup** | Both | **Spec Ready** | **Scheduled (Phase 5)** | CSV `Stamina`-driven match drain, attribute-coupled attack/defense chances, scaled opponent defensive AI, balanced chance probability, real-time steering movement, and removal of Advanced Dribbling (`R`). | 
 | **Phase 5F: Stamina Persistence,** $\approx 30\%$**/Day Recovery & Injury System** | Both | **Spec Ready** | **Scheduled (Phase 5)** | Post-match stamina preservation, configurable $\approx 30\%$/day calendar recovery, and World Soccer Champs-inspired injury generation & calendar recovery. | 
 | **Phase 5G: Audio System, Stadium Atmosphere, Commentary & Goal Celebrations** | Both | **Spec Ready** | **Scheduled (Phase 5)** | Menu/career background music, match crowd ambience, match-importance stadium intensity, contextual commentary (`GOAL`/`SAVE`/`FOUL`/`SUB`), distinct home/away goal reactions, `3.0–5.0s` touchline goal celebration run, and full-time whistle/crowd audio. | 
@@ -116,7 +116,7 @@
 
 ## 3. Upcoming Engineering Blueprints & Technical Dependencies (Phases 5–7)
 
-> **Status Note**: Phase 5A–5C source integrations remain subject to Godot runtime QA; authoritative UCL fixture generation and progression are deferred. Phase 5C-2 is implemented in source, but runtime QA remains pending. Phase 5D-1's 12-column registry and structured CSV parsing are present; Phase 5D-2's league-derived double round-robin source is committed at reviewed baseline `7b2e2e53`, but integration defects remain in dictionary mapping, stable ClubID/metadata propagation, strict league isolation and odd-sized pre-season pairing. The 106-club dataset's historical accuracy and 23 missing club rosters remain unaudited. Do not infer build/runtime verification from source inspection.
+> **Status Note**: Phase 5A–5C source integrations remain subject to Godot runtime QA; authoritative UCL fixture generation and progression are deferred. Phase 5C-2 is implemented in source, but runtime QA remains pending. Phase 5D-2 implementation fixes are committed, including canonical club dictionary mapping, stable ClubID/metadata propagation, league isolation, odd-team bye handling, pre-season pairing correction, CareerState parser cleanup and removal of duplicate GDScript test declarations. Current CSV source audit finds 156 clubs across 30 leagues and 1,706 player rows with complete club-level coverage. Historical accuracy for 15 July 2006 remains unaudited. Do not infer build/runtime verification from source inspection.
 
 ### Phase 5A–5B — Season Calendar Cycle & UEFA Champions League Specification
 1. **July–May Season Calendar (`src/CareerState.cpp` & `demo/ScheduleView.gd`)**:
@@ -138,32 +138,25 @@
 ### Phase 5D — Historical 15 July 2006 Club Registry, Structured Player Data, New Career Bootstrap & League Fixtures
 
 **5D-1 — Club Registry & Player Metadata**
-- `demo/data/clubs.csv` now contains **106 data rows** and the 12-column schema: `ClubID,Club,League,ShortCode,Country,Reputation,TotalBalance,TransferBudget,WageBudget,DefaultFormation,PrimaryColor,SecondaryColor`.
-- Source-level CSV audit: **28 distinct league labels**, **11 single-club leagues**, no duplicate ClubIDs/names, and no malformed column counts. Historical accuracy for 15 July 2006 remains unverified.
-- `demo/data/players_2006_with_price.csv` contains **802 player rows**. Every player Club value matches a registry club name, but **23 clubs have no player rows** and currently rely on generated Academy Reserve fillers to reach 11 players.
-- `Players_Database/player_database.cpp` parses structured club records and player records: IDs, age, nationality, club/league, outfield/GK attributes, price, wage, existing Stamina and Playstyle metadata. Do not add a duplicate Stamina column.
-- `NHHA72528` persistence, Tuesday League / 11A7 gating and `RedeemCodeModal` are present in source. Reward mapping still requires QA.
+- Current source-level audit of demo/data/clubs.csv: **156 data rows**, 12 columns, **30 distinct league labels**, 156 unique ClubIDs, no duplicate club names and **13 single-club leagues**.
+- Current source-level audit of demo/data/players_2006_with_price.csv: **1,706 player rows**; every non-empty player Club value matches a registry club, and all **156 clubs have at least one imported player row**. No club currently relies on a missing-roster fallback according to this CSV membership check.
+- The 12-column club schema includes ClubID, Club, League, ShortCode, Country, Reputation, TotalBalance, TransferBudget, WageBudget, DefaultFormation, PrimaryColor and SecondaryColor. Player data retains Stamina and Playstyle metadata; do not duplicate the Stamina column.
+- Historical correctness of all clubs, league labels, memberships, finances, formations and kit colours as of **15 July 2006** is not yet independently verified. NHHA72528 reward mapping also remains subject to QA.
 
-**5D-2 — Structured Bootstrap & League-Scoped Fixture Generation**
-- **Source implementation committed:** `a32b521fde9cd013edaa8f9c01ab93945666a099`, merged into reviewed main baseline `7b2e2e53e20ca03d82ed4e22680ee638ee1d2a61`.
-- Implemented in source: structured PlayerRecord/ClubRecord parsing and query APIs; league-derived participant selection; double round-robin fixture generation with a bye sentinel for odd team counts; dynamic competition labels and matchday counts; club-name-based stadium fallback; and preservation of player retirement age in career saves.
-- **Critical dictionary contract mismatch:** `PlayerDatabase::club_to_dict()` returns `club`, `reputation`, `total_balance`, `transfer_budget` and `wage_budget`, while `CareerState::start_new_career()` and `get_leagues_and_clubs()` still read `name`, `rating` and `budget`. Club names can therefore become empty, breaking New Career entries, the club-name index and player-to-team assignment. Align the contracts or consume `ClubRecord` directly.
-- **Club identity/metadata propagation incomplete:** CSV `ClubID` is parsed but CareerState assigns sequential IDs. The bootstrap also fails to consume separate finance fields, default formation and CSV secondary kit colour; several values are defaulted or derived.
-- **League isolation defect:** if the managed league has fewer than two clubs, `_generate_season_fixtures()` adds clubs from other leagues (up to 16). The registry currently has 11 single-club leagues, so this creates cross-league fixtures/standings. Do not borrow clubs from another league; require two clubs or implement a separate explicit exhibition-opponent model.
-- **Odd-sized pre-season defect:** the trailing club is paired with the first club even though the first club already appears in a normal pair in the same round. Replace this with bye-aware pairing so no club is scheduled twice in a pre-season round.
-- **Roster coverage:** 23 clubs have no imported player rows and receive generated Academy Reserve players. Complete the historical rosters or explicitly document the fallback.
-- **Regression gap:** `demo/CareerRegressionTest.gd` currently contains only the older Phase 3 baseline suites (1–8). It still expects a 2026-07-01 start and a fixed 16-club table; it has no Phase 5D-2 tests for 2006-07-15 startup, ClubID preservation, club dictionary mapping, league isolation, even/odd fixture invariants or roster coverage.
+**5D-2 — Structured Bootstrap & League-Scoped Fixture Generation [IMPLEMENTED IN SOURCE; ACCEPTANCE QA PENDING]**
+- **Canonical ClubRecord integration:** CareerState consumes the canonical club dictionary fields (club, reputation, total_balance, transfer_budget, wage_budget, default_formation, primary_color, secondary_color) and uses normalized club-name matching.
+- **Stable identity and metadata:** CSV ClubIDs are preserved through CareerState and New Career UI; club metadata is propagated into Team and career save data. NewCareerView accepts canonical club / club_name fields and does not fabricate sequential IDs.
+- **Finance accessor correction:** CareerState uses Team::GetBudget() rather than directly accessing the private TransferBudget member.
+- **League isolation and scheduling:** fixture and standings participants are selected from the managed club's league only. Single-club leagues do not borrow other leagues' clubs. Odd-sized round-robin scheduling uses a bye sentinel, and pre-season pairings avoid scheduling a club twice in the same round.
+- **CareerState parser cleanup:** removed the orphaned duplicate career-start block and duplicate get_header_summary() / get_club_info() definitions that had caused global-scope parser errors and redefinitions.
+- **Regression coverage:** CareerRegressionTest.gd includes Phase 5D checks for the 156-club / 30-league registry, 11A7 ClubID 1098, 21-team La Liga, no double-booking in the tested odd-sized league, and single-club Allsvenskan isolation. The older duplicate declarations of _test_career_initialization() and _test_subsystem_queries_and_bridges() were removed in commit c5cd7b6c44eda90581ad91b8c44363c6dd62fab6. The test suite has not yet been rerun after that parser fix.
+- **Relevant source-fix commits:** 0c25cc8, 97bd023, 40fb353, 760aeaf, f363c28, 5504b33, 2204a80 and c5cd7b6. These commits establish source changes only; they do not establish a successful local build or runtime test.
 
-**Required 5D-2 exit criteria**
-1. Align club dictionary keys and CareerState consumers; verify visible club names, correct League -> Club choices and correct player-to-club assignment.
-2. Preserve CSV ClubID and load all Phase 5D club metadata intended for the bootstrap.
-3. Keep fixtures and standings strictly inside the selected league. A league with fewer than two clubs must not borrow clubs from another league.
-4. For even and odd league sizes, verify every club pair meets exactly twice (one home, one away), no club plays twice on one matchday, and each odd-sized round has exactly one bye.
-5. Ensure pre-season friendlies also have no double-booked clubs.
-6. Expand regression coverage for CSV parsing, 2006-07-15 bootstrap, club/player mapping, league isolation, fixture invariants, standings membership and Save/Load.
-7. Run the MinGW/UCRT64 SCons build and Godot 4.7 regression/runtime checks. Source inspection is not verification.
-
-**Historical/data audit still outstanding:** verify all 106 clubs and 28 league labels against 15 July 2006; resolve the single-club leagues deliberately; complete the 23 missing club rosters.
+**Remaining 5D-2 acceptance steps**
+1. Run the Windows MinGW/UCRT64 SCons build: scons platform=windows target=template_debug api_version=4.7.
+2. Open the Godot 4.7 project, confirm scripts parse, run CareerRegressionTest.gd with F10, and fix any runtime or assertion failures.
+3. Manually verify New Career League -> Club selection, displayed club metadata, player-to-club assignment, league-only standings/fixtures, odd-team byes, pre-season pairings and Save/Load persistence.
+4. Complete the historical 15 July 2006 data audit. Dataset coverage is complete at the club level, but historical correctness is not yet certified.
 
 ### Phase 5E — `MatchEngine` Simulation Realism, Attribute-Coupled Chances & Controls Cleanup
 
