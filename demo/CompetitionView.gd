@@ -226,7 +226,7 @@ func _get_managed_club_name() -> String:
 func _get_managed_club_league() -> String:
 	if is_instance_valid(career_state) and career_state.is_career_active():
 		var summary: Dictionary = career_state.get_header_summary()
-		var managed_id := int(summary.get("managed_club_id", career_state.get_managed_club_id()))
+		var managed_id := int(summary.get("managed_club_id", -1))
 		var club_info: Dictionary = career_state.get_club_info(managed_id)
 		var live_league := String(club_info.get("league", "")).strip_edges()
 		if not live_league.is_empty():
