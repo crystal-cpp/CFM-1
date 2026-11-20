@@ -31,13 +31,8 @@ func refresh_clubs() -> void:
 					_clubs_by_league[league] = []
 				_clubs_by_league[league].append(item)
 	else:
-		# Phase 5C-2 fallback before Phase 5D clubs.csv registry lands
-		var default_clubs: Array = []
-		for cid in range(1, 17):
-			var info: Dictionary = career_state.get_club_info(cid) if is_instance_valid(career_state) else {}
-			var cname := String(info.get("club_name", "Club %d" % cid))
-			default_clubs.append({ "club_id": cid, "club_name": cname, "league": "Premier Division" })
-		_clubs_by_league["Premier Division"] = default_clubs
+		# Never fabricate club IDs or clubs when the authoritative registry is unavailable.
+		push_warning("NewCareerView: CareerState club registry is unavailable; no clubs can be selected.")
 
 	_league_option.clear()
 	for league_name in _clubs_by_league.keys():
@@ -54,8 +49,14 @@ func _on_league_selected(index: int) -> void:
 	var league_name := _league_option.get_item_text(index)
 	var clubs: Array = _clubs_by_league.get(league_name, [])
 	for c in clubs:
-		var cid := int(c.get("club_id", 1))
-		var cname := String(c.get("club_name", "Club %d" % cid))
+		if not (c is Dictionary):
+			continue
+		var cid := int(c.get("club_id", 0))
+		if cid <= 0:
+			continue
+		var cname := String(c.get("club", c.get("club_name", "")))
+		if cname.strip_edges().is_empty():
+			cname = "Club %d" % cid
 		_club_option.add_item(cname, cid)
 	if _club_option.item_count > 0:
 		_club_option.select(0)
