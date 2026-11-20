@@ -60,7 +60,10 @@ func _ready() -> void:
 	_switch_tab("league")
 
 func refresh_competitions() -> void:
-	if not _csv_loaded:
+	# Refresh from the live career registry after CareerShell injects CareerState.
+	if is_instance_valid(career_state) and career_state.is_career_active():
+		_load_clubs_csv()
+	elif not _csv_loaded:
 		_load_clubs_csv()
 
 	if is_instance_valid(career_state) and career_state.is_career_active():
@@ -84,72 +87,102 @@ func refresh_competitions() -> void:
 func _load_clubs_csv() -> void:
 	_csv_clubs.clear()
 	_leagues_map.clear()
+	_csv_loaded = false
 
+	# Prefer CareerState's canonical club registry. This is the same registry
+	# used by New Career, fixtures and club information, so the Competitions
+	# screen cannot silently diverge from the active save.
+	if is_instance_valid(career_state) and career_state.is_career_active() and career_state.has_method("get_leagues_and_clubs"):
+		var registry: Variant = career_state.call("get_leagues_and_clubs")
+		if registry is Array:
+			for item in registry:
+				if not (item is Dictionary):
+					continue
+				var club_name := String(item.get("club_name", item.get("club", item.get("name", "")))).strip_edges()
+				var league_name := String(item.get("league", "")).strip_edges()
+				if club_name.is_empty() or league_name.is_empty():
+					continue
+				var club_dict: Dictionary = {
+					"id": int(item.get("club_id", item.get("id", 0))),
+					"name": club_name,
+					"league": league_name,
+					"country": String(item.get("country", "")),
+					"reputation": int(item.get("reputation", 50)),
+					"formation": String(item.get("default_formation", item.get("formation", "4-3-3"))),
+					"kit_color": _parse_kit_color(String(item.get("primary_color", "#22c55e")))
+				}
+				_add_competition_club(club_dict)
+			if not _csv_clubs.is_empty():
+				_csv_loaded = true
+				print("CompetitionsView: loaded %d clubs across %d leagues from CareerState." % [_csv_clubs.size(), _leagues_map.size()])
+				return
+
+	# Standalone / pre-career fallback: read the same CSV using normalized headers.
 	var found_path: String = ""
 	for path in CLUBS_CSV_PATHS:
 		if FileAccess.file_exists(path):
 			found_path = path
 			break
-
 	if found_path.is_empty():
+		push_warning("CompetitionsView: clubs.csv was not found in configured resource paths.")
 		_csv_loaded = true
 		return
 
 	var file := FileAccess.open(found_path, FileAccess.READ)
-	if not file:
+	if file == null:
+		push_warning("CompetitionsView: unable to open clubs CSV at %s." % found_path)
 		_csv_loaded = true
 		return
 
 	var headers: PackedStringArray = file.get_csv_line()
-	if headers.is_empty():
+	var col_idx: Dictionary = {}
+	for i in range(headers.size()):
+		var key := headers[i].strip_edges().to_lower().replace("_", "").replace(" ", "").replace("-", "")
+		col_idx[key] = i
+
+	var idx_id: int = int(col_idx.get("clubid", -1))
+	var idx_club: int = int(col_idx.get("club", -1))
+	var idx_league: int = int(col_idx.get("league", -1))
+	var idx_country: int = int(col_idx.get("country", -1))
+	var idx_rep: int = int(col_idx.get("reputation", -1))
+	var idx_form: int = int(col_idx.get("defaultformation", col_idx.get("formation", -1)))
+	var idx_kit: int = int(col_idx.get("primarycolor", col_idx.get("kitcolor", -1)))
+
+	if idx_club < 0 or idx_league < 0:
 		file.close()
+		push_error("CompetitionsView: clubs.csv is missing required Club and League columns.")
 		_csv_loaded = true
 		return
 
-	var col_idx: Dictionary = {}
-	for i in range(headers.size()):
-		col_idx[headers[i].strip_edges().to_lower()] = i
-
-	var idx_club: int = int(col_idx.get("club", 0))
-	var idx_league: int = int(col_idx.get("league", 1))
-	var idx_country: int = int(col_idx.get("country", 2))
-	var idx_rep: int = int(col_idx.get("reputation", 3))
-	var idx_form: int = int(col_idx.get("default formation", col_idx.get("formation", 5)))
-	var idx_kit: int = int(col_idx.get("kit color", col_idx.get("kit_color", 6)))
-
-	var row_id: int = 1
 	while not file.eof_reached():
 		var row: PackedStringArray = file.get_csv_line()
-		if row.size() <= idx_league:
+		if row.size() <= max(idx_club, idx_league):
 			continue
-		var club_name: String = row[idx_club].strip_edges()
-		var league_name: String = row[idx_league].strip_edges()
+		var club_name := row[idx_club].strip_edges()
+		var league_name := row[idx_league].strip_edges()
 		if club_name.is_empty() or league_name.is_empty():
 			continue
-
-		var country_name: String = row[idx_country].strip_edges() if idx_country < row.size() else ""
-		var rep_val: int = int(row[idx_rep].strip_edges()) if idx_rep < row.size() else 70
-		var formation_str: String = row[idx_form].strip_edges() if idx_form < row.size() else "4-3-3"
-		var kit_hex: String = row[idx_kit].strip_edges() if idx_kit < row.size() else "#22c55e"
-
 		var club_dict: Dictionary = {
-			"id": row_id,
+			"id": int(row[idx_id].strip_edges()) if idx_id >= 0 and idx_id < row.size() else _csv_clubs.size() + 1,
 			"name": club_name,
 			"league": league_name,
-			"country": country_name,
-			"reputation": rep_val,
-			"formation": formation_str,
-			"kit_color": _parse_kit_color(kit_hex)
+			"country": row[idx_country].strip_edges() if idx_country >= 0 and idx_country < row.size() else "",
+			"reputation": int(row[idx_rep].strip_edges()) if idx_rep >= 0 and idx_rep < row.size() else 70,
+			"formation": row[idx_form].strip_edges() if idx_form >= 0 and idx_form < row.size() else "4-3-3",
+			"kit_color": _parse_kit_color(row[idx_kit].strip_edges()) if idx_kit >= 0 and idx_kit < row.size() else Color(0.18, 0.85, 0.52)
 		}
-		_csv_clubs.append(club_dict)
-
-		if not _leagues_map.has(league_name):
-			_leagues_map[league_name] = []
-		_leagues_map[league_name].append(club_dict)
-		row_id += 1
+		_add_competition_club(club_dict)
 
 	file.close()
 	_csv_loaded = true
+	print("CompetitionsView: loaded %d clubs across %d leagues from %s." % [_csv_clubs.size(), _leagues_map.size(), found_path])
+
+func _add_competition_club(club_dict: Dictionary) -> void:
+	_csv_clubs.append(club_dict)
+	var league_name := String(club_dict.get("league", ""))
+	if not _leagues_map.has(league_name):
+		_leagues_map[league_name] = []
+	_leagues_map[league_name].append(club_dict)
 
 func _parse_kit_color(raw: String) -> Color:
 	var s: String = raw.strip_edges()
@@ -519,26 +552,55 @@ func _refresh_league_table() -> void:
 				form_box.add_child(_make_form_pill(String(res)))
 
 func _get_league_standings_data(league_name: String) -> Array[Dictionary]:
-	# 1. Use live CareerState standings if available for this league
-	if is_instance_valid(career_state) and career_state.has_method("get_league_standings"):
-		var live_data: Variant = career_state.call("get_league_standings", league_name)
-		if live_data is Array and not live_data.is_empty():
-			var typed: Array[Dictionary] = []
-			for item in live_data:
-				if item is Dictionary:
-					typed.append(item)
-			return typed
+	# CareerState.get_league_standings() has no arguments and returns the
+	# managed club's domestic league rows. Normalize its C++ field names to
+	# the view's presentation schema, but only use it for that league.
+	if is_instance_valid(career_state) and career_state.is_career_active() and career_state.has_method("get_league_standings"):
+		var managed_league := _get_managed_club_league()
+		if league_name == managed_league:
+			var live_data: Variant = career_state.call("get_league_standings")
+			if live_data is Array and not live_data.is_empty():
+				var typed: Array[Dictionary] = []
+				for item in live_data:
+					if not (item is Dictionary):
+						continue
+					var club_name := String(item.get("club_name", item.get("name", "Club")))
+					var source_club: Dictionary = {}
+					for club in _csv_clubs:
+						if String(club.get("name", "")).to_lower() == club_name.to_lower():
+							source_club = club
+							break
+					var won := int(item.get("won", item.get("w", 0)))
+					var drawn := int(item.get("drawn", item.get("d", 0)))
+					typed.append({
+						"id": int(item.get("club_id", source_club.get("id", 0))),
+						"name": club_name,
+						"league": league_name,
+						"reputation": int(source_club.get("reputation", 50)),
+						"kit_color": source_club.get("kit_color", Color(0.18, 0.85, 0.52)),
+						"mp": int(item.get("played", item.get("mp", 0))),
+						"w": won,
+						"d": drawn,
+						"l": int(item.get("lost", item.get("l", 0))),
+						"gf": int(item.get("goals_for", item.get("gf", 0))),
+						"ga": int(item.get("goals_against", item.get("ga", 0))),
+						"pts": int(item.get("points", item.get("pts", won * 3 + drawn))),
+						"form": item.get("form", [])
+					})
+				if not typed.is_empty():
+					return typed
 
-	# 2. Fallback: Build pre-season / CSV-seeded table sorted by Reputation & Alphabetical
+	# Pre-season / non-managed league fallback: seed every club in the selected
+	# league from the canonical registry, sorted by reputation and name.
 	var raw_clubs: Array = _leagues_map.get(league_name, [])
 	var table: Array[Dictionary] = []
 	for c in raw_clubs:
 		table.append({
-			"id": c["id"],
-			"name": c["name"],
-			"league": c["league"],
-			"reputation": c["reputation"],
-			"kit_color": c["kit_color"],
+			"id": c.get("id", 0),
+			"name": c.get("name", "Club"),
+			"league": c.get("league", league_name),
+			"reputation": c.get("reputation", 50),
+			"kit_color": c.get("kit_color", Color(0.18, 0.85, 0.52)),
 			"mp": 0, "w": 0, "d": 0, "l": 0,
 			"gf": 0, "ga": 0, "pts": 0,
 			"form": []
