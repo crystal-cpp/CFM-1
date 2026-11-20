@@ -26,6 +26,7 @@ struct ClubRecord {
     String default_formation = "4-4-2";
     String primary_color = "#1E3A8A";
     String secondary_color = "#FFFFFF";
+    String stadium;
 };
 
 struct PlayerRecord {

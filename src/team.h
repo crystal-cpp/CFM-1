@@ -89,6 +89,8 @@ public:
     std::string KitColor = "#FFFFFF";
     std::string SecondaryColor = "#111111";
 
+    std::string Stadium;
+
     // Tactical setup for match handoff
     std::string Formation = "4-3-3";
     int Mentality = 2;            // Balanced

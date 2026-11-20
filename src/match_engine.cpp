@@ -298,6 +298,9 @@ void MatchEngine::set_away_team_ovr(int p_ovr) {
 }
 
 void MatchEngine::set_home_lineup(const Array& p_players) {
+    if (sim_players.size() != 22) {
+        _initialize_default_squads();
+    }
     int limit = std::min(11, static_cast<int>(p_players.size()));
     for (int i = 0; i < limit; i++) {
         if (p_players[i].get_type() != Variant::DICTIONARY) {
@@ -305,7 +308,12 @@ void MatchEngine::set_home_lineup(const Array& p_players) {
         }
         Dictionary d = p_players[i];
         SimPlayer& p = sim_players[i];
-        if (d.has("name")) p.name = String(d["name"]);
+        if (d.has("name")) {
+            String player_name = String(d["name"]).strip_edges();
+            if (!player_name.is_empty()) {
+                p.name = player_name;
+            }
+        }
         if (d.has("position")) p.role = String(d["position"]).strip_edges().to_upper();
         if (d.has("pace")) p.pace = std::clamp(static_cast<int>(d["pace"]), 1, 99);
         if (d.has("shooting")) p.shooting = std::clamp(static_cast<int>(d["shooting"]), 1, 99);
@@ -321,6 +329,9 @@ void MatchEngine::set_home_lineup(const Array& p_players) {
 }
 
 void MatchEngine::set_away_lineup(const Array& p_players) {
+    if (sim_players.size() != 22) {
+        _initialize_default_squads();
+    }
     int limit = std::min(11, static_cast<int>(p_players.size()));
     for (int i = 0; i < limit; i++) {
         if (p_players[i].get_type() != Variant::DICTIONARY) {
@@ -328,14 +339,18 @@ void MatchEngine::set_away_lineup(const Array& p_players) {
         }
         Dictionary d = p_players[i];
         SimPlayer& p = sim_players[11 + i];
-        if (d.has("name")) p.name = String(d["name"]);
+        if (d.has("name")) {
+            String player_name = String(d["name"]).strip_edges();
+            if (!player_name.is_empty()) {
+                p.name = player_name;
+            }
+        }
         if (d.has("position")) p.role = String(d["position"]).strip_edges().to_upper();
         if (d.has("pace")) p.pace = std::clamp(static_cast<int>(d["pace"]), 1, 99);
         if (d.has("shooting")) p.shooting = std::clamp(static_cast<int>(d["shooting"]), 1, 99);
         if (d.has("passing")) p.passing = std::clamp(static_cast<int>(d["passing"]), 1, 99);
         if (d.has("dribbling")) p.dribbling = std::clamp(static_cast<int>(d["dribbling"]), 1, 99);
         if (d.has("defending")) p.defending = std::clamp(static_cast<int>(d["defending"]), 1, 99);
-        if (d.has("physical")) p.physical = std::clamp(static_cast<int>(d["physical"]), 1, 99);
         if (d.has("physical")) p.physical = std::clamp(static_cast<int>(d["physical"]), 1, 99);
         if (d.has("stamina")) {
             p.starting_stamina = std::clamp(static_cast<float>(d["stamina"]), 10.0f, 100.0f);
@@ -3035,7 +3050,13 @@ void MatchEngine::resolve_manual_scenario(bool p_success, bool p_is_home_team) {
             away_score++;
             stats.away_shots_on_target++;
         }
-        _log_event("goal", p_is_home_team, p_is_home_team ? "Home Attack" : "Away Attack", "GOAL converted from key chance!");
+        int scorer_idx = (ball_carrier_index >= 0 && ball_carrier_index < 22)
+            ? ball_carrier_index
+            : (p_is_home_team ? 9 : 20);
+        String scorer_name = (scorer_idx >= 0 && scorer_idx < static_cast<int>(sim_players.size()))
+            ? sim_players[scorer_idx].name
+            : (p_is_home_team ? String("Home Attack") : String("Away Attack"));
+        _log_event("goal", p_is_home_team, scorer_name, scorer_name + String(" scores from key chance!"));
         _end_active_chance(true);
         _reset_after_goal(!p_is_home_team);
         emit_signal("goal_scored", home_score, away_score, p_is_home_team);

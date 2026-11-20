@@ -156,6 +156,104 @@ static int evaluate_slot_fit_433(const std::string &player_pos, const std::strin
 	return 80; // Out-of-position outfield fallback
 }
 
+// Formation-aware XI picker (supports 4-2-3-1, 4-3-3, 4-4-2, 3-5-2, 5-3-2, 4-1-4-1)
+static std::vector<std::string> get_formation_slot_roles(const std::string &formation) {
+	if (formation == "4-2-3-1") {
+		return { "GK", "LB", "CB", "CB", "RB", "CDM", "CDM", "LW", "CAM", "RW", "ST" };
+	}
+	if (formation == "4-4-2") {
+		return { "GK", "LB", "CB", "CB", "RB", "LW", "CM", "CM", "RW", "ST", "ST" };
+	}
+	if (formation == "3-5-2") {
+		return { "GK", "CB", "CB", "CB", "LB", "CDM", "CAM", "CDM", "RB", "ST", "ST" };
+	}
+	if (formation == "5-3-2") {
+		return { "GK", "LB", "CB", "CB", "CB", "RB", "CM", "CDM", "CM", "ST", "ST" };
+	}
+	if (formation == "4-1-4-1") {
+		return { "GK", "LB", "CB", "CB", "RB", "CDM", "LW", "CM", "CM", "RW", "ST" };
+	}
+	return { "GK", "LB", "CB", "CB", "RB", "CDM", "CM", "CM", "LW", "RW", "ST" };
+}
+
+static int evaluate_slot_fit(const std::string &player_pos, const std::string &slot_pos) {
+	if (slot_pos == "GK") return (player_pos == "GK") ? 100 : 0;
+	if (player_pos == "GK") return 0;
+	if (player_pos == slot_pos) return 100;
+
+	if (slot_pos == "LB" && (player_pos == "LWB" || player_pos == "LM" || player_pos == "RB")) return 95;
+	if (slot_pos == "RB" && (player_pos == "RWB" || player_pos == "RM" || player_pos == "LB")) return 95;
+	if (slot_pos == "CB" && (player_pos == "CDM" || player_pos == "LB" || player_pos == "RB")) return 95;
+	if (slot_pos == "CDM" && (player_pos == "CM" || player_pos == "CB" || player_pos == "CAM")) return 95;
+	if (slot_pos == "CM" && (player_pos == "CDM" || player_pos == "CAM" || player_pos == "LM" || player_pos == "RM")) return 95;
+	if (slot_pos == "CAM" && (player_pos == "CM" || player_pos == "LW" || player_pos == "RW" || player_pos == "ST" || player_pos == "CF")) return 95;
+	if (slot_pos == "LW" && (player_pos == "LM" || player_pos == "CAM" || player_pos == "CF" || player_pos == "ST" || player_pos == "RW")) return 95;
+	if (slot_pos == "RW" && (player_pos == "RM" || player_pos == "CAM" || player_pos == "CF" || player_pos == "ST" || player_pos == "LW")) return 95;
+	if (slot_pos == "ST" && (player_pos == "CF" || player_pos == "CAM" || player_pos == "LW" || player_pos == "RW")) return 95;
+
+	return 80;
+}
+
+static void auto_pick_best_xi_for_formation(Team &team, const std::string &formation) {
+	const std::vector<std::string> slot_roles = get_formation_slot_roles(formation);
+	auto &roster = team.GetRoster();
+	if (roster.empty()) return;
+
+	std::vector<std::shared_ptr<Player>> xi(11, nullptr);
+	std::unordered_set<int32_t> used_ids;
+
+	auto pick_for_slot = [&](int slot_idx, int min_fit) {
+		if (xi[slot_idx] != nullptr) return;
+		const std::string target_pos = slot_roles[slot_idx];
+		std::shared_ptr<Player> best_player = nullptr;
+		int best_score = -1;
+
+		for (const auto &p : roster) {
+			if (!p || used_ids.count(p->GetId())) continue;
+			std::string p_pos = position_to_string(p->GetPosition());
+			int fit = evaluate_slot_fit(p_pos, target_pos);
+			if (fit < min_fit) continue;
+
+			int weighted_ovr = p->GetOVR() * fit;
+			if (weighted_ovr > best_score) {
+				best_score = weighted_ovr;
+				best_player = p;
+			}
+		}
+
+		if (best_player) {
+			xi[slot_idx] = best_player;
+			used_ids.insert(best_player->GetId());
+		}
+	};
+
+	for (int s = 0; s < 11; s++) pick_for_slot(s, 100);
+	for (int s = 0; s < 11; s++) pick_for_slot(s, 95);
+	for (int s = 0; s < 11; s++) pick_for_slot(s, 80);
+
+	std::vector<std::shared_ptr<Player>> ordered_roster;
+	std::vector<std::shared_ptr<Player>> final_xi;
+	ordered_roster.reserve(roster.size());
+	final_xi.reserve(11);
+
+	for (int s = 0; s < 11; s++) {
+		if (xi[s]) {
+			xi[s]->SetIsStartingXI(true);
+			ordered_roster.push_back(xi[s]);
+			final_xi.push_back(xi[s]);
+		}
+	}
+	for (const auto &p : roster) {
+		if (p && !used_ids.count(p->GetId())) {
+			p->SetIsStartingXI(false);
+			ordered_roster.push_back(p);
+		}
+	}
+
+	roster = std::move(ordered_roster);
+	team.SetStartingXI(final_xi);
+}
+
 static void auto_pick_best_xi_433(Team &team) {
 	static const char *SLOT_POSITIONS[11] = {
 		"GK", "LB", "CB", "CB", "RB", "CDM", "CM", "CM", "LW", "RW", "ST"
@@ -302,6 +400,7 @@ void CareerState::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("load_career", "slot_name"), &CareerState::load_career);
 	ClassDB::bind_method(D_METHOD("list_save_slots"), &CareerState::list_save_slots);
 	ClassDB::bind_method(D_METHOD("delete_save_slot", "slot_name"), &CareerState::delete_save_slot);
+	ClassDB::bind_method(D_METHOD("prepare_match_context", "fixture", "db"), &CareerState::prepare_match_context, DEFVAL(Ref<PlayerDatabase>()));
 
 	// Signals
 	ADD_SIGNAL(MethodInfo("date_changed", PropertyInfo(Variant::STRING, "new_date_iso")));
@@ -318,6 +417,76 @@ void CareerState::_bind_methods() {
 CareerState::CareerState() {
 	_youth_academy = std::make_unique<YouthAcademy>();
 	_load_unlock_persistence();
+}
+
+Dictionary CareerState::prepare_match_context(const Dictionary &p_fixture, const Ref<PlayerDatabase> &/*p_db*/) const {
+	Dictionary fix = p_fixture.is_empty() ? get_next_fixture() : p_fixture;
+	int home_id = static_cast<int>(fix.get("home_club_id", _managed_club_id));
+	int away_id = static_cast<int>(fix.get("away_club_id", 0));
+
+	Dictionary home_info = get_club_info(home_id);
+	Dictionary away_info = get_club_info(away_id);
+
+	String home_name = String(fix.get("home_club_name", fix.get("home_club", home_info.get("club_name", "Home"))));
+	String away_name = String(fix.get("away_club_name", fix.get("away_club", away_info.get("club_name", "Away"))));
+
+	String home_fmt = String(home_info.get("formation", "4-3-3"));
+	String away_fmt = String(away_info.get("formation", "4-3-3"));
+
+	Array home_squad = get_club_squad(home_id);
+	Array away_squad = get_club_squad(away_id);
+
+	Array home_xi;
+	for (int i = 0; i < std::min<int>(11, home_squad.size()); ++i) {
+		home_xi.append(home_squad[i]);
+	}
+	Array away_xi;
+	for (int i = 0; i < std::min<int>(11, away_squad.size()); ++i) {
+		away_xi.append(away_squad[i]);
+	}
+
+	Color home_col = Color::html(String(home_info.get("primary_color", "#1E3A8A")));
+	Color away_col = Color::html(String(away_info.get("primary_color", "#DC2626")));
+	Color away_alt_col = Color::html(String(away_info.get("secondary_color", "#F8FAFC")));
+
+	bool is_user_home = (home_id == _managed_club_id);
+	Dictionary active_tactics = get_club_tactics(_managed_club_id);
+
+	Dictionary imp;
+	imp["label"] = String(fix.get("match_importance", "STANDARD"));
+	imp["text_color"] = Color(0.11, 0.82, 0.63);
+	imp["description"] = home_name + " vs " + away_name + " • " + String(fix.get("stadium", "Stadium"));
+
+	Dictionary kits;
+	kits["home_primary"] = home_col;
+	kits["away_primary"] = away_alt_col;
+	kits["away_default_primary"] = away_col;
+	kits["active_away_primary"] = away_col;
+	kits["clash_detected"] = (home_col.is_equal_approx(away_col));
+
+	Dictionary ctx;
+	ctx["fixture"] = fix;
+	ctx["home_club_id"] = home_id;
+	ctx["away_club_id"] = away_id;
+	ctx["home_club"] = home_name;
+	ctx["away_club"] = away_name;
+	ctx["home_ovr"] = static_cast<int>(home_info.get("team_rating", 75));
+	ctx["away_ovr"] = static_cast<int>(away_info.get("team_rating", 75));
+	ctx["home_formation"] = home_fmt;
+	ctx["away_formation"] = away_fmt;
+	ctx["home_lineup"] = home_xi;
+	ctx["away_lineup"] = away_xi;
+	ctx["user_is_home"] = is_user_home;
+	String stad_name = String(fix.get("stadium", ""));
+	if (stad_name.is_empty()) {
+		stad_name = String(home_info.get("stadium", home_name + " Stadium"));
+	}
+	ctx["stadium"] = stad_name;
+	ctx["competition"] = String(fix.get("competition", "League Match"));
+	ctx["tactics"] = active_tactics;
+	ctx["importance"] = imp;
+	ctx["kits"] = kits;
+	return ctx;
 }
 
 void CareerState::_load_unlock_persistence() {
@@ -485,6 +654,7 @@ TypedArray<Dictionary> CareerState::get_leagues_and_clubs() const {
 			entry["default_formation"] = c.get("default_formation", "4-4-2");
 			entry["primary_color"] = String(p_kit.c_str());
 			entry["secondary_color"] = String(s_kit.c_str());
+			entry["stadium"] = c.get("stadium", String((cname + " Stadium").c_str()));
 			entry["is_locked"] = _is_club_or_league_locked(cname, cleague);
 			out.append(entry);
 		}
@@ -516,6 +686,7 @@ TypedArray<Dictionary> CareerState::get_leagues_and_clubs() const {
 		entry["default_formation"] = String(team->Formation.c_str());
 		entry["primary_color"] = String(team->KitColor.c_str());
 		entry["secondary_color"] = String(team->SecondaryColor.c_str());
+		entry["stadium"] = String(team->Stadium.c_str());
 		entry["is_locked"] = _is_club_or_league_locked(team->GetName(), team->League);
 		out.append(entry);
 	}
@@ -611,6 +782,9 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 	auto resolve_stadium = [&](int home_id) -> std::string {
 		auto cit = _clubs.find(home_id);
 		if (cit != _clubs.end() && cit->second) {
+			if (!cit->second->Stadium.empty()) {
+				return cit->second->Stadium;
+			}
 			if (home_id >= 1 && home_id <= 16 && cit->second->GetName() == DEFAULT_CLUB_NAMES[home_id - 1]) {
 				return DEFAULT_STADIUM_NAMES[home_id - 1];
 			}
@@ -982,6 +1156,9 @@ Dictionary CareerState::_fixture_to_dict(const FixtureRecord &fix, bool include_
 	d["user_result"] = user_res;
 
 	std::string stad = fix.stadium;
+	if (stad.empty() && h_it != _clubs.end() && h_it->second && !h_it->second->Stadium.empty()) {
+		stad = h_it->second->Stadium;
+	}
 	if (stad.empty() && fix.home_club_id >= 1 && fix.home_club_id <= 16) {
 		stad = DEFAULT_STADIUM_NAMES[fix.home_club_id - 1];
 	}
@@ -1107,10 +1284,12 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 	_next_player_id = 1;
 	_next_inbox_id = 1;
 
+	_hidden_youth_prospects.clear();
 	if (!_youth_academy) {
 		_youth_academy = std::make_unique<YouthAcademy>();
 	} else {
 		_youth_academy->Clear();
+	_hidden_youth_prospects.clear();
 	}
 
 	_player_db.instantiate();
@@ -1174,8 +1353,14 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 			team->TotalBalance = total_bal;
 			// Transfer budget is initialized through Team's public constructor/API.
 			team->WageBudget = wage_bud;
+			std::string cstadium = String(cdict.get("stadium", "")).strip_edges().utf8().get_data();
+			if (cstadium.empty()) {
+				cstadium = cname + " Stadium";
+			}
+
 			team->KitColor = p_kit;
 			team->SecondaryColor = s_kit;
+			team->Stadium = cstadium;
 			team->Formation = def_form.empty() ? "4-3-3" : def_form;
 
 			_club_id_by_name_lower[to_lower_str(cname)] = cid;
@@ -1190,6 +1375,7 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 			auto team = std::make_unique<Team>(club_name, budget);
 			team->SetId(i);
 			team->League = "Premier League";
+			team->Stadium = DEFAULT_STADIUM_NAMES[i - 1];
 			team->Formation = "4-3-3";
 			_club_id_by_name_lower[to_lower_str(club_name)] = i;
 			_clubs[i] = std::move(team);
@@ -1221,12 +1407,27 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 				attrs.Physical = std::clamp(src.physical, 1, 99);
 			}
 
-			int p_age = std::clamp(src.age, 15, 45);
-			int p_pot = std::clamp(src.potential, src.overall, 99);
+			int raw_age = src.age;
 			int debut_age = std::clamp(src.debut_age, 15, 25);
+			int p_pot = std::clamp(src.potential, src.overall, 99);
+			bool is_below_debut = (raw_age < debut_age);
+			bool meets_youth_req = (raw_age > 14 && raw_age < 18);
+
+			// Youth Academy players have maximum 70 OVR (~ -20 from their OVR in players_2006_with_price.csv)
+			PlayerAttributes effective_attrs = attrs;
+			if (is_below_debut && meets_youth_req) {
+				int target_ovr = std::clamp(src.overall - 20, 45, 70);
+				int reduction = std::max(0, src.overall - target_ovr);
+				effective_attrs.Pace = std::clamp(attrs.Pace - reduction, 40, 70);
+				effective_attrs.Shooting = std::clamp(attrs.Shooting - reduction, 40, 70);
+				effective_attrs.Passing = std::clamp(attrs.Passing - reduction, 40, 70);
+				effective_attrs.Dribbling = std::clamp(attrs.Dribbling - reduction, 40, 70);
+				effective_attrs.Defending = std::clamp(attrs.Defending - reduction, 40, 70);
+				effective_attrs.Physical = std::clamp(attrs.Physical - reduction, 40, 70);
+			}
 
 			auto p_ptr = std::make_shared<Player>(
-				p_name, p_pos, attrs, p_age, p_pot, debut_age, 37
+				p_name, p_pos, effective_attrs, raw_age, p_pot, debut_age, 37
 			);
 			p_ptr->SetId(pid);
 			p_ptr->SetStamina(std::clamp(src.stamina, 1, 99));
@@ -1258,15 +1459,32 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 
 			std::string c_key = to_lower_str(p_club);
 			auto c_it = _club_id_by_name_lower.find(c_key);
-			if (c_it != _club_id_by_name_lower.end() && _clubs.count(c_it->second) && _clubs[c_it->second]) {
-				int32_t target_cid = c_it->second;
-				p_ptr->SetClubId(target_cid);
-				_clubs[target_cid]->AddPlayer(p_ptr);
-			} else {
-				p_ptr->SetClubId(0);
-			}
+			int32_t parent_cid = (c_it != _club_id_by_name_lower.end() && _clubs.count(c_it->second) && _clubs[c_it->second])
+				? c_it->second
+				: 0;
 
-			_players_by_id[pid] = p_ptr;
+			if (is_below_debut) {
+				if (meets_youth_req) {
+					// Eligible for Youth Academy (14 < age < 18, capped at 70 OVR)
+					p_ptr->SetClubId(-1);
+					p_ptr->SetWage(500);
+					_players_by_id[pid] = p_ptr;
+					_youth_academy->AddYouthPlayer(p_ptr);
+				} else {
+					// Below debut age & outside 14 < age < 18: hide from first team and youth academy until eligible
+					p_ptr->SetClubId(-2);
+					_players_by_id[pid] = p_ptr;
+					_hidden_youth_prospects.push_back(p_ptr);
+				}
+			} else {
+				if (parent_cid > 0) {
+					p_ptr->SetClubId(parent_cid);
+					_clubs[parent_cid]->AddPlayer(p_ptr);
+				} else {
+					p_ptr->SetClubId(0);
+				}
+				_players_by_id[pid] = p_ptr;
+			}
 		}
 	}
 
@@ -1290,7 +1508,7 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 			_players_by_id[pid] = filler;
 			team->AddPlayer(filler);
 		}
-		auto_pick_best_xi_433(*team);
+		auto_pick_best_xi_for_formation(*team, team->Formation);
 
 		const auto &xi = team->GetStartingXI();
 		int default_captain = (!xi.empty() && xi[0]) ? xi[0]->GetId() : -1;
@@ -1545,6 +1763,7 @@ void CareerState::_process_annual_rollover() {
 		_youth_academy->ProcessSeasonDevelopment();
 		emit_signal("youth_updated");
 	}
+	_evaluate_hidden_youth_prospects();
 
 	// Regenerate new season schedule (July Friendlies + Mid-August to May League Fixtures)
 	_generate_season_fixtures(_season_start_year);
@@ -1554,6 +1773,52 @@ void CareerState::_process_annual_rollover() {
 	push_inbox_message("YOUTH", "New Season Rollover & Pre-Season Schedule (" + get_season_label() + ")",
 		"Season " + get_season_label() + " has begun! Players aged +1 year, and the July Pre-Season Friendlies + Mid-August to May league calendar are now live.",
 		"schedule", -1);
+}
+
+void CareerState::_evaluate_hidden_youth_prospects() {
+	if (_hidden_youth_prospects.empty()) return;
+
+	std::vector<std::shared_ptr<Player>> still_hidden;
+	for (auto &p : _hidden_youth_prospects) {
+		if (!p) continue;
+		p->AgeOneYear();
+
+		int age = p->GetAge();
+		int debut_age = p->GetDebutAge();
+
+		if (age >= debut_age) {
+			// Reached debut age: assign to parent club first team (or Free Agents if unattached)
+			std::string c_key = to_lower_str(p->GetClubName());
+			auto c_it = _club_id_by_name_lower.find(c_key);
+			if (c_it != _club_id_by_name_lower.end() && _clubs.count(c_it->second) && _clubs[c_it->second]) {
+				int32_t target_cid = c_it->second;
+				p->SetClubId(target_cid);
+				_clubs[target_cid]->AddPlayer(p);
+			} else {
+				p->SetClubId(0);
+			}
+		} else if (age > 14 && age < 18 && _youth_academy) {
+			// Meets Youth Academy minimum age requirement (14 < age < 18), capped at 70 OVR (~ -20 from CSV OVR)
+			int target_ovr = std::clamp(p->GetOVR() - 20, 45, 70);
+			int reduction = std::max(0, p->GetOVR() - target_ovr);
+			PlayerAttributes a = p->GetAttributes();
+			a.Pace = std::clamp(a.Pace - reduction, 40, 70);
+			a.Shooting = std::clamp(a.Shooting - reduction, 40, 70);
+			a.Passing = std::clamp(a.Passing - reduction, 40, 70);
+			a.Dribbling = std::clamp(a.Dribbling - reduction, 40, 70);
+			a.Defending = std::clamp(a.Defending - reduction, 40, 70);
+			a.Physical = std::clamp(a.Physical - reduction, 40, 70);
+			p->SetAttributes(a);
+			p->SetClubId(-1);
+			p->SetWage(500);
+			_youth_academy->AddYouthPlayer(p);
+		} else {
+			still_hidden.push_back(p);
+		}
+	}
+
+	_hidden_youth_prospects = std::move(still_hidden);
+	emit_signal("youth_updated");
 }
 
 void CareerState::advance_day(int32_t p_days) {
@@ -1769,6 +2034,7 @@ Dictionary CareerState::get_club_info(int32_t p_club_id) const {
 	d["formation"] = String(team.Formation.c_str());
 	d["primary_color"] = String(team.KitColor.c_str());
 	d["secondary_color"] = String(team.SecondaryColor.c_str());
+	d["stadium"] = String(team.Stadium.c_str());
 	d["is_locked"] = _is_club_or_league_locked(team.GetName(), team.League);
 	d["team_rating"] = team.GetTeamRating();
 	d["squad_size"] = static_cast<int32_t>(team.GetRoster().size());
@@ -2121,7 +2387,7 @@ Dictionary CareerState::scout_youth_prospect() {
 	std::string full_name = std::string(FIRST_NAMES[seed % 8]) + " " + LAST_NAMES[(seed / 3) % 8];
 	Position pos = POSITIONS[seed % 6];
 
-	int base_ovr = std::clamp(58 + (_youth_academy->FacilityLevel * 2) + (seed % 5), 55, 72);
+	int base_ovr = std::clamp(56 + (_youth_academy->FacilityLevel * 2) + (seed % 5), 52, 70);
 	int pot = std::clamp(78 + (_youth_academy->AcademyLevel * 3) + (seed % 6), base_ovr + 10, 95);
 
 	int y_id = _next_player_id++;
@@ -2204,17 +2470,25 @@ bool CareerState::prepare_next_match_payload(MatchEngine *p_engine) const {
 	p_engine->set_home_formation(String(home_team->Formation.c_str()));
 	p_engine->set_away_formation(String(away_team->Formation.c_str()));
 
-	Array h_lineup;
-	for (const auto &p : home_team->GetStartingXI()) {
-		if (p) h_lineup.append(_player_to_dict(p));
-	}
-	p_engine->set_home_lineup(h_lineup);
+	auto build_lineup = [this](Team *team) -> Array {
+		Array lineup;
+		const auto &xi = team->GetStartingXI();
+		if (xi.size() >= 11) {
+			for (size_t i = 0; i < 11; i++) {
+				if (xi[i]) lineup.append(_player_to_dict(xi[i]));
+			}
+		} else {
+			const auto &roster = team->GetRoster();
+			size_t limit = std::min<size_t>(11, roster.size());
+			for (size_t i = 0; i < limit; i++) {
+				if (roster[i]) lineup.append(_player_to_dict(roster[i]));
+			}
+		}
+		return lineup;
+	};
 
-	Array a_lineup;
-	for (const auto &p : away_team->GetStartingXI()) {
-		if (p) a_lineup.append(_player_to_dict(p));
-	}
-	p_engine->set_away_lineup(a_lineup);
+	p_engine->set_home_lineup(build_lineup(home_team));
+	p_engine->set_away_lineup(build_lineup(away_team));
 
 	p_engine->set_home_team_ovr(home_team->GetTeamRating());
 	p_engine->set_away_team_ovr(away_team->GetTeamRating());
@@ -2545,6 +2819,7 @@ bool CareerState::save_career(const String &p_slot_name) {
 		cd["wage_budget"] = team->WageBudget;
 		cd["primary_color"] = String(team->KitColor.c_str());
 		cd["secondary_color"] = String(team->SecondaryColor.c_str());
+		cd["stadium"] = String(team->Stadium.c_str());
 		cd["training_points"] = team->GetTrainingPoints();
 		cd["formation"] = String(team->Formation.c_str());
 		cd["mentality"] = team->Mentality;
@@ -2589,7 +2864,12 @@ bool CareerState::save_career(const String &p_slot_name) {
 			coaches_arr.append(cd);
 		}
 	}
+	PackedInt32Array hidden_ids;
+	for (const auto &p : _hidden_youth_prospects) {
+		if (p) hidden_ids.append(p->GetId());
+	}
 	yd["prospect_ids"] = y_ids;
+	yd["hidden_prospect_ids"] = hidden_ids;
 	yd["coaches"] = coaches_arr;
 	root["youth_academy"] = yd;
 
@@ -2711,6 +2991,7 @@ bool CareerState::load_career(const String &p_slot_name) {
 	_board_objectives.clear();
 	if (!_youth_academy) _youth_academy = std::make_unique<YouthAcademy>();
 	_youth_academy->Clear();
+	_hidden_youth_prospects.clear();
 
 	if (root.has("clock")) {
 		Dictionary clock = root["clock"];
@@ -2840,6 +3121,7 @@ bool CareerState::load_career(const String &p_slot_name) {
 			team->WageBudget = static_cast<int64_t>(cd.get("wage_budget", 0));
 			team->KitColor = String(cd.get("primary_color", "#FFFFFF")).utf8().get_data();
 			team->SecondaryColor = String(cd.get("secondary_color", "#111111")).utf8().get_data();
+			team->Stadium = String(cd.get("stadium", (cname + " Stadium").c_str())).utf8().get_data();
 			team->Formation = String(cd.get("formation", cd.get("default_formation", "4-3-3"))).utf8().get_data();
 			team->Mentality = cd.get("mentality", 2);
 			team->Pressing = cd.get("pressing", 1);
@@ -2886,6 +3168,13 @@ bool CareerState::load_career(const String &p_slot_name) {
 			int pid = y_ids[k];
 			if (_players_by_id.find(pid) != _players_by_id.end()) {
 				_youth_academy->AddYouthPlayer(_players_by_id[pid]);
+			}
+		}
+		PackedInt32Array hidden_ids = yd.get("hidden_prospect_ids", PackedInt32Array());
+		for (int k = 0; k < hidden_ids.size(); k++) {
+			int pid = hidden_ids[k];
+			if (_players_by_id.find(pid) != _players_by_id.end()) {
+				_hidden_youth_prospects.push_back(_players_by_id[pid]);
 			}
 		}
 		if (yd.has("coaches")) {

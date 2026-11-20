@@ -45,6 +45,24 @@ func _ready() -> void:
 		if hud.has_signal("next_match_requested"):
 			hud.next_match_requested.connect(_request_next_match)
 
+func _resolve_career_shell() -> CareerShell:
+	if is_instance_valid(career_shell):
+		return career_shell
+	var parent_node := get_parent()
+	if is_instance_valid(parent_node):
+		var sibling := parent_node.get_node_or_null("CareerShell") as CareerShell
+		if is_instance_valid(sibling):
+			career_shell = sibling
+			return career_shell
+	if get_tree() and get_tree().root:
+		var found := get_tree().root.find_child("CareerShell", true, false) as CareerShell
+		if is_instance_valid(found):
+			career_shell = found
+			return career_shell
+	return null
+
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey):
 		return
@@ -123,10 +141,7 @@ func open_pre_match_center(p_career_state: CareerState) -> bool:
 	pre_match_view.name = "PreMatchView"
 	add_child(pre_match_view)
 	pre_match_view.setup(p_career_state, fixture)
-	pre_match_view.start_match_requested.connect(
-		func(context: Dictionary) -> void:
-			launch_career_match(p_career_state, context)
-	)
+	pre_match_view.start_match_requested.connect(func(context: Dictionary) -> void: launch_career_match(p_career_state, context))
 	pre_match_view.back_requested.connect(_close_pre_match_center)
 	overview_2d.hide()
 	return true
@@ -136,10 +151,17 @@ func _close_pre_match_center() -> void:
 	if is_instance_valid(pre_match_view):
 		pre_match_view.queue_free()
 	pre_match_view = null
-	overview_2d.show()
-	if is_instance_valid(career_shell):
-		career_shell.visible = true
-		career_shell.refresh_all_views()
+	active_match_context.clear()
+	pending_match_ended = false
+
+	# Keep the 2D match CanvasLayer hidden so it cannot render over CareerShell.
+	if is_instance_valid(overview_2d):
+		overview_2d.hide()
+
+	var shell := _resolve_career_shell()
+	if is_instance_valid(shell):
+		shell.visible = true
+		shell.refresh_all_views()
 
 
 func launch_career_match(p_career_state: CareerState, context: Dictionary) -> void:
@@ -154,7 +176,6 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	elif career_state.has_method("apply_context_to_match_engine"):
 		career_state.call("apply_context_to_match_engine", match_engine, active_match_context)
 
-	# Apply the selected home/away kit colors to the 2D player markers.
 	var kits: Dictionary = active_match_context.get("kits", {})
 	var home_primary: Color = kits.get("home_primary", Color(0.06, 0.78, 0.48))
 	var away_primary: Color = kits.get("active_away_primary", kits.get("away_primary", kits.get("away_default_primary", Color(0.92, 0.26, 0.30))))
@@ -167,10 +188,24 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	pending_match_ended = false
 	overview_2d.show()
 	match_engine.start_match()
-	if hud and hud.has_method("hide_fulltime_summary"):
-		hud.hide_fulltime_summary()
-	if hud and hud.has_method("show_toast"):
-		hud.show_toast("KICK OFF! Career Match Started", 2.0)
+
+	if is_instance_valid(match_pitch):
+		if match_pitch.has_method("refresh_player_names"):
+			match_pitch.call("refresh_player_names")
+		match_pitch.queue_redraw()
+
+	if hud:
+		if hud.has_method("set_team_names"):
+			hud.set_team_names(
+				String(active_match_context.get("home_club", "Home")),
+				String(active_match_context.get("away_club", "Away"))
+			)
+		if hud.has_method("hide_fulltime_summary"):
+			hud.hide_fulltime_summary()
+		if hud.has_method("refresh_all"):
+			hud.refresh_all()
+		if hud.has_method("show_toast"):
+			hud.show_toast("KICK OFF! Career Match Started", 2.0)
 
 
 func _on_post_match_continue(_summary: Dictionary) -> void:

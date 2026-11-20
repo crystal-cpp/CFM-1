@@ -112,6 +112,7 @@ class CareerState : public Node {
 
 public:
 	static constexpr uint32_t SAVE_SCHEMA_VERSION = 1;
+	Dictionary prepare_match_context(const Dictionary &p_fixture = Dictionary(), const Ref<PlayerDatabase> &p_db = Ref<PlayerDatabase>()) const;
 
 private:
 	bool _career_active = false;
@@ -138,6 +139,7 @@ private:
 	// Owned C++23 Subsystems (Single Source of Truth)
 	Ref<PlayerDatabase> _player_db;
 	std::unique_ptr<YouthAcademy> _youth_academy;
+	std::vector<std::shared_ptr<Player>> _hidden_youth_prospects;
 	std::unordered_map<int32_t, std::unique_ptr<Team>> _clubs;
 	std::unordered_map<int32_t, int32_t> _captain_by_club;
 	std::unordered_map<int32_t, std::shared_ptr<Player>> _players_by_id;
@@ -168,6 +170,7 @@ private:
 	void _process_weekly_progression();
 	void _process_end_of_season_may();
 	void _process_annual_rollover();
+	void _evaluate_hidden_youth_prospects();
 	Dictionary _player_to_dict(const std::shared_ptr<Player> &p) const;
 
 protected:

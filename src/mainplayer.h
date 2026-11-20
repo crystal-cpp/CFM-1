@@ -75,6 +75,14 @@ public:
         CheckRetirement();
     }
     
+    void AgeOneYear() {
+        Age += 1;
+        if (ContractYears > 0) {
+            ContractYears -= 1;
+        }
+        CheckRetirement();
+    }
+
     void CalculateOVR() {
         if (Pos == Position::ST || Pos == Position::CF || Pos == Position::LW || Pos == Position::RW) {
             OVR = static_cast<int>((Attributes.Shooting * 0.4) + (Attributes.Pace * 0.3) + (Attributes.Dribbling * 0.3));

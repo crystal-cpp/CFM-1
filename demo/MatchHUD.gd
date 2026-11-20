@@ -58,6 +58,14 @@ var _commentary_history: PackedStringArray = PackedStringArray()
 var _paused_by_tactics: bool = false
 var _manual_paused: bool = false
 
+var _home_club_name: String = "HOME FC"
+var _away_club_name: String = "AWAY FC"
+
+func set_team_names(home_name: String, away_name: String) -> void:
+	_home_club_name = home_name.strip_edges() if not home_name.strip_edges().is_empty() else "HOME FC"
+	_away_club_name = away_name.strip_edges() if not away_name.strip_edges().is_empty() else "AWAY FC"
+	refresh_all()
+
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -550,6 +558,14 @@ func _build_ui() -> void:
 	_next_match_button.pressed.connect(func() -> void: emit_signal("next_match_requested"))
 	vbox.add_child(_next_match_button)
 
+	_skip_button = Button.new()
+	_skip_button.text = "Skip (1)"
+	_skip_button.custom_minimum_size = Vector2.ZERO
+	_skip_button.focus_mode = Control.FOCUS_NONE
+	_skip_button.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_skip_button.visible = false
+	bot_hbox.add_child(_skip_button)
+
 func _add_stat_bar(parent: VBoxContainer, title_text: String, initial_val: String) -> Array:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
@@ -704,8 +720,8 @@ func refresh_all() -> void:
 	if not is_instance_valid(match_engine):
 		return
 
-	_home_info_label.text = "HOME FC  %s · OVR %d" % [match_engine.get_home_formation(), match_engine.get_home_team_ovr()]
-	_away_info_label.text = "%s · OVR %d  AWAY FC" % [match_engine.get_away_formation(), match_engine.get_away_team_ovr()]
+	_home_info_label.text = "%s  %s · OVR %d" % [_home_club_name, match_engine.get_home_formation(), match_engine.get_home_team_ovr()]
+	_away_info_label.text = "%s · OVR %d  %s" % [match_engine.get_away_formation(), match_engine.get_away_team_ovr(), _away_club_name]
 	_score_label.text = "%d  :  %d" % [match_engine.get_home_score(), match_engine.get_away_score()]
 	_minute_label.text = "%02d'" % match_engine.get_current_minute()
 
@@ -810,7 +826,7 @@ func _on_chance_state_changed(new_state: int, _ctrl_idx: int) -> void:
 
 func _on_goal_scored(home: int, away: int, is_home: bool) -> void:
 	refresh_all()
-	var scorer_side: String = "HOME FC" if is_home else "AWAY FC"
+	var scorer_side: String = _home_club_name if is_home else _away_club_name
 	show_toast("GOAL! %s SCORES (%d : %d)" % [scorer_side, home, away], 3.0)
 
 func _on_goal_kickoff_ready(kickoff_team: int, prompt_text: String) -> void:
@@ -856,7 +872,7 @@ func show_fulltime_summary(final_home: int, final_away: int) -> void:
 		close_tactical_screen()
 	refresh_all()
 	if _fulltime_score_label:
-		_fulltime_score_label.text = "HOME FC  %d : %d  AWAY FC" % [final_home, final_away]
+		_fulltime_score_label.text = "%s  %d : %d  %s" % [_home_club_name, final_home, final_away, _away_club_name]
 
 	if _fulltime_stats_label and is_instance_valid(match_engine):
 		var st: Dictionary = match_engine.get_match_stats()

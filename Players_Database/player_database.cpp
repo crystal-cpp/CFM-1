@@ -233,6 +233,7 @@ bool PlayerDatabase::load_clubs_from_csv(const String &csv_path) {
     const int col_formation       = find_col(headers, { "defaultformation", "default_formation", "formation" }, 9);
     const int col_primary_color   = find_col(headers, { "primarycolor", "primary_color", "kitprimary" }, 10);
     const int col_secondary_color = find_col(headers, { "secondarycolor", "secondary_color", "kitsecondary" }, 11);
+    const int col_stadium         = find_col(headers, { "stadium", "stadiumname", "stadium_name", "ground", "venue" }, 12);
 
     std::unordered_set<std::string> seen_leagues;
     int next_auto_id = 1001;
@@ -263,6 +264,7 @@ bool PlayerDatabase::load_clubs_from_csv(const String &csv_path) {
         rec.default_formation = get_str(row, col_formation, "4-4-2");
         rec.primary_color = get_str(row, col_primary_color, "#1E3A8A");
         rec.secondary_color = get_str(row, col_secondary_color, "#FFFFFF");
+        rec.stadium = get_str(row, col_stadium, club_name + String(" Stadium"));
 
         const int idx = static_cast<int>(clubs.size());
         clubs.push_back(rec);
@@ -475,6 +477,7 @@ void PlayerDatabase::sync_clubs_from_players() {
             fallback.default_formation = "4-4-2";
             fallback.primary_color = "#1F2937";
             fallback.secondary_color = "#FFFFFF";
+            fallback.stadium = p.club + String(" Stadium");
 
             const int idx = static_cast<int>(clubs.size());
             clubs.push_back(fallback);
@@ -503,6 +506,7 @@ Dictionary PlayerDatabase::club_to_dict(const ClubRecord &rec) const {
     d["default_formation"] = rec.default_formation;
     d["primary_color"] = rec.primary_color;
     d["secondary_color"] = rec.secondary_color;
+    d["stadium"] = rec.stadium;
     return d;
 }
 

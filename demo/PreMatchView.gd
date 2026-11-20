@@ -4,9 +4,20 @@ extends Control
 signal start_match_requested(match_context: Dictionary)
 signal back_requested
 
+const FORMATIONS_CSV_PATH := "res://data/formations.csv"
+const DEFAULT_FORMATIONS: PackedStringArray = [
+	"4-3-3",
+	"4-4-2",
+	"4-2-3-1",
+	"3-5-2",
+	"5-3-2",
+	"4-1-4-1",
+]
+
 var career_state: Node = null
 var match_context: Dictionary = {}
 var use_alternate_away_kit: bool = false
+var _available_formations: PackedStringArray = PackedStringArray()
 
 var _importance_badge: Label
 var _importance_desc: Label
@@ -137,8 +148,7 @@ func _build_ui() -> void:
 	tac_vbox.add_child(tac_hdr)
 
 	_formation_opt = OptionButton.new()
-	for fmt: String in ["4-3-3", "4-4-2", "4-2-3-1", "3-5-2", "5-3-2"]:
-		_formation_opt.add_item(fmt)
+	_populate_formation_options()
 	_formation_opt.item_selected.connect(_on_tactics_changed)
 	tac_vbox.add_child(_labeled_row("Formation:", _formation_opt))
 
@@ -200,15 +210,182 @@ func _labeled_row(title: String, control: Control) -> HBoxContainer:
 	return row
 
 
+func _load_available_formations() -> PackedStringArray:
+	var loaded := PackedStringArray()
+	if is_instance_valid(career_state) and career_state.has_method("get_available_formations"):
+		var state_fmts: Variant = career_state.call("get_available_formations")
+		if state_fmts is Array or state_fmts is PackedStringArray:
+			for fmt: Variant in state_fmts:
+				var f_str := String(fmt).strip_edges()
+				if not f_str.is_empty() and not loaded.has(f_str):
+					loaded.append(f_str)
+	if loaded.is_empty() and FileAccess.file_exists(FORMATIONS_CSV_PATH):
+		var file := FileAccess.open(FORMATIONS_CSV_PATH, FileAccess.READ)
+		if file != null:
+			var header := file.get_csv_line()
+			var name_idx := 0
+			for i: int in range(header.size()):
+				var col := header[i].strip_edges().to_lower()
+				if col == "formation" or col == "name" or col == "formation_name":
+					name_idx = i
+					break
+			while not file.eof_reached():
+				var row := file.get_csv_line()
+				if row.size() > name_idx:
+					var f_str := row[name_idx].strip_edges()
+					if not f_str.is_empty() and f_str.to_lower() != "formation" and not loaded.has(f_str):
+						loaded.append(f_str)
+	if loaded.is_empty():
+		return DEFAULT_FORMATIONS.duplicate()
+	return loaded
+
+
+func _populate_formation_options() -> void:
+	if _formation_opt == null:
+		return
+	var current_sel := ""
+	if _formation_opt.item_count > 0 and _formation_opt.selected >= 0:
+		current_sel = _formation_opt.get_item_text(_formation_opt.selected)
+	_available_formations = _load_available_formations()
+	_formation_opt.clear()
+	for fmt: String in _available_formations:
+		_formation_opt.add_item(fmt)
+	if not current_sel.is_empty():
+		for i: int in range(_formation_opt.item_count):
+			if _formation_opt.get_item_text(i) == current_sel:
+				_formation_opt.select(i)
+				break
+
+
 func setup(p_career_state: Node, fixture: Dictionary, db: PlayerDatabase = null) -> void:
 	career_state = p_career_state
+	_populate_formation_options()
+
 	if is_instance_valid(career_state) and career_state.has_method("prepare_match_context"):
 		match_context = career_state.call("prepare_match_context", fixture, db)
 	else:
 		match_context = _build_fallback_match_context(fixture)
 
+	_sync_context_with_career_state()
 	use_alternate_away_kit = bool(match_context.get("kits", {}).get("clash_detected", false))
 	_refresh_view()
+
+
+func _sync_context_with_career_state() -> void:
+	if not is_instance_valid(career_state) or match_context.is_empty():
+		return
+	var managed_id: int = int(career_state.get_managed_club_id()) if career_state.has_method("get_managed_club_id") else int(match_context.get("home_club_id", 1))
+	var user_is_home: bool = int(match_context.get("home_club_id", managed_id)) == managed_id
+	match_context["user_is_home"] = user_is_home
+
+	var tactics: Dictionary = match_context.get("tactics", {}).duplicate(true)
+	if career_state.has_method("get_club_tactics"):
+		var saved_tactics: Dictionary = career_state.get_club_tactics(managed_id)
+		if not saved_tactics.is_empty():
+			tactics = saved_tactics.duplicate(true)
+	match_context["tactics"] = tactics
+
+	var active_fmt := String(tactics.get("formation", "4-3-3"))
+	if user_is_home:
+		match_context["home_formation"] = active_fmt
+	else:
+		match_context["away_formation"] = active_fmt
+
+	var live_lineup: Array = []
+	if career_state.has_method("get_starting_xi"):
+		live_lineup = career_state.call("get_starting_xi", managed_id, active_fmt)
+	elif career_state.has_method("get_club_starting_xi"):
+		live_lineup = career_state.call("get_club_starting_xi", managed_id)
+	elif career_state.has_method("get_club_squad"):
+		var squad: Array = career_state.get_club_squad(managed_id)
+		live_lineup = _select_formation_aware_xi(squad, active_fmt)
+
+	if not live_lineup.is_empty():
+		if user_is_home:
+			match_context["home_lineup"] = live_lineup
+		else:
+			match_context["away_lineup"] = live_lineup
+
+
+func _select_formation_aware_xi(squad: Array, formation: String) -> Array:
+	if squad.size() <= 11:
+		return squad.duplicate(true)
+	var starters: Array = []
+	for p: Variant in squad:
+		if p is Dictionary and bool(p.get("is_starter", false)):
+			starters.append(p)
+	if starters.size() == 11:
+		return starters
+
+	var parts := formation.split("-")
+	var def_req := int(parts[0]) if parts.size() >= 1 else 4
+	var mid_req := 0
+	for i: int in range(1, parts.size() - 1):
+		mid_req += int(parts[i])
+	if mid_req <= 0:
+		mid_req = 3
+	var fwd_req := int(parts[parts.size() - 1]) if parts.size() >= 2 else 3
+
+	var pool: Array = squad.duplicate(true)
+	pool.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var a_score := float(a.get("ovr", 70)) * (0.5 + 0.5 * (float(a.get("stamina", 100.0)) / 100.0))
+		var b_score := float(b.get("ovr", 70)) * (0.5 + 0.5 * (float(b.get("stamina", 100.0)) / 100.0))
+		return a_score > b_score
+	)
+
+	var picked: Array = []
+	var used_ids: Dictionary = {}
+	var buckets := [
+		{"group": "GK", "count": 1},
+		{"group": "DEF", "count": def_req},
+		{"group": "MID", "count": mid_req},
+		{"group": "FWD", "count": fwd_req},
+	]
+	for b: Dictionary in buckets:
+		var needed := int(b["count"])
+		var target_group := String(b["group"])
+		for p: Dictionary in pool:
+			if needed <= 0:
+				break
+			var pid: Variant = p.get("id", p.get("player_id", p.get("name", "")))
+			if used_ids.has(pid):
+				continue
+			if _position_group(String(p.get("position", "CM"))) == target_group:
+				picked.append(p)
+				used_ids[pid] = true
+				needed -= 1
+
+	for p: Dictionary in pool:
+		if picked.size() >= 11:
+			break
+		var pid: Variant = p.get("id", p.get("player_id", p.get("name", "")))
+		if not used_ids.has(pid):
+			picked.append(p)
+			used_ids[pid] = true
+
+	return picked.slice(0, 11)
+
+
+func _position_group(pos: String) -> String:
+	var p := pos.strip_edges().to_upper()
+	if p == "GK":
+		return "GK"
+	if p in ["CB", "LB", "RB", "LWB", "RWB", "SW"]:
+		return "DEF"
+	if p in ["ST", "CF", "LW", "RW", "LF", "RF", "SS"]:
+		return "FWD"
+	return "MID"
+
+
+func _parse_color(raw: Variant, fallback: Color) -> Color:
+	if raw is Color:
+		return raw
+	if raw is String:
+		var s := String(raw).strip_edges()
+		if not s.is_empty():
+			return Color.html(s)
+	return fallback
+
 
 func _build_fallback_match_context(fixture: Dictionary) -> Dictionary:
 	var home_id := int(fixture.get("home_club_id", 1))
@@ -218,10 +395,22 @@ func _build_fallback_match_context(fixture: Dictionary) -> Dictionary:
 	var home_info: Dictionary = career_state.get_club_info(home_id) if is_instance_valid(career_state) and career_state.has_method("get_club_info") else {}
 	var away_info: Dictionary = career_state.get_club_info(away_id) if is_instance_valid(career_state) and career_state.has_method("get_club_info") else {}
 
-	var home_name := String(fixture.get("home_club", home_info.get("club_name", "Home")))
-	var away_name := String(fixture.get("away_club", away_info.get("club_name", "Away")))
-	var home_color: Color = home_info.get("primary_color", Color(0.06, 0.78, 0.48))
-	var away_color: Color = away_info.get("primary_color", Color(0.92, 0.26, 0.30))
+	var home_name := String(fixture.get("home_club", home_info.get("club_name", home_info.get("name", "Home"))))
+	var away_name := String(fixture.get("away_club", away_info.get("club_name", away_info.get("name", "Away"))))
+	var home_color: Color = _parse_color(home_info.get("primary_color", home_info.get("kit_primary", "")), Color(0.06, 0.78, 0.48))
+	var away_color: Color = _parse_color(away_info.get("primary_color", away_info.get("kit_primary", "")), Color(0.92, 0.26, 0.30))
+	var away_alt_color: Color = _parse_color(away_info.get("secondary_color", away_info.get("kit_secondary", "")), away_color.inverted())
+
+	var tactics: Dictionary = {}
+	if is_instance_valid(career_state) and career_state.has_method("get_club_tactics"):
+		tactics = career_state.get_club_tactics(managed_id).duplicate(true)
+	var active_fmt := String(tactics.get("formation", "4-3-3"))
+
+	var home_squad: Array = career_state.get_club_squad(home_id) if is_instance_valid(career_state) and career_state.has_method("get_club_squad") else []
+	var away_squad: Array = career_state.get_club_squad(away_id) if is_instance_valid(career_state) and career_state.has_method("get_club_squad") else []
+
+	var stadium_name := String(fixture.get("stadium", home_info.get("stadium", "%s Stadium" % home_name)))
+	var competition_name := String(fixture.get("competition", "League Match"))
 
 	return {
 		"fixture": fixture,
@@ -229,19 +418,27 @@ func _build_fallback_match_context(fixture: Dictionary) -> Dictionary:
 		"away_club_id": away_id,
 		"home_club": home_name,
 		"away_club": away_name,
+		"home_ovr": int(home_info.get("team_rating", home_info.get("reputation", 75))),
+		"away_ovr": int(away_info.get("team_rating", away_info.get("reputation", 75))),
+		"home_lineup": _select_formation_aware_xi(home_squad, active_fmt if home_id == managed_id else "4-3-3"),
+		"away_lineup": _select_formation_aware_xi(away_squad, active_fmt if away_id == managed_id else "4-3-3"),
+		"home_formation": active_fmt if home_id == managed_id else "4-3-3",
+		"away_formation": active_fmt if away_id == managed_id else "4-3-3",
+		"tactics": tactics,
 		"user_is_home": home_id == managed_id,
-		"stadium": String(fixture.get("stadium", "%s Stadium" % home_name)),
-		"competition": String(fixture.get("competition", "League Match")),
+		"stadium": stadium_name,
+		"competition": competition_name,
 		"importance": {
-			"label": String(fixture.get("match_importance", "LEAGUE MATCH")),
+			"label": String(fixture.get("match_importance", competition_name.to_upper())),
 			"text_color": Color(0.11, 0.82, 0.63),
-			"description": "%s vs %s" % [home_name, away_name],
+			"description": "%s vs %s • %s" % [home_name, away_name, stadium_name],
 		},
 		"kits": {
 			"home_primary": home_color,
-			"away_primary": away_color,
+			"away_primary": away_alt_color,
 			"away_default_primary": away_color,
-			"clash_detected": false,
+			"active_away_primary": away_color,
+			"clash_detected": home_color.is_equal_approx(away_color),
 		},
 	}
 
@@ -259,8 +456,30 @@ func _refresh_view() -> void:
 
 	var kits: Dictionary = match_context.get("kits", {})
 	_home_kit_swatch.color = kits.get("home_primary", Color.RED)
-	_away_kit_swatch.color = kits.get("away_primary", Color.BLUE) if use_alternate_away_kit else kits.get("away_default_primary", Color.BLUE)
-	_kit_status_lbl.text = "Kit Clash Auto-Resolved (Alternate Away Kit Active)" if bool(kits.get("clash_detected", false)) else "No Kit Clash Detected"
+	var active_away: Color = kits.get("away_primary", Color.BLUE) if use_alternate_away_kit else kits.get("away_default_primary", Color.BLUE)
+	_away_kit_swatch.color = active_away
+	kits["active_away_primary"] = active_away
+	_kit_status_lbl.text = "Kit Clash Auto-Resolved (Alternate Away Kit Active)" if bool(kits.get("clash_detected", false)) else ("Alternate Away Kit Active" if use_alternate_away_kit else "No Kit Clash Detected")
+
+	var tactics: Dictionary = match_context.get("tactics", {})
+	var active_fmt: String = String(tactics.get("formation", "4-3-3"))
+	var found_fmt := false
+	for i: int in range(_formation_opt.item_count):
+		if _formation_opt.get_item_text(i) == active_fmt:
+			_formation_opt.select(i)
+			found_fmt = true
+			break
+	if not found_fmt and not active_fmt.is_empty():
+		_formation_opt.add_item(active_fmt)
+		_formation_opt.select(_formation_opt.item_count - 1)
+
+	var saved_mentality := int(tactics.get("mentality", 2))
+	if saved_mentality >= 0 and saved_mentality < _mentality_opt.item_count:
+		_mentality_opt.select(saved_mentality)
+
+	var saved_pressing := int(tactics.get("pressing", 1))
+	if saved_pressing >= 0 and saved_pressing < _pressing_opt.item_count:
+		_pressing_opt.select(saved_pressing)
 
 	for child: Node in _lineup_list.get_children():
 		child.queue_free()
@@ -294,34 +513,39 @@ func _on_toggle_away_kit() -> void:
 	var swapped: Color = kits.get("away_primary", Color.BLUE) if use_alternate_away_kit else kits.get("away_default_primary", Color.BLUE)
 	_away_kit_swatch.color = swapped
 	kits["active_away_primary"] = swapped
+	_kit_status_lbl.text = "Alternate Away Kit Active" if use_alternate_away_kit else "Standard Away Kit Active"
 
 
 func _on_tactics_changed(_idx: int) -> void:
-	if career_state == null or match_context.is_empty():
+	if match_context.is_empty():
 		return
 	var fmt: String = _formation_opt.get_item_text(_formation_opt.selected)
-	var club_id: int = int(career_state.get_managed_club_id()) if career_state.has_method("get_managed_club_id") else 1
+	var tactics: Dictionary = match_context.get("tactics", {}).duplicate(true)
 
-	var tactics: Dictionary = {}
-	if career_state.has_method("get_club_tactics"):
-		tactics = career_state.get_club_tactics(club_id).duplicate(true)
+	if is_instance_valid(career_state):
+		var club_id: int = int(career_state.get_managed_club_id()) if career_state.has_method("get_managed_club_id") else int(match_context.get("home_club_id", 1))
+		if career_state.has_method("get_club_tactics"):
+			tactics = career_state.get_club_tactics(club_id).duplicate(true)
 
-	tactics["formation"] = fmt
-	tactics["mentality"] = _mentality_opt.selected
-	tactics["pressing"] = _pressing_opt.selected
+		tactics["formation"] = fmt
+		tactics["mentality"] = _mentality_opt.selected
+		tactics["pressing"] = _pressing_opt.selected
 
-	if career_state.has_method("set_club_tactics"):
-		career_state.set_club_tactics(club_id, tactics)
+		if career_state.has_method("set_club_tactics"):
+			career_state.set_club_tactics(club_id, tactics)
+	else:
+		tactics["formation"] = fmt
+		tactics["mentality"] = _mentality_opt.selected
+		tactics["pressing"] = _pressing_opt.selected
 
 	match_context["tactics"] = tactics.duplicate(true)
 	if bool(match_context.get("user_is_home", true)):
 		match_context["home_formation"] = fmt
 	else:
 		match_context["away_formation"] = fmt
-	if bool(match_context.get("user_is_home", true)):
-		match_context["home_formation"] = fmt
-	else:
-		match_context["away_formation"] = fmt
+
+	_sync_context_with_career_state()
+	_refresh_view()
 
 
 func _on_kickoff_pressed() -> void:
