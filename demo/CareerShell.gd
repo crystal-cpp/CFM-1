@@ -118,7 +118,13 @@ func _init_career_state() -> void:
 			career_state = CareerState.new()
 			career_state.name = "CareerState"
 			add_child(career_state)
-			career_state.start_new_career(1, "Manager", 2006)
+			var default_cid: int = 1001
+			var entries: Array = career_state.get_leagues_and_clubs()
+			for entry in entries:
+				if entry is Dictionary and not bool(entry.get("is_locked", false)):
+					default_cid = int(entry.get("club_id", 1001))
+					break
+			career_state.start_new_career(default_cid, "Manager", 2006)
 
 	if is_instance_valid(_dashboard_view):
 		_dashboard_view.career_state = career_state
@@ -812,7 +818,8 @@ func refresh_header() -> void:
 
 	_club_name_lbl.text = String(summary.get("managed_club_name", "My Club"))
 	var club_name: String = _club_name_lbl.text
-	_club_badge_lbl.text = club_name.substr(0, 3).to_upper()
+	var short_code: String = String(summary.get("short_code", ""))
+	_club_badge_lbl.text = short_code if not short_code.is_empty() else club_name.substr(0, 3).to_upper()
 
 	_season_lbl.text = _normalize_season_2006(String(summary.get("season_label", "2006/07")))
 	_date_lbl.text = _normalize_date_2006(String(summary.get("current_date", "2006-07-15")))

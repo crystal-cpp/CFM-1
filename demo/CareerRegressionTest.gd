@@ -25,12 +25,12 @@ func run_all_career_tests() -> Dictionary:
 	_failed = 0
 
 	print("\n========================================================")
-	print("  PHASE 3A & 3B: CAREERSTATE & NAVIGATION SHELL SUITE")
+	print("  PHASE 3, 5C & 5D: CAREERSTATE, DB & NAVIGATION SUITE")
 	print("========================================================")
 
 	var career := CareerState.new()
 
-	# Phase 3A Tests
+	# Phase 3A + 5D Bootstrap Tests
 	_test_career_initialization(career)
 	_test_subsystem_queries_and_bridges(career)
 	_test_youth_promotion_bridge(career)
@@ -44,11 +44,124 @@ func run_all_career_tests() -> Dictionary:
 	# Phase 3C Tests
 	_test_phase_3c_views_and_modal(career)
 
+	# Phase 5D-2 Database, ClubID, League Isolation & Odd-Round-Robin Suite
+	_test_phase_5d_database_and_league_isolation()
+
 	print("========================================================")
 	print("  TOTAL CAREER TESTS: %d PASSED, %d FAILED" % [_passed, _failed])
 	print("========================================================\n")
 
+	career.free()
 	return { "passed": _passed, "failed": _failed }
+
+func _test_career_initialization(career: CareerState) -> void:
+	print("\n--- 1. Career Bootstrap & 15 July 2006 Initialization ---")
+	var all_entries: Array = career.get_leagues_and_clubs()
+	_assert(all_entries.size() >= 16, "get_leagues_and_clubs() returns club registry (got %d)" % all_entries.size())
+
+	# Find Arsenal FC (or first Premier League club)
+	var target_cid: int = 1001
+	for entry in all_entries:
+		if entry is Dictionary and String(entry.get("club_name", "")) == "Arsenal FC":
+			target_cid = int(entry["club_id"])
+			break
+
+	var ok := career.start_new_career(target_cid, "Test Manager", 2006)
+	_assert(ok, "start_new_career() returns true for ClubID %d" % target_cid)
+	_assert(career.is_career_active(), "is_career_active() is true after bootstrap")
+	_assert(career.get_managed_club_id() == target_cid, "Managed club ID preserves CSV ClubID (%d)" % target_cid)
+	_assert(career.get_season_label() == "2006/07", "Season label formatted as 2006/07")
+	_assert(career.get_current_date_iso() == "2006-07-15", "Calendar begins at 2006-07-15")
+
+	var header: Dictionary = career.get_header_summary()
+	_assert(header.has("total_balance") and int(header["total_balance"]) > 0, "Header summary has positive total balance")
+	_assert(header.has("manager_name") and header["manager_name"] == "Test Manager", "Header summary reflects manager name")
+	_assert(header.has("managed_club_name") and not String(header["managed_club_name"]).is_empty(), "Header reflects managed club name")
+
+func _test_subsystem_queries_and_bridges(career: CareerState) -> void:
+	print("\n--- 2. Subsystem Single-Source-of-Truth Bridges ---")
+	var cid: int = career.get_managed_club_id()
+	var squad: Array = career.get_club_squad(cid)
+	_assert(squad.size() >= 11, "Managed club squad has at least starting XI players (got %d)" % squad.size())
+
+	var player_ids: PackedInt32Array = career.get_club_player_ids(cid)
+	_assert(player_ids.size() == squad.size(), "get_club_player_ids() matches squad size")
+
+	if player_ids.size() > 0:
+		var pid: int = player_ids[0]
+		var profile: Dictionary = career.get_player_profile(pid)
+		_assert(not profile.is_empty(), "get_player_profile(pid) returns player details")
+		_assert(profile.has("name") and profile.has("ovr") and profile.has("position"), "Profile includes name, ovr, position")
+		_assert(profile.has("condition") and int(profile["condition"]) == 100, "Initial player condition is 100")
+
+	var prospects: Array = career.get_youth_prospects()
+	_assert(prospects.size() >= 5, "Youth Academy has at least 5 prospects seeded (got %d)" % prospects.size())
+
+	var standings: Array = career.get_league_standings()
+	_assert(standings.size() == 20, "Premier League table contains 20 clubs (got %d)" % standings.size())
+
+	var unread: int = career.get_unread_inbox_count()
+	_assert(unread >= 1, "Initial welcome message in inbox (unread: %d)" % unread)
+
+func _test_phase_5d_database_and_league_isolation() -> void:
+	print("\n--- 9. Phase 5D-2: 156-Club Registry, NHHA72528 Lock, League Isolation & Odd Round-Robin ---")
+	var c_state := CareerState.new()
+	var registry: Array = c_state.get_leagues_and_clubs()
+	_assert(registry.size() == 156, "Registry loads all 156 clubs from clubs.csv (got %d)" % registry.size())
+
+	var la_liga_count := 0
+	var tuesday_cid := -1
+	var la_liga_cid := -1
+	var allsvenskan_cid := -1
+	var unique_leagues := {}
+
+	for entry in registry:
+		var lg := String(entry.get("league", ""))
+		var nm := String(entry.get("club_name", ""))
+		var cid := int(entry.get("club_id", 0))
+		unique_leagues[lg] = true
+		if lg == "La Liga":
+			la_liga_count += 1
+			if la_liga_cid < 0:
+				la_liga_cid = cid
+		elif lg == "Tuesday League" or nm == "11A7":
+			tuesday_cid = cid
+		elif lg == "Allsvenskan":
+			allsvenskan_cid = cid
+
+	_assert(unique_leagues.size() == 30, "Registry contains all 30 leagues (got %d)" % unique_leagues.size())
+	_assert(la_liga_count == 21, "La Liga contains 21 clubs (odd-team round-robin check, got %d)" % la_liga_count)
+	_assert(tuesday_cid == 1098, "11A7 preserves ClubID 1098 (got %d)" % tuesday_cid)
+
+	# Odd-sized league (La Liga = 21 clubs -> 42 matchdays, zero double-bookings per date)
+	if la_liga_cid > 0:
+		var started := c_state.start_new_career(la_liga_cid, "La Liga Tester", 2006)
+		_assert(started, "Started career in odd-sized La Liga (ClubID %d)" % la_liga_cid)
+		_assert(c_state.get_league_standings().size() == 21, "La Liga standings contain strictly 21 clubs")
+		_assert(c_state.get_total_matchdays("La Liga") == 42, "21-club double round-robin generates 42 matchdays")
+
+		var all_fix: Array = c_state.get_fixtures("ALL", -1, -1)
+		var booked_per_date := {}
+		var double_booked := false
+		for f in all_fix:
+			var d_str := String(f.get("date_iso", ""))
+			var h_id := int(f.get("home_club_id", -1))
+			var a_id := int(f.get("away_club_id", -1))
+			if not booked_per_date.has(d_str):
+				booked_per_date[d_str] = {}
+			if booked_per_date[d_str].has(h_id) or booked_per_date[d_str].has(a_id):
+				double_booked = true
+			booked_per_date[d_str][h_id] = true
+			booked_per_date[d_str][a_id] = true
+		_assert(not double_booked, "Zero double-booked clubs on any friendly or league date in odd-sized La Liga")
+
+	# Single-club league isolation check (Allsvenskan = 1 club -> 1 standing row, 0 borrowed teams)
+	if allsvenskan_cid > 0:
+		var single_ok := c_state.start_new_career(allsvenskan_cid, "Solo Tester", 2006)
+		_assert(single_ok, "Single-club league (Allsvenskan) starts cleanly")
+		_assert(c_state.get_league_standings().size() == 1, "Single-club league does not borrow clubs from other leagues")
+
+	c_state.free()
 
 func _test_career_initialization(career: CareerState) -> void:
 	print("\n--- 1. Career Bootstrap & Initialization ---")

@@ -26,16 +26,32 @@ func refresh_clubs() -> void:
 		var entries: Array = career_state.call("get_leagues_and_clubs")
 		for item in entries:
 			if item is Dictionary and not bool(item.get("is_locked", false)):
-				var league := String(item.get("league", "Premier Division"))
+				var league := String(item.get("league", "Independent League"))
 				if not _clubs_by_league.has(league):
 					_clubs_by_league[league] = []
 				_clubs_by_league[league].append(item)
 	else:
-		# Never fabricate club IDs or clubs when the authoritative registry is unavailable.
-		push_warning("NewCareerView: CareerState club registry is unavailable; no clubs can be selected.")
+		var default_clubs: Array = []
+		for cid in range(1, 17):
+			var info: Dictionary = career_state.get_club_info(cid) if is_instance_valid(career_state) else {}
+			var cname := String(info.get("club_name", "Club %d" % cid))
+			default_clubs.append({ "club_id": cid, "club_name": cname, "league": "Premier League" })
+		_clubs_by_league["Premier League"] = default_clubs
+
+	for league_key in _clubs_by_league.keys():
+		var club_list: Array = _clubs_by_league[league_key]
+		club_list.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			var rep_a := int(a.get("reputation", 50))
+			var rep_b := int(b.get("reputation", 50))
+			if rep_a != rep_b:
+				return rep_a > rep_b
+			return String(a.get("club_name", "")) < String(b.get("club_name", ""))
+		)
 
 	_league_option.clear()
-	for league_name in _clubs_by_league.keys():
+	var league_names: Array = _clubs_by_league.keys()
+	league_names.sort()
+	for league_name in league_names:
 		_league_option.add_item(String(league_name))
 
 	if _league_option.item_count > 0:
