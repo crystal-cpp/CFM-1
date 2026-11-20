@@ -15,6 +15,8 @@ var _csv_loaded: bool = false
 var _active_tab: String = "league" # "league" | "ucl" | "stats" | "prizes"
 var _selected_league: String = ""
 var _selected_ucl_md: int = 1
+var _last_managed_league: String = ""
+var _league_selection_overridden: bool = false
 
 # Header & Navigation Controls
 var _season_badge: Label
@@ -60,21 +62,35 @@ func _ready() -> void:
 	_switch_tab("league")
 
 func refresh_competitions() -> void:
-	# Refresh from the live career registry after CareerShell injects CareerState.
-	if is_instance_valid(career_state) and career_state.is_career_active():
+	# The live career registry is authoritative for the selected career.
+	var has_active_career := is_instance_valid(career_state) and career_state.is_career_active()
+	if has_active_career:
 		_load_clubs_csv()
 	elif not _csv_loaded:
 		_load_clubs_csv()
 
-	if is_instance_valid(career_state) and career_state.is_career_active():
+	if has_active_career:
 		var summary: Dictionary = career_state.get_header_summary()
 		if is_instance_valid(_season_badge):
 			_season_badge.text = "SEASON %s" % String(summary.get("season_label", "2026/27"))
 
-		var managed_league: String = _get_managed_club_league()
-		if _selected_league.is_empty() and not managed_league.is_empty():
-			_selected_league = managed_league
-			_sync_league_dropdown()
+		var managed_league := _get_managed_club_league()
+		if not managed_league.is_empty():
+			# The view is constructed before CareerShell injects CareerState.
+			# Its initial CSV default may be unrelated to the user's club.
+			# Select the managed club's actual league on first sync and when
+			# loading/switching to a career in a different league.
+			if _last_managed_league != managed_league:
+				_selected_league = managed_league
+				_league_selection_overridden = false
+				_last_managed_league = managed_league
+			elif not _league_selection_overridden:
+				_selected_league = managed_league
+
+	# Rebuild options after the canonical registry refresh, preserving a
+	# deliberate user selection where possible.
+	if is_instance_valid(_league_option):
+		_populate_league_dropdown()
 
 	_refresh_league_table()
 	_refresh_ucl_view()
@@ -208,13 +224,23 @@ func _get_managed_club_name() -> String:
 	return ""
 
 func _get_managed_club_league() -> String:
+	if is_instance_valid(career_state) and career_state.is_career_active():
+		var summary: Dictionary = career_state.get_header_summary()
+		var managed_id := int(summary.get("managed_club_id", career_state.get_managed_club_id()))
+		var club_info: Dictionary = career_state.get_club_info(managed_id)
+		var live_league := String(club_info.get("league", "")).strip_edges()
+		if not live_league.is_empty():
+			return live_league
+
 	var managed_name: String = _get_managed_club_name()
 	if not managed_name.is_empty():
 		for c in _csv_clubs:
-			if String(c["name"]).to_lower() == managed_name.to_lower():
-				return String(c["league"])
+			if String(c.get("name", "")).to_lower() == managed_name.to_lower():
+				return String(c.get("league", ""))
 	if not _leagues_map.is_empty():
-		return String(_leagues_map.keys()[0])
+		var league_names: Array = _leagues_map.keys()
+		league_names.sort()
+		return String(league_names[0])
 	return "Premier League"
 
 # ==============================================================================
@@ -340,6 +366,7 @@ func _sync_league_dropdown() -> void:
 
 func _on_league_selected(idx: int) -> void:
 	_selected_league = _league_option.get_item_text(idx)
+	_league_selection_overridden = true
 	_refresh_league_table()
 
 func _switch_tab(tab_id: String) -> void:
