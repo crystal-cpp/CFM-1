@@ -337,17 +337,6 @@ func _build_ui() -> void:
 	_chance_status_label.add_theme_font_size_override("font_size", 12)
 	rp_vbox.add_child(_chance_status_label)
 
-	_continue_play_btn = Button.new()
-	_continue_play_btn.custom_minimum_size = Vector2(0, 38)
-	_continue_play_btn.focus_mode = Control.FOCUS_NONE
-	_continue_play_btn.visible = false
-	_continue_play_btn.pressed.connect(func() -> void:
-		var pitch_node: Node = _get_match_pitch()
-		if pitch_node and pitch_node.has_method("continue_attack_play"):
-			pitch_node.continue_attack_play()
-	)
-	rp_vbox.add_child(_continue_play_btn)
-
 	_nearest_def_button = Button.new()
 	_nearest_def_button.text = "Switch Defender [Q]"
 	_nearest_def_button.custom_minimum_size = Vector2(0, 38)
