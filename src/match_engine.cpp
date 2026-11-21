@@ -224,6 +224,9 @@ void MatchEngine::_apply_role_profile(SimPlayer& p_player, int p_base_ovr) const
     int base = std::clamp(p_base_ovr, 1, 99);
     String r = p_player.role.to_upper();
 
+    p_player.starting_stamina = static_cast<float>(std::clamp(base, 40, 95));
+    p_player.stamina = p_player.starting_stamina;
+
     if (r == "GK") {
         p_player.pace = std::clamp(base - 18, 1, 99);
         p_player.shooting = std::clamp(base - 25, 1, 99);
@@ -301,6 +304,7 @@ void MatchEngine::set_home_lineup(const Array& p_players) {
     if (sim_players.size() != 22) {
         _initialize_default_squads();
     }
+
     int limit = std::min(11, static_cast<int>(p_players.size()));
     for (int i = 0; i < limit; i++) {
         if (p_players[i].get_type() != Variant::DICTIONARY) {
@@ -322,7 +326,7 @@ void MatchEngine::set_home_lineup(const Array& p_players) {
         if (d.has("defending")) p.defending = std::clamp(static_cast<int>(d["defending"]), 1, 99);
         if (d.has("physical")) p.physical = std::clamp(static_cast<int>(d["physical"]), 1, 99);
         if (d.has("stamina")) {
-            p.starting_stamina = std::clamp(static_cast<float>(d["stamina"]), 10.0f, 100.0f);
+            p.starting_stamina = std::clamp(static_cast<float>(d["stamina"]), 1.0f, 99.0f);
             p.stamina = p.starting_stamina;
         }
     }
@@ -353,7 +357,7 @@ void MatchEngine::set_away_lineup(const Array& p_players) {
         if (d.has("defending")) p.defending = std::clamp(static_cast<int>(d["defending"]), 1, 99);
         if (d.has("physical")) p.physical = std::clamp(static_cast<int>(d["physical"]), 1, 99);
         if (d.has("stamina")) {
-            p.starting_stamina = std::clamp(static_cast<float>(d["stamina"]), 10.0f, 100.0f);
+            p.starting_stamina = std::clamp(static_cast<float>(d["stamina"]), 1.0f, 99.0f);
             p.stamina = p.starting_stamina;
         }
     }
@@ -1201,7 +1205,15 @@ bool MatchEngine::command_move_player(Vector2 p_target_pos) {
             float fatigue_mult = _get_fatigue_multiplier(player);
             float burst_speed = (128.0f + player.pace * 0.72f + player.dribbling * 0.45f) * fatigue_mult;
             player.dribble_boost_timer = 0.55f;
-            player.velocity = player.velocity.lerp(dir * burst_speed, 0.75f);
+            user_move_target.x = std::clamp(resolved_target.x, margin, field_size.x - margin);
+            user_move_target.y = std::clamp(resolved_target.y, margin, field_size.y - margin);
+            has_user_move_target = true;
+            is_paused_for_manual = false;
+
+            if (chance_state == CHANCE_HOME_ATTACK && ball_state == BALL_CARRIED && ball_carrier_index == user_controlled_index) {
+                player.dribble_boost_timer = 0.40f;
+            }
+            return true;
         }
     }
 
@@ -1613,7 +1625,12 @@ void MatchEngine::_spawn_wide_range_chance(bool p_is_home_attacking) {
     float lateral_offset = std::abs(carrier.position.y - (field_size.y * 0.5f));
     float dist_factor = std::clamp(1.0f - (dist_to_goal / 380.0f), 0.06f, 0.85f);
     float angle_factor = std::clamp(1.0f - (lateral_offset / 280.0f), 0.30f, 1.0f);
-    float est_xg = std::clamp(dist_factor * angle_factor * 0.55f, 0.06f, 0.62f);
+
+    float team_ovr = static_cast<float>(p_is_home_attacking ? home_team_ovr : away_team_ovr);
+    float opp_ovr = static_cast<float>(p_is_home_attacking ? away_team_ovr : home_team_ovr);
+    float ovr_edge = std::clamp((team_ovr - opp_ovr) * 0.012f, -0.25f, 0.25f);
+    float attr_factor = 0.78f + (((carrier.shooting * 0.45f) + (carrier.dribbling * 0.35f) + (carrier.passing * 0.20f)) / 100.0f) * 0.44f;
+    float est_xg = std::clamp(dist_factor * angle_factor * 0.55f * attr_factor * (1.0f + ovr_edge), 0.05f, 0.72f);
 
     _sync_player_positions_array();
     _trigger_key_chance(p_is_home_attacking ? 1 : 4, p_is_home_attacking, carrier_idx, est_xg);
@@ -1754,10 +1771,13 @@ Vector2 MatchEngine::_compute_runner_tracking_offset(bool p_is_home, const SimPl
     float attack_dir = p_is_home ? 1.0f : -1.0f;
     int opp_start = p_is_home ? 11 : 0;
 
+    float opp_quality = std::clamp(((p_is_home ? home_team_ovr : away_team_ovr) - 50.0f) / 45.0f, 0.0f, 1.0f);
+    bool is_home_attack_chance = (!p_is_home && chance_state == CHANCE_HOME_ATTACK);
+
     // Nerf defender runner-tracking IQ when defending a player's Attack Chance
     bool is_nerfed_ai_defense = (!p_is_home && chance_state == CHANCE_HOME_ATTACK);
-    float best_scan_dist = is_nerfed_ai_defense ? 68.0f : 125.0f;
-    float track_weight = is_nerfed_ai_defense ? 0.20f : 0.48f;
+    float best_scan_dist = is_home_attack_chance ? (78.0f + opp_quality * 44.0f) : (95.0f + opp_quality * 35.0f);
+    float track_weight = is_home_attack_chance ? (0.24f + opp_quality * 0.22f) : (0.34f + opp_quality * 0.18f);
     Vector2 offset(0.0f, 0.0f);
 
     for (int j = opp_start + 1; j < opp_start + 11; j++) {
@@ -1782,6 +1802,7 @@ Vector2 MatchEngine::_compute_runner_tracking_offset(bool p_is_home, const SimPl
         offset.x = std::min(offset.x, 24.0f);
     }
     return offset;
+    
 }
 
 Vector2 MatchEngine::_compute_smart_attacking_run_target(
@@ -1995,6 +2016,13 @@ Vector2 MatchEngine::_compute_tactical_target(
     float press_trigger_dist = (team_pressing == PRESSING_HIGH) ? 420.0f :
                                ((team_pressing == PRESSING_LOW) ? 235.0f : 315.0f);
 
+    float def_team_ovr = static_cast<float>(is_home ? home_team_ovr : away_team_ovr);
+    float def_quality = std::clamp((def_team_ovr - 50.0f) / 45.0f, 0.0f, 1.0f);
+
+    if (!is_home && chance_state == CHANCE_HOME_ATTACK) {
+        press_trigger_dist = std::min(press_trigger_dist, 215.0f + def_quality * 115.0f);
+    }
+
     if (!is_home && chance_state == CHANCE_HOME_ATTACK) {
         press_trigger_dist = 185.0f;
     }
@@ -2006,7 +2034,7 @@ Vector2 MatchEngine::_compute_tactical_target(
         return ball_position - Vector2(attack_dir * 28.0f, (ball_position.y - center_y) * 0.12f);
     }
 
-    bool allow_smart_lane_cover = !(!is_home && chance_state == CHANCE_HOME_ATTACK);
+    bool allow_smart_lane_cover = !(!is_home && chance_state == CHANCE_HOME_ATTACK && def_quality < 0.35f);
     if (allow_smart_lane_cover && p_index == p_secondary_presser && team_pressing >= PRESSING_NORMAL && ball_dist_from_own_goal <= press_trigger_dist + 40.0f) {
         return _compute_lane_cover_target(is_home, p_player);
     }
@@ -2101,11 +2129,13 @@ void MatchEngine::_update_player_movement(float dt) {
         int team_tempo = p.is_home ? home_tempo : away_tempo;
         float tempo_speed_mult = (team_tempo == TIER_HIGH) ? 1.07f : ((team_tempo == TIER_LOW) ? 0.93f : 1.0f);
 
+        float def_quality = std::clamp((static_cast<float>(away_team_ovr) - 50.0f) / 45.0f, 0.0f, 1.0f);
+
         float max_speed = (95.0f + p.pace * 0.85f) * fatigue_mult * tempo_speed_mult;
         if (p.role == "GK") {
             max_speed *= 0.68f;
         } else if (!p.is_home && chance_state == CHANCE_HOME_ATTACK) {
-            max_speed *= 0.84f;
+            max_speed *= (0.86f + def_quality * 0.12f);
         } else if (p.is_home && chance_state == CHANCE_HOME_ATTACK && i != user_controlled_index && p.role != "CB") {
             max_speed *= 1.12f;
         }
@@ -2125,10 +2155,11 @@ void MatchEngine::_update_player_movement(float dt) {
         }
 
         Vector2 desired_vel(0.0f, 0.0f);
-        if (dist > 2.0f) {
-            float arrive_gain = is_user_ball_carrier ? 8.5f : 3.5f;
-            float arrive_speed = std::min(max_speed, dist * arrive_gain);
-            desired_vel = (to_target / dist) * arrive_speed;
+        if (dist > 1.5f) {
+            float slow_radius = is_user_ball_carrier ? 24.0f : 32.0f;
+            float speed_scale = std::clamp(dist / slow_radius, 0.18f, 1.0f);
+            float target_speed = max_speed * speed_scale;
+            desired_vel = (to_target / dist) * target_speed;
         }
 
         Vector2 sep_force(0.0f, 0.0f);
@@ -2150,16 +2181,12 @@ void MatchEngine::_update_player_movement(float dt) {
         }
 
         desired_vel += sep_force;
-        if (desired_vel.length() > max_speed * 1.15f) {
-            desired_vel = desired_vel.normalized() * (max_speed * 1.15f);
+        if (desired_vel.length() > max_speed * 1.12f) {
+            desired_vel = desired_vel.normalized() * (max_speed * 1.12f);
         }
 
         float smooth_factor = is_user_ball_carrier ? dribble_smooth_factor : default_smooth_factor;
         p.velocity = p.velocity.lerp(desired_vel, smooth_factor);
-        p.position += p.velocity * dt;
-
-        p.position.x = std::clamp(p.position.x, margin, field_size.x - margin);
-        p.position.y = std::clamp(p.position.y, margin, field_size.y - margin);
 
         int team_pressing = p.is_home ? home_pressing : away_pressing;
         int team_mentality = p.is_home ? home_mentality : away_mentality;
@@ -2169,12 +2196,35 @@ void MatchEngine::_update_player_movement(float dt) {
         static const float MENTALITY_DRAIN[5] = { 0.82f, 0.90f, 1.00f, 1.15f, 1.30f };
         float mentality_mult = MENTALITY_DRAIN[std::clamp(team_mentality, 0, 4)];
         float tempo_drain = (team_tempo == TIER_HIGH) ? 1.15f : ((team_tempo == TIER_LOW) ? 0.88f : 1.00f);
-        float endurance_factor = 1.18f - (static_cast<float>(p.physical) / 100.0f) * 0.36f;
-        float sprint_mult = (p.sprint_boost_timer > 0.0f || p.dribble_boost_timer > 0.0f) ? 1.32f : 1.0f;
+
+        float stamina_attr = std::clamp(p.starting_stamina, 1.0f, 99.0f);
+        float endurance_factor = 1.24f - (stamina_attr / 100.0f) * 0.44f;
+        float sprint_mult = (p.sprint_boost_timer > 0.0f || p.dribble_boost_timer > 0.0f) ? 1.32f : 1.0f; 
 
         float speed_ratio = p.velocity.length() / std::max(1.0f, max_speed);
         float base_drain = 0.43f * press_mult * mentality_mult * tempo_drain * endurance_factor * sprint_mult;
         p.stamina = std::max(10.0f, p.stamina - (base_drain * (0.45f + speed_ratio) * dt));
+
+        float cur_speed = p.velocity.length();
+        float des_speed = desired_vel.length();
+        float turn_alignment = 1.0f;
+        if (cur_speed > 8.0f && des_speed > 8.0f) {
+            turn_alignment = std::clamp((p.velocity / cur_speed).dot(desired_vel / des_speed), -1.0f, 1.0f);
+        }
+        float turn_penalty = (turn_alignment < 0.25f) ? (0.68f + 0.32f * std::max(0.0f, turn_alignment + 0.5f)) : 1.0f;
+
+        float agility_factor = 0.85f + ((p.pace * 0.45f + p.dribbling * 0.55f) / 100.0f) * 0.45f;
+        float accel_rate = (is_user_ball_carrier ? 11.5f : 8.2f) * agility_factor * fatigue_mult;
+        float decel_rate = (is_user_ball_carrier ? 13.5f : 10.0f) * agility_factor * fatigue_mult;
+        float rate = (des_speed >= cur_speed) ? (accel_rate * turn_penalty) : decel_rate;
+        float steer_alpha = 1.0f - std::exp(-rate * dt);
+        p.velocity = p.velocity.lerp(desired_vel, steer_alpha);
+        if (des_speed < 1.0f && p.velocity.length() < 3.5f) {
+            p.velocity = Vector2(0.0f, 0.0f);
+        }
+        p.position += p.velocity * dt;
+        p.position.x = std::clamp(p.position.x, margin, field_size.x - margin);
+        p.position.y = std::clamp(p.position.y, margin, field_size.y - margin);
     }
 }
 
@@ -2390,11 +2440,17 @@ void MatchEngine::_evaluate_carrier_action(int p_carrier_idx) {
     }
 
     // 0. LIVE-POSITION CHANCE TRIGGER
+    // 0. LIVE-POSITION CHANCE TRIGGER
     if (chance_state == CHANCE_NONE && event_cooldown <= 0.0f && carrier.role != "GK") {
         bool in_attacking_half = is_home ? (carrier.position.x >= field_size.x * 0.48f)
                                          : (carrier.position.x <= field_size.x * 0.52f);
         if (in_attacking_half) {
-            float trigger_prob = std::clamp(0.45f * chance_creation_mult, 0.25f, 0.90f);
+            float team_ovr = static_cast<float>(is_home ? home_team_ovr : away_team_ovr);
+            float opp_ovr = static_cast<float>(is_home ? away_team_ovr : home_team_ovr);
+            float ovr_edge = std::clamp((team_ovr - opp_ovr) * 0.012f, -0.25f, 0.25f);
+            float carrier_threat = ((carrier.dribbling * 0.40f + carrier.passing * 0.30f + carrier.shooting * 0.30f) - 65.0f) * 0.004f;
+            float trigger_prob = std::clamp((0.45f + ovr_edge + carrier_threat) * chance_creation_mult, 0.20f, 0.92f);
+
             if (is_home || UtilityFunctions::randf() < trigger_prob) {
                 _spawn_wide_range_chance(is_home);
                 return;
@@ -3002,7 +3058,7 @@ void MatchEngine::start_match() {
     stats = MatchStats();
 
     for (auto& p : sim_players) {
-        p.stamina = std::clamp(p.starting_stamina, 10.0f, 100.0f);
+        p.stamina = std::clamp(p.starting_stamina, 1.0f, 99.0f);
         p.recovery_timer = 0.0f;
         p.sprint_boost_timer = 0.0f;
         p.dribble_boost_timer = 0.0f;
@@ -3117,6 +3173,20 @@ Dictionary MatchEngine::get_match_stats() const {
     int home_poss_pct = (total_poss > 0.001f) ? static_cast<int>(std::round((stats.home_possession_time / total_poss) * 100.0f)) : 50;
     int away_poss_pct = 100 - home_poss_pct;
 
+    Array home_end_stamina;
+    Array away_end_stamina;
+    Array all_end_stamina;
+
+    for (int i = 0; i < 22 && i < static_cast<int>(sim_players.size()); i++) {
+        int end_stam = static_cast<int>(std::round(std::clamp(sim_players[i].stamina, 1.0f, 99.0f)));
+        all_end_stamina.append(end_stam);
+        if (i < 11) {
+            home_end_stamina.append(end_stam);
+        } else {
+            away_end_stamina.append(end_stam);
+        }
+    }
+
     d["home_possession"] = home_poss_pct;
     d["away_possession"] = away_poss_pct;
     d["home_shots"] = stats.home_shots;
@@ -3137,5 +3207,10 @@ Dictionary MatchEngine::get_match_stats() const {
     d["away_saves"] = stats.away_saves;
     d["home_corners"] = stats.home_corners;
     d["away_corners"] = stats.away_corners;
+    d["home_player_stamina"] = home_end_stamina;
+    d["away_player_stamina"] = away_end_stamina;
+    d["player_stamina"] = all_end_stamina;
     return d;
+    
+
 }

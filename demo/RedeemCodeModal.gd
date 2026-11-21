@@ -29,7 +29,7 @@ func open_modal() -> void:
 			_status_lbl.text = "Code NHHA72528 is active! Tuesday League & club 11A7 are unlocked."
 			_status_lbl.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 		else:
-			_status_lbl.text = "Enter a special promo code (e.g. NHHA72528) to unlock Tuesday League & 11A7."
+			_status_lbl.text = "Enter a special promo code to unlock Tuesday League & 11A7."
 			_status_lbl.add_theme_color_override("font_color", Color(0.68, 0.78, 0.90))
 
 	if is_instance_valid(_code_input):
@@ -121,7 +121,7 @@ func _build_ui() -> void:
 	vb.add_child(_reward_lbl)
 
 	_code_input = LineEdit.new()
-	_code_input.placeholder_text = "Enter code (e.g. NHHA72528)"
+	_code_input.placeholder_text = "Enter code"
 	_code_input.custom_minimum_size = Vector2(0, 40)
 	_code_input.text_submitted.connect(func(_t: String) -> void: _on_redeem_pressed())
 	vb.add_child(_code_input)
