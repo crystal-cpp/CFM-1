@@ -116,7 +116,7 @@
 
 ## 3. Upcoming Engineering Blueprints & Technical Dependencies (Phases 5–7)
 
-> **Status Note**: Phase 5A–5C source integrations remain subject to Godot runtime QA; authoritative UCL fixture generation and progression are deferred. Phase 5C-2 is implemented in source, but runtime QA remains pending. Phase 5D-2 implementation fixes are committed, including canonical club dictionary mapping, stable ClubID/metadata propagation, league isolation, odd-team bye handling, pre-season pairing correction, CareerState parser cleanup and removal of duplicate GDScript test declarations. Current CSV source audit finds 156 clubs across 30 leagues and 1,716 player rows with complete club-level coverage. Historical accuracy for 15 July 2006 remains unaudited. Do not infer build/runtime verification from source inspection.
+> **Status Note**: Phase 5A–5C source integrations remain subject to Godot runtime QA; authoritative UCL fixture generation and progression are deferred. Phase 5C-2 is implemented in source, but runtime QA remains pending. Phase 5D source fixes include canonical club dictionary mapping, stable ClubID/metadata propagation, league isolation, odd-team bye handling, pre-season pairing correction, CareerState parser cleanup and duplicate-test cleanup. Current CSV inventory is 156 clubs across 28 league labels (13 columns including Stadium), 1,716 player rows, and 15 custom 11A7 roster entries. The 15 July 2006 historical-data audit remains open. Phase 5E has partial source work in commit `30e281a`; do not infer build, regression or runtime verification from source inspection.
 
 ### Phase 5A–5B — Season Calendar Cycle & UEFA Champions League Specification
 1. **July–May Season Calendar (`src/CareerState.cpp` & `demo/ScheduleView.gd`)**:
@@ -138,9 +138,9 @@
 ### Phase 5D — Historical 15 July 2006 Club Registry, Structured Player Data, New Career Bootstrap & League Fixtures
 
 **5D-1 — Club Registry & Player Metadata**
-- Current source-level audit of demo/data/clubs.csv: **156 data rows**, 12 columns, **30 distinct league labels**, 156 unique ClubIDs, no duplicate club names and **13 single-club leagues**.
+- Current source-level audit of demo/data/clubs.csv: **156 data rows**, **13 columns** including Stadium, **28 distinct league labels**, 156 unique ClubIDs, no duplicate club names and **12 single-club leagues**.
 - Current source-level audit of demo/data/players_2006_with_price.csv: **1,716 player rows**; every non-empty player Club value matches a registry club, and all **156 clubs have at least one imported player row**. No club currently relies on a missing-roster fallback according to this CSV membership check.
-- The 12-column club schema includes ClubID, Club, League, ShortCode, Country, Reputation, TotalBalance, TransferBudget, WageBudget, DefaultFormation, PrimaryColor and SecondaryColor. Player data retains Stamina and Playstyle metadata; do not duplicate the Stamina column.
+- The 13-column club schema includes ClubID, Club, League, ShortCode, Country, Reputation, TotalBalance, TransferBudget, WageBudget, DefaultFormation, PrimaryColor, SecondaryColor and Stadium. Player data retains Stamina and Playstyle metadata; do not duplicate the Stamina column.
 - Historical correctness of all clubs, league labels, memberships, finances, formations and kit colours as of **15 July 2006** is not yet independently verified. NHHA72528 reward mapping also remains subject to QA.
 
 **5D-2 — Structured Bootstrap & League-Scoped Fixture Generation [IMPLEMENTED IN SOURCE; ACCEPTANCE QA PENDING]**
@@ -150,7 +150,7 @@
 - **Finance accessor correction:** CareerState uses Team::GetBudget() rather than directly accessing the private TransferBudget member.
 - **League isolation and scheduling:** fixture and standings participants are selected from the managed club's league only. Single-club leagues do not borrow other leagues' clubs. Odd-sized round-robin scheduling uses a bye sentinel, and pre-season pairings avoid scheduling a club twice in the same round.
 - **CareerState parser cleanup:** removed the orphaned duplicate career-start block and duplicate get_header_summary() / get_club_info() definitions that had caused global-scope parser errors and redefinitions.
-- **Regression coverage:** CareerRegressionTest.gd includes Phase 5D checks for the 156-club / 30-league registry, 11A7 ClubID 1098, 21-team La Liga, no double-booking in the tested odd-sized league, and single-club Allsvenskan isolation. The older duplicate declarations of _test_career_initialization() and _test_subsystem_queries_and_bridges() were removed in commit c5cd7b6c44eda90581ad91b8c44363c6dd62fab6. The test suite has not yet been rerun after that parser fix.
+- **Regression coverage:** CareerRegressionTest.gd includes Phase 5D checks for the 156-club / 28-league registry, 11A7 ClubID 1098, 21-team La Liga, no double-booking in the tested odd-sized league, and single-club Allsvenskan isolation. The older duplicate declarations of _test_career_initialization() and _test_subsystem_queries_and_bridges() were removed in commit c5cd7b6c44eda90581ad91b8c44363c6dd62fab6. The test suite has not yet been rerun after that parser fix.
 - **Relevant source-fix commits:** 0c25cc8, 97bd023, 40fb353, 760aeaf, f363c28, 5504b33, 2204a80 and c5cd7b6. These commits establish source changes only; they do not establish a successful local build or runtime test.
 
 **Remaining 5D-2 acceptance steps**
@@ -287,7 +287,7 @@
 
   * `demo/data/formations.csv` (Normalized 11-slot formation shapes)
 
-  * `demo/data/clubs.csv` (Phase 5D 13-column registry including Stadium; 156 records / 28 league labels; historical audit remains outstanding)
+  * `demo/data/clubs.csv` (Phase 5D 13-column registry including Stadium; 156 records / 28 league labels / 12 single-club leagues; historical audit remains outstanding)
 
   * `demo/data/players_2006_with_price.csv` (`res://data/players_2006_with_price.csv` — active runtime dataset with `Club`, `League`, `Nationality`, `Stamina`, and `Playstyle 1..3`)
 
