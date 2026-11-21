@@ -29,7 +29,6 @@ var _shots_bar_home: ColorRect
 var _passes_val_label: Label
 var _def_actions_label: Label
 var _chance_status_label: Label
-var _continue_play_btn: Button
 var _gk_rush_btn: Button
 var _slide_tackle_btn: Button
 var _nearest_def_button: Button
@@ -339,7 +338,6 @@ func _build_ui() -> void:
 	rp_vbox.add_child(_chance_status_label)
 
 	_continue_play_btn = Button.new()
-	_continue_play_btn.text = "Advance Dribble [Space]"
 	_continue_play_btn.custom_minimum_size = Vector2(0, 38)
 	_continue_play_btn.focus_mode = Control.FOCUS_NONE
 	_continue_play_btn.visible = false
@@ -628,8 +626,6 @@ func _update_chance_controls() -> void:
 	var decision_paused: bool = pitch_node != null and pitch_node.has_method("is_attack_decision_paused") and bool(pitch_node.is_attack_decision_paused())
 	var gk_rushing: bool = pitch_node != null and pitch_node.has_method("is_gk_rush_active") and bool(pitch_node.is_gk_rush_active())
 
-	if _continue_play_btn:
-		_continue_play_btn.visible = (c_state == 1 and decision_paused)
 	if _nearest_def_button:
 		_nearest_def_button.visible = (c_state == 2)
 	if _slide_tackle_btn:
