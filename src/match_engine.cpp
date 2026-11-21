@@ -2022,10 +2022,7 @@ Vector2 MatchEngine::_compute_tactical_target(
     if (!is_home && chance_state == CHANCE_HOME_ATTACK) {
         press_trigger_dist = std::min(press_trigger_dist, 215.0f + def_quality * 115.0f);
     }
-
-    if (!is_home && chance_state == CHANCE_HOME_ATTACK) {
-        press_trigger_dist = 185.0f;
-    }
+2
 
     if (p_index == p_primary_presser && !(manual_control_active && is_home)) {
         if (ball_dist_from_own_goal <= press_trigger_dist) {
@@ -2851,7 +2848,8 @@ void MatchEngine::_update_ball_and_actions(float dt) {
         }
 
         bool reached_goal_line = shooter_is_home ? (ball_position.x >= field_size.x - 14.0f) : (ball_position.x <= 14.0f);
-        bool near_gk = !shot_hits_crossbar && (ball_position.distance_to(gk.position) < 16.0f);
+        bool in_goal_corridor = std::abs(ball_position.y - (field_size.y * 0.5f)) <= 48.0f;
+        bool near_gk = !shot_hits_crossbar && in_goal_corridor && (ball_position.distance_to(gk.position) < 16.0f);
 
         if (reached_goal_line || near_gk) {
             if (shot_hits_crossbar && reached_goal_line) {

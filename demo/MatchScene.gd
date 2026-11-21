@@ -25,11 +25,19 @@ func _ready() -> void:
 	if not is_instance_valid(match_pitch):
 		match_pitch = get_node_or_null("2DOverviewLayer/MatchPitch")
 
+	hud = get_node_or_null("2DOverviewLayer/MatchHUD") as Control
+	if not is_instance_valid(hud):
+		hud = find_child("MatchHUD", true, false) as Control
+
 	if not is_instance_valid(match_engine) or not is_instance_valid(overview_2d):
 		push_error("MatchScene: Missing MatchEngine or 2DOverviewLayer child nodes!")
 		return
 
-	overview_2d.show()
+	var existing_shell := _resolve_career_shell()
+	if is_instance_valid(existing_shell) and existing_shell.visible:
+		overview_2d.hide()
+	else:
+		overview_2d.show()
 
 	post_match_modal = PostMatchModal.new()
 	post_match_modal.name = "PostMatchModal"
@@ -39,10 +47,10 @@ func _ready() -> void:
 	match_engine.chance_state_changed.connect(_on_chance_state_changed)
 	match_engine.match_ended.connect(_on_match_ended)
 
-	if hud:
-		if hud.has_signal("skip_requested"):
+	if is_instance_valid(hud):
+		if hud.has_signal("skip_requested") and not hud.skip_requested.is_connected(_request_skip_match):
 			hud.skip_requested.connect(_request_skip_match)
-		if hud.has_signal("next_match_requested"):
+		if hud.has_signal("next_match_requested") and not hud.next_match_requested.is_connected(_request_next_match):
 			hud.next_match_requested.connect(_request_next_match)
 
 func _resolve_career_shell() -> CareerShell:
@@ -210,10 +218,12 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 
 func _on_post_match_continue(_summary: Dictionary) -> void:
 	active_match_context.clear()
-	if is_instance_valid(career_shell):
-		career_shell.visible = true
-		career_shell.refresh_all_views()
-
+	if is_instance_valid(overview_2d):
+		overview_2d.hide()
+	var shell := _resolve_career_shell()
+	if is_instance_valid(shell):
+		shell.visible = true
+		shell.refresh_all_views()
 
 func _request_skip_match() -> void:
 	if not is_instance_valid(match_engine) or not match_engine.is_match_active():
@@ -264,14 +274,15 @@ func _process_final_whistle(final_home: int, final_away: int) -> void:
 		if not committed:
 			push_warning("CareerState could not commit this match result; showing the match report without a confirmed career update.")
 
+		var match_stats: Dictionary = match_engine.get_match_stats() if is_instance_valid(match_engine) else {}
 		var summary: Dictionary = {
 			"home_club": String(active_match_context.get("home_club", "Home")),
 			"away_club": String(active_match_context.get("away_club", "Away")),
 			"home_goals": final_home,
 			"away_goals": final_away,
 			"user_is_home": bool(active_match_context.get("user_is_home", true)),
-			"stats": match_engine.get_match_stats() if is_instance_valid(match_engine) else {},
-			"stamina_report": [],
+			"stats": match_stats,
+			"stamina_report": match_stats.get("home_player_stamina", []) if bool(active_match_context.get("user_is_home", true)) else match_stats.get("away_player_stamina", []),
 			"new_injuries": [],
 			"skip_tokens": match_engine.get_skip_tokens() if is_instance_valid(match_engine) else 0,
 			"manual_matches_played": match_engine.get_manual_matches_played() if is_instance_valid(match_engine) else 0,
@@ -286,10 +297,11 @@ func _process_final_whistle(final_home: int, final_away: int) -> void:
 		hud.show_fulltime_summary(final_home, final_away)
 
 func _toggle_career_shell() -> void:
-	if not is_instance_valid(career_shell):
+	var shell := _resolve_career_shell()
+	if not is_instance_valid(shell):
 		career_shell = CareerShell.new()
 		career_shell.name = "CareerShell"
 		add_child(career_shell)
 		career_shell.visible = true
 	else:
-		career_shell.visible = not career_shell.visible
+		shell.visible = not shell.visible

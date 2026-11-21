@@ -545,13 +545,6 @@ func _build_ui() -> void:
 	_next_match_button.pressed.connect(func() -> void: emit_signal("next_match_requested"))
 	vbox.add_child(_next_match_button)
 
-	_skip_button = Button.new()
-	_skip_button.text = "Skip (1)"
-	_skip_button.custom_minimum_size = Vector2.ZERO
-	_skip_button.focus_mode = Control.FOCUS_NONE
-	_skip_button.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_skip_button.visible = false
-	bot_hbox.add_child(_skip_button)
 
 func _add_stat_bar(parent: VBoxContainer, title_text: String, initial_val: String) -> Array:
 	var box := VBoxContainer.new()
