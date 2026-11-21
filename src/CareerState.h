@@ -1,266 +1,364 @@
 #pragma once
 
-#include <cstdint>
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
-
-#include <godot_cpp/classes/node.hpp>
-#include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/classes/node2d.hpp>
+#include <godot_cpp/variant/vector3.hpp>
+#include <godot_cpp/variant/vector2.hpp>
+#include <godot_cpp/variant/rect2.hpp>
 #include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/packed_string_array.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
-#include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/string.hpp>
-#include <godot_cpp/variant/typed_array.hpp>
-
-#include "mainplayer.h"
-#include "team.h"
-#include "youth_academy.h"
-#include "player_database.h"
+#include <vector>
+#include <unordered_map>
+#include <string>
 
 namespace godot {
 
-class MatchEngine;
-
-struct ManagerProfile {
-	std::string manager_name = "Manager";
-	std::string nationality = "Vietnam";
-	std::string preferred_formation = "4-3-3";
-	int32_t reputation = 50;        // 1..100
-	int32_t board_confidence = 75;  // 0..100 (job security)
-	int32_t seasons_managed = 0;
-	int32_t trophies_won = 0;
-	int32_t career_wins = 0;
-	int32_t career_draws = 0;
-	int32_t career_losses = 0;
+struct TacticalPosition {
+    String role;
+    float norm_x = 0.0f;
+    float norm_y = 0.0f;
 };
 
-struct ClubFinances {
-	int64_t total_balance = 0;
-	int64_t transfer_budget = 0;
-	int64_t wage_budget = 0;       // Weekly wage cap
-	int64_t weekly_wage_bill = 0;  // Current weekly outlay
+struct Scenario3DData {
+    Vector3 ball_pos_3d;
+    Vector3 attacker_pos_3d;
+    Array defender_positions_3d;
+    Array teammate_positions_3d;
 };
 
-struct BoardObjective {
-	int32_t id = 0;
-	std::string category;          // "LEAGUE", "CUP", "FINANCE", "YOUTH"
-	std::string title;
-	std::string description;
-	int32_t target_value = 0;
-	int32_t current_value = 0;
-	int64_t reward_amount = 0;
-	bool is_mandatory = true;
-	bool is_completed = false;
+struct SimPlayer {
+    String name;
+    String role = "CM";
+    bool is_home = true;
+    int slot_index = 0;
+
+    int pace = 70;
+    int shooting = 70;
+    int passing = 70;
+    int dribbling = 70;
+    int defending = 70;
+    int physical = 70;
+    float starting_stamina = 100.0f;
+    float stamina = 100.0f;
+    float recovery_timer = 0.0f;
+    float sprint_boost_timer = 0.0f;
+    float dribble_boost_timer = 0.0f;
+
+    Vector2 anchor;
+    Vector2 position;
+    Vector2 velocity;
 };
 
-struct InboxMessage {
-	int32_t id = 0;
-	std::string date_iso;          // "YYYY-MM-DD"
-	std::string category;          // "MATCH", "TRANSFER", "BOARD", "YOUTH", "INJURY"
-	std::string title;
-	std::string body;
-	bool is_read = false;
-	std::string action_route;      // e.g., "squad", "youth", "transfers", "club"
-	int32_t target_entity_id = -1; // player_id, club_id, or fixture_id
+struct MatchStats {
+    float home_possession_time = 0.0f;
+    float away_possession_time = 0.0f;
+    int home_shots = 0;
+    int away_shots = 0;
+    int home_shots_on_target = 0;
+    int away_shots_on_target = 0;
+    float home_xg = 0.0f;
+    float away_xg = 0.0f;
+    int home_passes = 0;
+    int away_passes = 0;
+    int home_passes_completed = 0;
+    int away_passes_completed = 0;
+    int home_tackles = 0;
+    int away_tackles = 0;
+    int home_interceptions = 0;
+    int away_interceptions = 0;
+    int home_saves = 0;
+    int away_saves = 0;
+    int home_corners = 0;
+    int away_corners = 0;
 };
 
-struct MatchEventRecord {
-	int32_t minute = 1;
-	int32_t club_id = -1;
-	int32_t player_id = -1;
-	std::string player_name;
-	int32_t assist_player_id = -1;
-	std::string assist_player_name;
-	std::string type = "GOAL";     // "GOAL", "PENALTY", "YELLOW", "RED"
-};
-
-struct FixtureRecord {
-	int32_t fixture_id = 0;
-	int32_t week = 1;              // Week 1-2: Pre-Season Window; Week 3+: Competitive Season
-	int32_t matchday = 1;          // 0 for Pre-Season Friendlies, 1..N for League Matchdays
-	std::string date_iso;
-	std::string competition;       // e.g., "Pre-Season Friendly", "Premier Division"
-	int32_t home_club_id = -1;
-	int32_t away_club_id = -1;
-	int32_t home_goals = -1;
-	int32_t away_goals = -1;
-	bool played = false;
-	bool is_friendly = false;      // Friendlies do not award league standings points
-	std::string stadium;
-	int32_t attendance = 0;
-	std::string match_importance = "STANDARD"; // "FRIENDLY", "STANDARD", "RIVALRY_DERBY", "TOP_CLASH", "TITLE_DECIDER", "CUP_FINAL"
-	std::vector<MatchEventRecord> events;
-};
-
-struct LeagueStandingRow {
-	int32_t club_id = -1;
-	std::string club_name;
-	int32_t played = 0;
-	int32_t won = 0;
-	int32_t drawn = 0;
-	int32_t lost = 0;
-	int32_t goals_for = 0;
-	int32_t goals_against = 0;
-	int32_t points = 0;
-};
-
-class CareerState : public Node {
-	GDCLASS(CareerState, Node)
+class MatchEngine : public Node2D {
+    GDCLASS(MatchEngine, Node2D)
 
 public:
-	static constexpr uint32_t SAVE_SCHEMA_VERSION = 1;
-	Dictionary prepare_match_context(const Dictionary &p_fixture = Dictionary(), const Ref<PlayerDatabase> &p_db = Ref<PlayerDatabase>()) const;
+    static constexpr const char* PRIMARY_FORMATIONS_PATH = "res://data/formations.csv";
+    static constexpr const char* FALLBACK_FORMATIONS_PATH = "res://../Players_Database/formations.csv";
 
-private:
-	bool _career_active = false;
-	int32_t _managed_club_id = -1;
+    enum ChanceState {
+        CHANCE_NONE = 0,
+        CHANCE_HOME_ATTACK = 1,
+        CHANCE_AWAY_ATTACK = 2
+    };
 
-	// Calendar & Season Clock (Season runs July 1 -> May 31; June off-season)
-	int32_t _season_start_year = 2026;
-	int32_t _year = 2026;
-	int32_t _month = 7;
-	int32_t _day = 1;
-	int32_t _current_matchday = 1;
+    enum Mentality {
+        MENTALITY_VERY_DEFENSIVE = 0,
+        MENTALITY_DEFENSIVE = 1,
+        MENTALITY_BALANCED = 2,
+        MENTALITY_ATTACKING = 3,
+        MENTALITY_VERY_ATTACKING = 4
+    };
 
-	// Manager Career State
-	ManagerProfile _manager;
-	ClubFinances _finances;
-	std::vector<BoardObjective> _board_objectives;
-	std::vector<InboxMessage> _inbox;
-	int32_t _next_inbox_id = 1;
+    enum PressingIntensity {
+        PRESSING_LOW = 0,
+        PRESSING_NORMAL = 1,
+        PRESSING_HIGH = 2
+    };
 
-	// League & Fixtures
-	std::vector<FixtureRecord> _fixtures;
-	std::vector<LeagueStandingRow> _standings;
+    enum TacticalTier {
+        TIER_LOW = 0,
+        TIER_NORMAL = 1,
+        TIER_HIGH = 2
+    };
 
-	// Owned C++23 Subsystems (Single Source of Truth)
-	Ref<PlayerDatabase> _player_db;
-	std::unique_ptr<YouthAcademy> _youth_academy;
-	std::vector<std::shared_ptr<Player>> _hidden_youth_prospects;
-	std::unordered_map<int32_t, std::unique_ptr<Team>> _clubs;
-	std::unordered_map<int32_t, int32_t> _captain_by_club;
-	std::unordered_map<int32_t, std::shared_ptr<Player>> _players_by_id;
-	int32_t _next_player_id = 1;
+    MatchEngine();
+    ~MatchEngine();
 
-	// Phase 5D: Clubs.csv registry, codes & lock state
-	std::unordered_map<std::string, int32_t> _club_id_by_name_lower;
-	std::unordered_map<int32_t, int32_t> _club_id_by_csv_id;
-	std::unordered_set<std::string> _redeemed_codes;
-	bool _tuesday_league_unlocked = false;
-	void _load_unlock_persistence();
-	void _save_unlock_persistence() const;
-	bool _is_club_or_league_locked(const std::string &club_name, const std::string &league_name) const;
-	static std::string _normalize_club_key(const String &p_club_name);
+    void _ready() override;
+    void _physics_process(double delta) override;
 
-	// Internal Helpers
-	std::string _format_date_iso() const;
-	std::string _format_season_label() const;
-	int32_t _compute_season_week() const;
-	void _generate_season_fixtures(int32_t start_year);
-	void _advance_single_day();
-	void _recalculate_standings();
-	void _seed_default_objectives();
-	void _simulate_ai_fixtures_for_current_date();
-	void _populate_fixture_goal_events(FixtureRecord &fix);
-	std::string _classify_match_importance(int32_t home_id, int32_t away_id, int32_t matchday, const std::string &competition) const;
-	Dictionary _fixture_to_dict(const FixtureRecord &fix, bool include_events = false) const;
-	void _process_weekly_progression();
-	void _process_end_of_season_may();
-	void _process_annual_rollover();
-	void _evaluate_hidden_youth_prospects();
-	Dictionary _player_to_dict(const std::shared_ptr<Player> &p) const;
+    // Match Flow Controls
+    void start_match();
+    void pause_match(bool p_pause);
+    void resolve_manual_scenario(bool p_success, bool p_is_home_team = true);
+    bool begin_chance(bool p_is_home_attacking, int p_attacker_idx = -1, float p_xg = 0.25f);
+
+    // Post-Goal Kickoff Resume API
+    bool is_waiting_for_kickoff_resume() const { return waiting_for_kickoff_resume; }
+    int get_kickoff_team() const { return kickoff_team; }
+    void resume_from_goal_kickoff();
+
+    // Direct Player Control & Defensive Chance Pacing/Camera API
+    int get_chance_state() const { return chance_state; }
+    bool is_chance_active() const { return chance_state != CHANCE_NONE; }
+    bool is_manual_control_active() const { return manual_control_active; }
+    bool is_manual_dribble_active() const;
+    int get_controlled_player_index() const { return user_controlled_index; }
+    bool set_controlled_player(int p_player_idx);
+    int select_nearest_defender();
+    Array get_valid_pass_targets() const;
+
+    void set_defensive_chance_time_scale(float p_scale);
+    float get_defensive_chance_time_scale() const { return defensive_chance_time_scale; }
+    float get_recommended_camera_zoom() const;
+    Vector2 get_chance_camera_focus() const;
+    Rect2 get_chance_framing_rect() const;
+
+    bool command_move_player(Vector2 p_target_pos);
+    bool command_pass(int p_target_player_idx);
+    bool command_through_ball(Vector2 p_direction_or_target);
+    bool command_shot(Vector2 p_aim_target, float p_power_ratio = 0.75f);
+    bool command_tackle();
+
+    // Skip Match & Token API
+    bool can_skip_match() const;
+    bool skip_match();
+    void record_manual_match_completed();
+
+    int get_skip_tokens() const { return skip_tokens; }
+    void set_skip_tokens(int p_tokens);
+    int get_manual_matches_played() const { return manual_matches_played; }
+
+    // Formations & Pitch Dimensions API
+    bool load_formations_from_csv(const String& p_filepath);
+    bool load_default_formations();
+    bool is_formations_loaded() const { return !formation_db.empty(); }
+    String get_loaded_formations_path() const { return loaded_formations_path; }
+    bool has_formation(const String& p_formation_name) const;
+    PackedStringArray get_available_formations() const;
+    bool set_home_formation(const String& p_formation_name);
+    bool set_away_formation(const String& p_formation_name);
+    String get_home_formation() const { return home_formation; }
+    String get_away_formation() const { return away_formation; }
+
+    void set_field_size(Vector2 p_size);
+    Vector2 get_field_size() const { return field_size; }
+
+    // Team OVR, Squad Lineup & Real-Time Substitutes API
+    void set_home_team_ovr(int p_ovr);
+    int get_home_team_ovr() const { return home_team_ovr; }
+    void set_away_team_ovr(int p_ovr);
+    int get_away_team_ovr() const { return away_team_ovr; }
+    void set_home_lineup(const Array& p_players);
+    void set_away_lineup(const Array& p_players);
+    void set_home_bench(const Array& p_bench_players);
+    void set_away_bench(const Array& p_bench_players);
+    Array get_home_squad_data() const;
+    Array get_away_squad_data() const;
+    Array get_home_bench_data() const;
+    Array get_away_bench_data() const;
+    bool substitute_player(bool p_is_home, int p_pitch_slot_idx, int p_bench_idx);
+
+    // Tactical Instructions API
+    void set_home_mentality(int p_mentality);
+    int get_home_mentality() const { return home_mentality; }
+    void set_away_mentality(int p_mentality);
+    int get_away_mentality() const { return away_mentality; }
+
+    void set_home_pressing(int p_pressing);
+    int get_home_pressing() const { return home_pressing; }
+    void set_away_pressing(int p_pressing);
+    int get_away_pressing() const { return away_pressing; }
+
+    void set_home_defensive_line(int p_line);
+    int get_home_defensive_line() const { return home_defensive_line; }
+    void set_away_defensive_line(int p_line);
+    int get_away_defensive_line() const { return away_defensive_line; }
+
+    void set_home_passing_style(int p_style);
+    int get_home_passing_style() const { return home_passing_style; }
+    void set_away_passing_style(int p_style);
+    int get_away_passing_style() const { return away_passing_style; }
+
+    void set_home_attacking_width(int p_width);
+    int get_home_attacking_width() const { return home_attacking_width; }
+    void set_away_attacking_width(int p_width);
+    int get_away_attacking_width() const { return away_attacking_width; }
+
+    void set_home_tempo(int p_tempo);
+    int get_home_tempo() const { return home_tempo; }
+    void set_away_tempo(int p_tempo);
+    int get_away_tempo() const { return away_tempo; }
+
+    void set_home_defensive_approach(int p_approach);
+    int get_home_defensive_approach() const { return home_defensive_approach; }
+    void set_away_defensive_approach(int p_approach);
+    int get_away_defensive_approach() const { return away_defensive_approach; }
+
+    // Match State & Live Telemetry Getters
+    int get_home_score() const { return home_score; }
+    int get_away_score() const { return away_score; }
+    int get_current_minute() const { return current_minute; }
+    bool is_match_paused() const { return is_paused_for_manual || waiting_for_kickoff_resume; }
+    bool is_match_active() const { return match_active; }
+    int get_possession_team() const { return possession_team; }
+    int get_ball_carrier_index() const { return ball_carrier_index; }
+    int get_pass_target_index() const { return pass_target_index; }
+    Array get_player_positions() const;
+    PackedStringArray get_player_roles() const;
+    PackedStringArray get_player_names() const;
+    PackedFloat32Array get_player_stamina() const;
+    Vector2 get_ball_position() const;
+    Dictionary get_match_stats() const;
+
+    void set_home_auto_shoot_enabled(bool p_enabled);
+    bool is_home_auto_shoot_enabled() const;
+    void trigger_wide_range_chance(bool p_is_home_attacking);
 
 protected:
-	static void _bind_methods();
+    static void _bind_methods();
 
-public:
-	CareerState();
-	~CareerState() override;
+private:
+    enum BallState {
+        BALL_CARRIED = 0,
+        BALL_IN_PASS = 1,
+        BALL_IN_SHOT = 2,
+        BALL_LOOSE = 3
+    };
 
-	// --- Career Bootstrap & Time Progression ---
-	bool start_new_career(int32_t p_club_id, const String &p_manager_name, int32_t p_start_year = 2006);
-	TypedArray<Dictionary> get_leagues_and_clubs() const;
-	bool is_promo_code_redeemed(const String &p_code) const;
-	bool is_tuesday_league_unlocked() const { return _tuesday_league_unlocked; }
-	Dictionary redeem_promo_code(const String &p_code);
-	bool is_career_active() const { return _career_active; }
-	void advance_day(int32_t p_days = 1);
-	int32_t advance_to_next_matchday();
+    void _initialize_default_squads();
+    SimPlayer _build_player_from_dict(const Dictionary& d, bool p_is_home, int p_slot_idx, int p_fallback_ovr, const String& p_default_role) const;
+    Dictionary _player_to_dict(const SimPlayer& p) const;
+    void _reset_field_positions();
+    void _apply_formation_positions(bool p_reset_ball, bool p_force_snap_all = false);
+    void _reset_after_goal(bool p_conceding_is_home);
+    void _sync_player_positions_array();
+    bool _has_valid_formation(const std::string& p_name) const;
+    float _get_fatigue_multiplier(const SimPlayer& p_player) const;
+    int _resolve_home_action_player() const;
+    bool _is_backline_role(const String& p_role) const;
 
-	// --- Top Header & Manager Career Queries ---
-	int32_t get_managed_club_id() const { return _managed_club_id; }
-	String get_current_date_iso() const;
-	String get_season_label() const;
-	Dictionary get_season_phase_info() const;
-	int32_t get_managed_club_league_rank() const;
-	Dictionary get_header_summary() const;
-	Dictionary get_manager_profile() const;
-	Dictionary get_finances() const;
-	TypedArray<Dictionary> get_board_objectives() const;
-	TypedArray<Dictionary> get_league_standings() const;
-	Dictionary get_next_fixture() const;
-	Dictionary get_club_info(int32_t p_club_id) const;
+    // Organized Defensive & Attacking Run Coordination Helpers
+    int _select_smart_presser(bool p_is_home, int p_exclude_idx = -1) const;
+    float _compute_organized_backline_x(bool p_is_home) const;
+    Vector2 _compute_lane_cover_target(bool p_is_home, const SimPlayer& p_defender) const;
+    Vector2 _compute_runner_tracking_offset(bool p_is_home, const SimPlayer& p_defender, float p_line_x, float p_base_y) const;
+    Vector2 _compute_smart_attacking_run_target(const SimPlayer& p_player, int p_index, float p_widened_anchor_y, float p_ball_prog) const;
 
-	// --- Phase 5A / 5B: Schedule & Fixture Queries ---
-	TypedArray<Dictionary> get_fixtures(const String &p_competition = "", int32_t p_matchday = -1, int32_t p_club_id = -1) const;
-	Dictionary get_fixture_details(int32_t p_fixture_id) const;
-	int32_t get_total_matchdays(const String &p_competition = "") const;
-	int32_t get_current_matchday() const;
+    // Coordinated 2D Football Simulation
+    void _step_simulation(float dt);
+    void _update_player_movement(float dt);
+    Vector2 _compute_tactical_target(const SimPlayer& p_player, int p_index, int p_primary_presser, int p_secondary_presser, float p_team_backline_x) const;
+    void _update_ball_and_actions(float dt);
+    void _evaluate_carrier_action(int p_carrier_idx);
+    void _execute_pass(int p_passer_idx, int p_receiver_idx, bool p_is_through_ball);
+    void _execute_shot(int p_shooter_idx, float p_xg, Vector2 p_custom_target = Vector2(-1.0f, -1.0f), float p_power_ratio = 0.75f);
+    void _trigger_key_chance(int p_scenario_type, bool p_is_home_attacking, int p_attacker_idx, float p_xg);
+    void _end_active_chance(bool p_goal_scored);
+    void _give_kickoff(bool p_home_kickoff);
+    void _give_gk_possession(bool p_home_gk);
+    void _log_event(const String& p_type, bool p_is_home, const String& p_player_name, const String& p_desc);
+    Vector3 _to_3d_coords(Vector2 p_pos_2d) const;
+    void _spawn_wide_range_chance(bool p_is_home_attacking);
 
-	// --- Subsystem Read/Write Bridges (Zero Duplicate State) ---
-	TypedArray<Dictionary> get_club_squad(int32_t p_club_id) const;
-	Dictionary get_player_profile(int32_t p_player_id) const;
-	TypedArray<Dictionary> get_youth_prospects() const;
-	bool promote_youth_player(int32_t p_prospect_id);
-	PackedInt32Array get_club_player_ids(int32_t p_club_id) const;
-	int32_t get_player_count() const;
+    float match_timer = 0.0f;
+    int current_minute = 0;
+    int home_score = 0;
+    int away_score = 0;
 
-	// --- Phase 4: Squad Management, Permanent Tactics & Youth Academy ---
-	bool set_starting_xi(int32_t p_club_id, const PackedInt32Array &p_xi_ids);
-	bool swap_squad_players(int32_t p_club_id, int32_t p_player_a_id, int32_t p_player_b_id);
-	bool set_club_captain(int32_t p_club_id, int32_t p_player_id);
-	int32_t get_club_captain(int32_t p_club_id) const;
+    bool is_paused_for_manual = false;
+    bool match_active = false;
+    float event_cooldown = 0.0f;
 
-	Dictionary get_club_tactics(int32_t p_club_id) const;
-	bool set_club_tactics(int32_t p_club_id, const Dictionary &p_tactics);
+    // Post-Goal Kickoff Reset & Pause State
+    bool waiting_for_kickoff_resume = false;
+    int kickoff_team = -1;
 
-	Dictionary get_youth_academy_info() const;
-	bool upgrade_youth_facility();
-	bool upgrade_youth_academy();
-	bool hire_youth_coach(const String &p_name, int32_t p_skill, double p_salary, const String &p_specialty);
-	bool fire_youth_coach(int32_t p_coach_index);
-	Dictionary scout_youth_prospect();
+    // Authoritative Chance & Direct Control State
+    int chance_state = CHANCE_NONE;
+    bool manual_control_active = false;
+    int user_controlled_index = -1;
+    bool has_user_move_target = false;
+    Vector2 user_move_target = Vector2(-1.0f, -1.0f);
+    float active_chance_timer = 0.0f;
+    float defensive_chance_time_scale = 0.65f;
 
-	// Mutation / State testing helpers
-	void set_player_condition(int32_t p_player_id, int32_t p_condition);
-	int32_t get_player_condition(int32_t p_player_id) const;
-	void set_total_balance(int64_t p_balance);
-	int64_t get_total_balance() const;
-	void set_transfer_budget(int64_t p_budget);
-	int64_t get_transfer_budget() const;
-	void set_wage_budget(int64_t p_budget);
-	int64_t get_wage_budget() const;
+    // Token Management State
+    int manual_matches_played = 0;
+    int skip_tokens = 1;
 
-	// --- MatchEngine Handoff & Post-Match Commit ---
-	bool prepare_next_match_payload(MatchEngine *p_engine) const;
-	bool commit_match_result(MatchEngine *p_engine);
+    int home_team_ovr = 75;
+    int away_team_ovr = 72;
 
-	// --- Event-Driven News / Inbox ---
-	int32_t push_inbox_message(const String &p_category, const String &p_title, const String &p_body,
-			const String &p_action_route = "", int32_t p_target_entity_id = -1);
-	TypedArray<Dictionary> get_inbox_messages(const String &p_category_filter = "") const;
-	bool mark_inbox_read(int32_t p_message_id);
-	void mark_all_inbox_read();
-	int32_t get_unread_inbox_count() const;
+    int home_mentality = MENTALITY_BALANCED;
+    int away_mentality = MENTALITY_BALANCED;
+    int home_pressing = PRESSING_NORMAL;
+    int away_pressing = PRESSING_NORMAL;
+    int home_defensive_line = TIER_NORMAL;
+    int away_defensive_line = TIER_NORMAL;
+    int home_passing_style = TIER_NORMAL;
+    int away_passing_style = TIER_NORMAL;
+    int home_attacking_width = TIER_NORMAL;
+    int away_attacking_width = TIER_NORMAL;
+    int home_tempo = TIER_NORMAL;
+    int away_tempo = TIER_NORMAL;
+    int home_defensive_approach = TIER_NORMAL;
+    int away_defensive_approach = TIER_NORMAL;
 
-	// --- Versioned Save / Load Serialization ---
-	bool save_career(const String &p_slot_name);
-	bool load_career(const String &p_slot_name);
-	TypedArray<Dictionary> list_save_slots() const;
-	bool delete_save_slot(const String &p_slot_name);
+    String home_formation = "4-3-3";
+    String away_formation = "4-4-2";
+    String loaded_formations_path = "";
+    std::unordered_map<std::string, std::vector<TacticalPosition>> formation_db;
+
+    Vector2 field_size = Vector2(1050.0f, 680.0f);
+    Vector2 ball_position = Vector2(525.0f, 340.0f);
+    Vector2 ball_velocity = Vector2(0.0f, 0.0f);
+    Vector2 ball_target = Vector2(525.0f, 340.0f);
+
+    int ball_state = BALL_CARRIED;
+    int possession_team = 0;
+    int ball_carrier_index = 9;
+    int pass_target_index = -1;
+    bool is_through_ball_in_flight = false;
+    int last_touch_index = 9;
+    float action_decision_timer = 0.25f;
+    float pending_chance_xg = 0.0f;
+    bool home_auto_shoot_enabled = false;
+    bool shot_hits_crossbar = false;
+    float last_shot_power_ratio = 0.75f;
+
+    std::vector<SimPlayer> sim_players;
+    std::vector<SimPlayer> home_bench;
+    std::vector<SimPlayer> away_bench;
+    Array player_positions;
+    MatchStats stats;
+    Scenario3DData last_scenario_3d;
 };
 
 } // namespace godot

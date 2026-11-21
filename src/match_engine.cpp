@@ -2022,7 +2022,6 @@ Vector2 MatchEngine::_compute_tactical_target(
     if (!is_home && chance_state == CHANCE_HOME_ATTACK) {
         press_trigger_dist = std::min(press_trigger_dist, 215.0f + def_quality * 115.0f);
     }
-2
 
     if (p_index == p_primary_presser && !(manual_control_active && is_home)) {
         if (ball_dist_from_own_goal <= press_trigger_dist) {

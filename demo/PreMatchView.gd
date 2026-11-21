@@ -175,7 +175,7 @@ func _build_ui() -> void:
 	squad_panel.add_child(squad_vbox)
 
 	var xi_hdr := Label.new()
-	xi_hdr.text = "STARTING XI & STAMINA READINESS"
+	xi_hdr.text = "STARTING XI & FITNESS READINESS"
 	xi_hdr.add_theme_font_size_override("font_size", 16)
 	squad_vbox.add_child(xi_hdr)
 
@@ -292,13 +292,9 @@ func _sync_context_with_career_state() -> void:
 		match_context["away_formation"] = active_fmt
 
 	var live_lineup: Array = []
-	if career_state.has_method("get_starting_xi"):
-		live_lineup = career_state.call("get_starting_xi", managed_id, active_fmt)
-	elif career_state.has_method("get_club_starting_xi"):
-		live_lineup = career_state.call("get_club_starting_xi", managed_id)
-	elif career_state.has_method("get_club_squad"):
+	if career_state.has_method("get_club_squad"):
 		var squad: Array = career_state.get_club_squad(managed_id)
-		live_lineup = _select_formation_aware_xi(squad, active_fmt)
+		live_lineup = _extract_active_starting_xi(squad, active_fmt)
 
 	if not live_lineup.is_empty():
 		if user_is_home:
@@ -307,15 +303,28 @@ func _sync_context_with_career_state() -> void:
 			match_context["away_lineup"] = live_lineup
 
 
-func _select_formation_aware_xi(squad: Array, formation: String) -> Array:
+func _extract_active_starting_xi(squad: Array, formation: String) -> Array:
 	if squad.size() <= 11:
 		return squad.duplicate(true)
+
+	# 1. Respect the exact Starting XI configured in SquadView / CareerState
 	var starters: Array = []
 	for p: Variant in squad:
-		if p is Dictionary and bool(p.get("is_starter", false)):
+		if p is Dictionary and bool(p.get("is_starting_xi", p.get("is_starter", false))):
 			starters.append(p)
 	if starters.size() == 11:
 		return starters
+
+	# 2. CareerState keeps indices 0..10 as the active Starting XI
+	if starters.is_empty() and squad.size() >= 11:
+		return squad.slice(0, 11)
+
+	return _select_formation_aware_xi(squad, formation)
+
+
+func _select_formation_aware_xi(squad: Array, formation: String) -> Array:
+	if squad.size() <= 11:
+		return squad.duplicate(true)
 
 	var parts := formation.split("-")
 	var def_req := int(parts[0]) if parts.size() >= 1 else 4
@@ -328,8 +337,10 @@ func _select_formation_aware_xi(squad: Array, formation: String) -> Array:
 
 	var pool: Array = squad.duplicate(true)
 	pool.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		var a_score := float(a.get("ovr", 70)) * (0.5 + 0.5 * (float(a.get("stamina", 100.0)) / 100.0))
-		var b_score := float(b.get("ovr", 70)) * (0.5 + 0.5 * (float(b.get("stamina", 100.0)) / 100.0))
+		var a_fit := float(a.get("condition", a.get("stamina", 100.0)))
+		var b_fit := float(b.get("condition", b.get("stamina", 100.0)))
+		var a_score := float(a.get("ovr", 70)) * (0.5 + 0.5 * (a_fit / 100.0))
+		var b_score := float(b.get("ovr", 70)) * (0.5 + 0.5 * (b_fit / 100.0))
 		return a_score > b_score
 	)
 
@@ -420,8 +431,8 @@ func _build_fallback_match_context(fixture: Dictionary) -> Dictionary:
 		"away_club": away_name,
 		"home_ovr": int(home_info.get("team_rating", home_info.get("reputation", 75))),
 		"away_ovr": int(away_info.get("team_rating", away_info.get("reputation", 75))),
-		"home_lineup": _select_formation_aware_xi(home_squad, active_fmt if home_id == managed_id else "4-3-3"),
-		"away_lineup": _select_formation_aware_xi(away_squad, active_fmt if away_id == managed_id else "4-3-3"),
+		"home_lineup": _extract_active_starting_xi(home_squad, active_fmt if home_id == managed_id else "4-3-3"),
+		"away_lineup": _extract_active_starting_xi(away_squad, active_fmt if away_id == managed_id else "4-3-3"),
 		"home_formation": active_fmt if home_id == managed_id else "4-3-3",
 		"away_formation": active_fmt if away_id == managed_id else "4-3-3",
 		"tactics": tactics,
@@ -489,8 +500,9 @@ func _refresh_view() -> void:
 	var tired_count: int = 0
 
 	for p: Dictionary in xi:
-		var stam: float = float(p.get("stamina", 100.0))
-		if stam < 65.0:
+		# Read match fitness ("condition") so it matches SquadView and reflects post-match fatigue
+		var fitness: float = float(p.get("condition", p.get("stamina", 100.0)))
+		if fitness < 65.0:
 			tired_count += 1
 		var row := HBoxContainer.new()
 		var name_lbl := Label.new()
@@ -499,12 +511,12 @@ func _refresh_view() -> void:
 		row.add_child(name_lbl)
 
 		var stam_lbl := Label.new()
-		stam_lbl.text = "Stamina: %d%%" % int(round(stam))
-		stam_lbl.add_theme_color_override("font_color", Color(0.35, 0.95, 0.55) if stam >= 75.0 else (Color(1.0, 0.80, 0.30) if stam >= 55.0 else Color(1.0, 0.35, 0.35)))
+		stam_lbl.text = "Fitness: %d%%" % int(round(fitness))
+		stam_lbl.add_theme_color_override("font_color", Color(0.35, 0.95, 0.55) if fitness >= 75.0 else (Color(1.0, 0.80, 0.30) if fitness >= 55.0 else Color(1.0, 0.35, 0.35)))
 		row.add_child(stam_lbl)
 		_lineup_list.add_child(row)
 
-	_warning_lbl.text = "Warning: %d starter(s) below 65%% stamina — higher injury risk." % tired_count if tired_count > 0 else "Squad condition optimal."
+	_warning_lbl.text = "Warning: %d starter(s) below 65%% fitness — higher injury risk." % tired_count if tired_count > 0 else "Squad condition optimal."
 
 
 func _on_toggle_away_kit() -> void:

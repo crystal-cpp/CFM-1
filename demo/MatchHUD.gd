@@ -1,3 +1,4 @@
+class_name MatchHUD
 extends Control
 
 signal skip_requested
@@ -93,6 +94,8 @@ func _ready() -> void:
 	_tactical_screen.bind_match_engine(match_engine)
 	if not _tactical_screen.resume_requested.is_connected(close_tactical_screen):
 		_tactical_screen.resume_requested.connect(close_tactical_screen)
+	if _tactical_screen.has_signal("substitution_applied") and not _tactical_screen.substitution_applied.is_connected(_on_substitution_applied):
+		_tactical_screen.substitution_applied.connect(_on_substitution_applied)
 	_tactical_screen.visible = false
 
 	match_engine.minute_changed.connect(_on_minute_changed)
@@ -101,6 +104,8 @@ func _ready() -> void:
 	match_engine.chance_state_changed.connect(_on_chance_state_changed)
 	match_engine.goal_kickoff_ready.connect(_on_goal_kickoff_ready)
 	match_engine.goal_kickoff_resumed.connect(_on_goal_kickoff_resumed)
+	if match_engine.has_signal("squad_updated") and not match_engine.squad_updated.is_connected(_on_squad_updated):
+		match_engine.squad_updated.connect(_on_squad_updated)
 
 	_set_sim_speed(1.0)
 	refresh_all()
@@ -650,6 +655,8 @@ func open_tactical_screen() -> void:
 	if _toast_label:
 		_toast_label.visible = false
 
+	if _tactical_screen.has_method("sync_squad_from_engine"):
+		_tactical_screen.sync_squad_from_engine(match_engine)
 	_tactical_screen.open_tactics()
 	refresh_all()
 	emit_signal("tactic_screen_opened")
@@ -671,6 +678,17 @@ func close_tactical_screen() -> void:
 	_paused_by_tactics = false
 	refresh_all()
 	emit_signal("tactic_screen_closed")
+
+func _on_substitution_applied(_is_home: bool, _pitch_slot: int, _bench_slot: int) -> void:
+	refresh_all()
+	var pitch_node: Node = _get_match_pitch()
+	if pitch_node != null and pitch_node.has_method("queue_redraw"):
+		pitch_node.queue_redraw()
+
+func _on_squad_updated() -> void:
+	refresh_all()
+	if _tactical_screen != null and _tactical_screen.visible and _tactical_screen.has_method("sync_squad_from_engine"):
+		_tactical_screen.sync_squad_from_engine(match_engine)
 
 func is_tactical_screen_open() -> bool:
 	return _tactical_screen != null and _tactical_screen.visible
@@ -781,7 +799,7 @@ func hide_fulltime_summary() -> void:
 		_fulltime_panel.visible = false
 	if _kickoff_overlay:
 		_kickoff_overlay.visible = false
-	if _tactical_screen:
+	if _tactical_screen and _tactical_screen.has_method("reset_match_substitutions"):
 		_tactical_screen.reset_match_substitutions()
 	_commentary_history.clear()
 	if _commentary_label:
