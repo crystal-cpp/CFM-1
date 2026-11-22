@@ -425,7 +425,7 @@ private:
     bool _is_user_player_idx(int p_idx) const { return p_idx >= _user_start_idx() && p_idx < _user_end_idx(); }
     bool _is_user_outfield_idx(int p_idx) const { return p_idx > _user_gk_idx() && p_idx < _user_end_idx(); }
 
-    int _resolve_user_action_player() const;
+
 
     bool user_is_home = true;
     int home_club_id = -1;
