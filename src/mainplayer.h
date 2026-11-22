@@ -84,14 +84,16 @@ public:
     }
 
     void CalculateOVR() {
-        if (Pos == Position::ST || Pos == Position::CF || Pos == Position::LW || Pos == Position::RW) {
+        if (Pos == Position::GK) {
+            OVR = Attributes.Defending;
+        } else if (Pos == Position::ST || Pos == Position::CF || Pos == Position::LW || Pos == Position::RW) {
             OVR = static_cast<int>((Attributes.Shooting * 0.4) + (Attributes.Pace * 0.3) + (Attributes.Dribbling * 0.3));
         } else if (Pos == Position::CM || Pos == Position::CAM || Pos == Position::CDM || Pos == Position::LM || Pos == Position::RM) {
             OVR = static_cast<int>((Attributes.Passing * 0.5) + (Attributes.Dribbling * 0.3) + (Attributes.Defending * 0.2));
         } else if (Pos == Position::CB || Pos == Position::LB || Pos == Position::RB || Pos == Position::LWB || Pos == Position::RWB) {
             OVR = static_cast<int>((Attributes.Defending * 0.6) + (Attributes.Physical * 0.3) + (Attributes.Pace * 0.1));
         } else {
-            OVR = Attributes.Defending; 
+            OVR = static_cast<int>((Attributes.Passing * 0.5) + (Attributes.Dribbling * 0.3) + (Attributes.Defending * 0.2));
         }
         OVR = std::clamp(OVR, 1, 99);
     }
@@ -254,8 +256,14 @@ private:
     }
 
     void DeclineAttributes(int amount) {
-        Attributes.Pace = std::max(1, Attributes.Pace - amount * 2); 
-        Attributes.Physical = std::max(1, Attributes.Physical - amount);
+        const int decline = std::max(0, amount);
+        Attributes.Pace = std::max(1, Attributes.Pace - decline * 2);
+        Attributes.Physical = std::max(1, Attributes.Physical - decline);
+        Attributes.Defending = std::max(1, Attributes.Defending - decline);
+        if (Pos != Position::GK) {
+            Attributes.Passing = std::max(1, Attributes.Passing - decline);
+            Attributes.Dribbling = std::max(1, Attributes.Dribbling - decline);
+        }
         CalculateOVR();
     }
 };
