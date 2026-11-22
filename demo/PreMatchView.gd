@@ -24,6 +24,11 @@ var _importance_badge: Label
 var _importance_desc: Label
 var _home_title: Label
 var _away_title: Label
+var _home_tag_label: Label
+var _away_tag_label: Label
+var _opponent_title_label: Label
+var _opponent_meta_label: Label
+var _opponent_lineup_list: VBoxContainer
 var _home_kit_swatch: ColorRect
 var _away_kit_swatch: ColorRect
 var _kit_status_lbl: Label
@@ -95,6 +100,11 @@ func _build_ui() -> void:
 	_home_kit_swatch.custom_minimum_size = Vector2(36, 36)
 	teams_row.add_child(_home_kit_swatch)
 
+	_home_tag_label = Label.new()
+	_home_tag_label.text = "HOME"
+	_home_tag_label.add_theme_font_size_override("font_size", 11)
+	teams_row.add_child(_home_tag_label)
+
 	_home_title = Label.new()
 	_home_title.add_theme_font_size_override("font_size", 22)
 	teams_row.add_child(_home_title)
@@ -108,6 +118,11 @@ func _build_ui() -> void:
 	_away_title = Label.new()
 	_away_title.add_theme_font_size_override("font_size", 22)
 	teams_row.add_child(_away_title)
+
+	_away_tag_label = Label.new()
+	_away_tag_label.text = "AWAY"
+	_away_tag_label.add_theme_font_size_override("font_size", 11)
+	teams_row.add_child(_away_tag_label)
 
 	_away_kit_swatch = ColorRect.new()
 	_away_kit_swatch.custom_minimum_size = Vector2(36, 36)
@@ -132,86 +147,119 @@ func _build_ui() -> void:
 	_importance_desc.add_theme_color_override("font_color", Color(0.75, 0.80, 0.88))
 	match_vbox.add_child(_importance_desc)
 
-	# Body Split: Left = Tactical Setup, Right = Synced Starting XI & Dynamic Bench
+	# Body Split: Left = User Squad + Tactics, Right = Opponent Scouting.
 	var body_hbox := HBoxContainer.new()
 	body_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body_hbox.add_theme_constant_override("separation", 18)
 	root_vbox.add_child(body_hbox)
 
-	var tac_panel := PanelContainer.new()
-	tac_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body_hbox.add_child(tac_panel)
+	var user_panel := PanelContainer.new()
+	user_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	user_panel.size_flags_stretch_ratio = 1.15
+	body_hbox.add_child(user_panel)
 
-	var tac_vbox := VBoxContainer.new()
-	tac_vbox.add_theme_constant_override("separation", 12)
-	tac_panel.add_child(tac_vbox)
+	var user_scroll := ScrollContainer.new()
+	user_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	user_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	user_panel.add_child(user_scroll)
+
+	var user_vbox := VBoxContainer.new()
+	user_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	user_vbox.add_theme_constant_override("separation", 7)
+	user_scroll.add_child(user_vbox)
+
+	var user_hdr := Label.new()
+	user_hdr.text = "YOUR SQUAD"
+	user_hdr.add_theme_font_size_override("font_size", 16)
+	user_vbox.add_child(user_hdr)
 
 	var tac_hdr := Label.new()
 	tac_hdr.text = "TACTICAL INSTRUCTIONS"
-	tac_hdr.add_theme_font_size_override("font_size", 16)
-	tac_vbox.add_child(tac_hdr)
+	tac_hdr.add_theme_font_size_override("font_size", 13)
+	tac_hdr.add_theme_color_override("font_color", Color(0.70, 0.82, 0.96))
+	user_vbox.add_child(tac_hdr)
 
 	_formation_opt = OptionButton.new()
 	_populate_formation_options()
 	_formation_opt.item_selected.connect(_on_tactics_changed)
-	tac_vbox.add_child(_labeled_row("Formation:", _formation_opt))
+	user_vbox.add_child(_labeled_row("Formation:", _formation_opt))
 
 	_mentality_opt = OptionButton.new()
 	for m: String in ["Very Defensive", "Defensive", "Balanced", "Attacking", "Very Attacking"]:
 		_mentality_opt.add_item(m)
 	_mentality_opt.selected = 2
 	_mentality_opt.item_selected.connect(_on_tactics_changed)
-	tac_vbox.add_child(_labeled_row("Mentality:", _mentality_opt))
+	user_vbox.add_child(_labeled_row("Mentality:", _mentality_opt))
 
 	_pressing_opt = OptionButton.new()
 	for pr: String in ["Low Block", "Normal Press", "High Gegenpress"]:
 		_pressing_opt.add_item(pr)
 	_pressing_opt.selected = 1
 	_pressing_opt.item_selected.connect(_on_tactics_changed)
-	tac_vbox.add_child(_labeled_row("Pressing:", _pressing_opt))
+	user_vbox.add_child(_labeled_row("Pressing:", _pressing_opt))
 
 	_swap_hint_lbl = Label.new()
 	_swap_hint_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_swap_hint_lbl.add_theme_font_size_override("font_size", 12)
+	_swap_hint_lbl.add_theme_font_size_override("font_size", 11)
 	_swap_hint_lbl.add_theme_color_override("font_color", Color(0.65, 0.78, 0.92))
-	_swap_hint_lbl.text = "Tip: Click Swap on any starter and bench player to adjust your lineup."
-	tac_vbox.add_child(_swap_hint_lbl)
-
-	var squad_panel := PanelContainer.new()
-	squad_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body_hbox.add_child(squad_panel)
-
-	var squad_scroll := ScrollContainer.new()
-	squad_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	squad_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	squad_panel.add_child(squad_scroll)
-
-	var squad_vbox := VBoxContainer.new()
-	squad_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	squad_vbox.add_theme_constant_override("separation", 6)
-	squad_scroll.add_child(squad_vbox)
+	_swap_hint_lbl.text = "Swap players to adjust your XI before kickoff."
+	user_vbox.add_child(_swap_hint_lbl)
 
 	var xi_hdr := Label.new()
-	xi_hdr.text = "STARTING XI & FITNESS READINESS (11)"
-	xi_hdr.add_theme_font_size_override("font_size", 15)
-	squad_vbox.add_child(xi_hdr)
+	xi_hdr.text = "YOUR STARTING XI & FITNESS (11)"
+	xi_hdr.add_theme_font_size_override("font_size", 14)
+	user_vbox.add_child(xi_hdr)
 
 	_lineup_list = VBoxContainer.new()
 	_lineup_list.add_theme_constant_override("separation", 4)
-	squad_vbox.add_child(_lineup_list)
+	user_vbox.add_child(_lineup_list)
 
 	var sep := HSeparator.new()
-	squad_vbox.add_child(sep)
+	user_vbox.add_child(sep)
 
 	_bench_header_lbl = Label.new()
-	_bench_header_lbl.text = "BENCH / SUBSTITUTES (0)"
-	_bench_header_lbl.add_theme_font_size_override("font_size", 14)
+	_bench_header_lbl.text = "YOUR BENCH / SUBSTITUTES (0)"
+	_bench_header_lbl.add_theme_font_size_override("font_size", 13)
 	_bench_header_lbl.add_theme_color_override("font_color", Color(0.75, 0.84, 0.96))
-	squad_vbox.add_child(_bench_header_lbl)
+	user_vbox.add_child(_bench_header_lbl)
 
 	_bench_list = VBoxContainer.new()
 	_bench_list.add_theme_constant_override("separation", 4)
-	squad_vbox.add_child(_bench_list)
+	user_vbox.add_child(_bench_list)
+
+	var opponent_panel := PanelContainer.new()
+	opponent_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	opponent_panel.size_flags_stretch_ratio = 0.85
+	body_hbox.add_child(opponent_panel)
+
+	var opponent_scroll := ScrollContainer.new()
+	opponent_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	opponent_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	opponent_panel.add_child(opponent_scroll)
+
+	var opponent_vbox := VBoxContainer.new()
+	opponent_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	opponent_vbox.add_theme_constant_override("separation", 8)
+	opponent_scroll.add_child(opponent_vbox)
+
+	_opponent_title_label = Label.new()
+	_opponent_title_label.text = "OPPONENT SCOUTING"
+	_opponent_title_label.add_theme_font_size_override("font_size", 16)
+	opponent_vbox.add_child(_opponent_title_label)
+
+	_opponent_meta_label = Label.new()
+	_opponent_meta_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_opponent_meta_label.add_theme_color_override("font_color", Color(0.70, 0.82, 0.96))
+	opponent_vbox.add_child(_opponent_meta_label)
+
+	var opp_xi_hdr := Label.new()
+	opp_xi_hdr.text = "EXPECTED OPPONENT LINEUP"
+	opp_xi_hdr.add_theme_font_size_override("font_size", 13)
+	opponent_vbox.add_child(opp_xi_hdr)
+
+	_opponent_lineup_list = VBoxContainer.new()
+	_opponent_lineup_list.add_theme_constant_override("separation", 5)
+	opponent_vbox.add_child(_opponent_lineup_list)
 
 	# Footer Action Bar
 	var footer := HBoxContainer.new()
@@ -336,6 +384,19 @@ func _sync_context_with_career_state() -> void:
 			match_context["away_lineup"] = live_lineup
 			match_context["away_bench"] = live_bench
 			match_context["away_squad"] = squad.duplicate(true)
+
+	match_context["user_club_id"] = match_context.get("home_club_id", managed_id) if user_is_home else match_context.get("away_club_id", managed_id)
+	match_context["opponent_club_id"] = match_context.get("away_club_id", -1) if user_is_home else match_context.get("home_club_id", -1)
+	match_context["user_club"] = match_context.get("home_club", "Home") if user_is_home else match_context.get("away_club", "Away")
+	match_context["opponent_club"] = match_context.get("away_club", "Away") if user_is_home else match_context.get("home_club", "Home")
+	match_context["user_ovr"] = match_context.get("home_ovr", 75) if user_is_home else match_context.get("away_ovr", 75)
+	match_context["opponent_ovr"] = match_context.get("away_ovr", 75) if user_is_home else match_context.get("home_ovr", 75)
+	match_context["user_formation"] = match_context.get("home_formation", "4-3-3") if user_is_home else match_context.get("away_formation", "4-3-3")
+	match_context["opponent_formation"] = match_context.get("away_formation", "4-3-3") if user_is_home else match_context.get("home_formation", "4-3-3")
+	match_context["user_lineup"] = match_context.get("home_lineup", []) if user_is_home else match_context.get("away_lineup", [])
+	match_context["opponent_lineup"] = match_context.get("away_lineup", []) if user_is_home else match_context.get("home_lineup", [])
+	match_context["user_bench"] = match_context.get("home_bench", []) if user_is_home else match_context.get("away_bench", [])
+	match_context["opponent_bench"] = match_context.get("away_bench", []) if user_is_home else match_context.get("home_bench", [])
 
 
 func _split_xi_and_bench(squad: Array, formation: String) -> Dictionary:
@@ -584,7 +645,9 @@ func _refresh_view() -> void:
 	_importance_desc.text = String(imp.get("description", ""))
 
 	_home_title.text = "%s (%d OVR)" % [match_context.get("home_club", "Home"), int(match_context.get("home_ovr", 75))]
+	_home_tag_label.text = "HOME"
 	_away_title.text = "%s (%d OVR)" % [match_context.get("away_club", "Away"), int(match_context.get("away_ovr", 75))]
+	_away_tag_label.text = "AWAY"
 
 	var kits: Dictionary = match_context.get("kits", {})
 	_home_kit_swatch.color = kits.get("home_primary", Color.RED)
@@ -619,8 +682,12 @@ func _refresh_view() -> void:
 		child.queue_free()
 
 	var user_is_home: bool = bool(match_context.get("user_is_home", true))
-	var xi: Array = match_context.get("home_lineup", []) if user_is_home else match_context.get("away_lineup", [])
-	var bench: Array = match_context.get("home_bench", []) if user_is_home else match_context.get("away_bench", [])
+	var xi: Array = match_context.get("user_lineup", match_context.get("home_lineup", []) if user_is_home else match_context.get("away_lineup", []))
+	var bench: Array = match_context.get("user_bench", match_context.get("home_bench", []) if user_is_home else match_context.get("away_bench", []))
+	var opponent_xi: Array = match_context.get("opponent_lineup", match_context.get("away_lineup", []) if user_is_home else match_context.get("home_lineup", []))
+	var opponent_name: String = String(match_context.get("opponent_club", match_context.get("away_club", "Opponent") if user_is_home else match_context.get("home_club", "Opponent")))
+	var opponent_ovr: int = int(match_context.get("opponent_ovr", match_context.get("away_ovr", 75) if user_is_home else match_context.get("home_ovr", 75)))
+	var opponent_formation: String = String(match_context.get("opponent_formation", match_context.get("away_formation", "4-3-3") if user_is_home else match_context.get("home_formation", "4-3-3")))
 	var tired_count: int = 0
 
 	for p: Dictionary in xi:
@@ -643,6 +710,20 @@ func _refresh_view() -> void:
 		_swap_hint_lbl.text = "Select a second player to complete the lineup swap (or click Cancel)."
 	else:
 		_swap_hint_lbl.text = "Bench synced to squad (%d reserve(s)). Click Swap on any two players to adjust your XI." % bench.size()
+
+	if _opponent_title_label:
+		_opponent_title_label.text = "OPPONENT SCOUTING · %s" % opponent_name
+	if _opponent_meta_label:
+		_opponent_meta_label.text = "OVR %d  ·  Formation %s  ·  Expected starters %d" % [opponent_ovr, opponent_formation, opponent_xi.size()]
+	if _opponent_lineup_list:
+		for child in _opponent_lineup_list.get_children():
+			child.queue_free()
+		for i: int in range(opponent_xi.size()):
+			var player: Dictionary = opponent_xi[i] if opponent_xi[i] is Dictionary else {}
+			var scout_row := Label.new()
+			scout_row.text = "%02d  [%s]  %s  ·  OVR %d" % [i + 1, player.get("position", "CM"), player.get("name", "Player"), int(player.get("ovr", 70))]
+			scout_row.add_theme_color_override("font_color", Color(0.82, 0.87, 0.95))
+			_opponent_lineup_list.add_child(scout_row)
 
 	_warning_lbl.text = "Warning: %d starter(s) below 65%% fitness — higher injury risk." % tired_count if tired_count > 0 else "Squad condition optimal."
 
