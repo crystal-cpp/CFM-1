@@ -91,11 +91,10 @@ func sync_squad_from_engine(p_engine: MatchEngine = null) -> void:
 
 	if match_engine.has_method("get_user_bench_snapshot"):
 		var bench_snap: Array = match_engine.call("get_user_bench_snapshot")
-		if not bench_snap.is_empty():
-			_bench_squad.clear()
-			for entry in bench_snap:
-				if entry is Dictionary:
-					_bench_squad.append((entry as Dictionary).duplicate(true))
+		_bench_squad.clear()
+		for entry in bench_snap:
+			if entry is Dictionary:
+				_bench_squad.append((entry as Dictionary).duplicate(true))
 
 	if match_engine.has_method("get_user_subs_used"):
 		_subs_used = int(match_engine.call("get_user_subs_used"))
@@ -176,7 +175,7 @@ func open_tactics() -> void:
 
 	sync_squad_from_engine(match_engine)
 	_ensure_starter_ovrs()
-	if _bench_squad.is_empty():
+	if _bench_squad.is_empty() and not match_engine.has_method("get_user_bench_snapshot"):
 		_initialize_default_bench()
 
 	_selected_starter_idx = -1
