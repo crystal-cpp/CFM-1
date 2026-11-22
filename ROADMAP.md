@@ -211,7 +211,7 @@ This milestone's startup shell, routing, save-slot entry points and scene owners
   * **7. Match Input Mapping Audit (`demo/MatchScene.gd` / `demo/MatchHUD.gd` / `src/match_engine.cpp`)**:
     * Current source maps `KEY_R` to `_request_next_match()` after full time; it is not an Advanced Dribbling action. Preserve this Next Match shortcut and verify it does not interfere with live-match movement or standard controls. Do not remove internal dribble timers/boost logic merely because the old roadmap called them an `R` ability; they are backend movement mechanics and require a separate design decision before changing.
 
-* **5F. Post-Match Stamina Persistence, Calendar Recovery, Injury System & User-Dribbling Balance**:
+* **5F. Stamina Persistence, Calendar Recovery, Injury System & Match-Control Refinements**:
   * **1. Post-Match Stamina Persistence & Configurable Daily Recovery (`CareerState.h` / `.cpp`)**:
     * **No Automatic Full Reset**: Remaining stamina at the end of a match persists directly on each player in `CareerState` (`player->SetCurrentStamina(end_stamina)`).
     * **Calendar-Driven Recovery**: Every in-game day advanced via `CareerState::advance_day()` (never real-world wall-clock time) recovers a configurable fraction of maximum stamina (`stamina_recovery_rate_per_day = 0.30f`, tunable within `0.25f–0.30f`):
