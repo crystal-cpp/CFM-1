@@ -3388,8 +3388,8 @@ void MatchEngine::_update_ball_and_actions(float dt) {
                     _log_event("tackle", defender.is_home, defender.name,
                         defender.name + String(" dispossesses ") + carrier.name + String(" with a clean tackle!"));
 
-                    if ((chance_state == CHANCE_HOME_ATTACK && !defender.is_home) ||
-                        (chance_state == CHANCE_AWAY_ATTACK && defender.is_home)) {
+                    if (((defender.is_home != user_is_home) && chance_state == _user_attack_chance_state()) ||
+                        ((defender.is_home == user_is_home) && chance_state == _user_defend_chance_state())) {
                         _end_active_chance(false);
                     }
 
