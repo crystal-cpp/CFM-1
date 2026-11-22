@@ -16,7 +16,7 @@ Source-only corrective changes have been committed after the Phase 5E implementa
 - Chance-start, interactive-event and chance-end notifications are queued during native simulation and flushed after the simulation step. Full-time waits for an active chance to finish; halftime flushes pending chance notifications after its transition.
 - CareerState and MatchScene reassert the managed side after loading fixture lineups/benches. MatchPitch no longer overwrites preloaded club formations with demo defaults, resets its cached chance state between matches, guards stale pointer/chance callbacks, deduplicates GUI/unhandled input processing, and disconnects MatchEngine signals on tree exit.
 - MatchHUD now guards duplicate engine signal connections and disconnects them on tree exit. TacticalScreen was inspected and already consumes the engine's user-side squad/bench snapshots, so no additional ownership branch was added there. PreMatchView already writes the managed XI and formation to the fixture side selected by managed club ID.
-- **Verification status: source inspection only.** These commits have not yet been built with the Windows UCRT64 toolchain or exercised in the Godot runtime. In particular, verify away-side input, chance callbacks, full-time during an active chance, and repeated match entry/exit before marking the bugs resolved.
+- **Verification status: user-confirmed working.** After these source changes, the user reported that the problem was fixed. The HOME/AWAY ownership, user-side controls and match-flow issues covered by this follow-up are now recorded as resolved based on the user's test. No independent assistant-run Windows UCRT64 build or automated runtime suite is claimed.
 
 ## 1. Milestone & Subsystem Status Matrix
 
@@ -40,7 +40,7 @@ Source-only corrective changes have been committed after the Phase 5E implementa
 | **Phase 5C-2: Main Menu & Application Startup / Career Entry Flow** | GDScript / Scene Architecture | **Implemented in repository** | **Source inspection complete; runtime QA pending** | `demo/project.godot` starts `res://app_root.tscn`; `AppRoot.gd` owns `CareerState`, persistent `MatchScene`, `CareerShell`, `MainMenuView` and `NewCareerView`, with New / Continue / Load / Settings / Exit actions, automatic Dashboard entry, load-error handling and an unsaved-progress confirmation. Settings currently exposes fullscreen only; audio settings remain Phase 5G. Validate all transitions in Godot. |
 | **Phase 5D-1: Club Registry Schema & Player CSV Metadata** | C++23 / CSV | **Implemented in source; dataset coverage complete** | **Historical/data QA pending** | Current source-level audit: 156 club rows, 13 columns (including Stadium), 28 leagues, 156 unique ClubIDs, 1,716 player rows, all player Club values matched, and all 156 clubs have at least one imported player. Historical accuracy as of 15 July 2006 remains unverified. NHHA72528 code and unlock UI are present; reward mapping still needs QA. |
 | **Phase 5D: Historical Club Data & Structured Career Bootstrap** | C++23 / GDScript / CSV | **Source implementation complete** | **Build, regression, runtime and historical-data acceptance pending** | Includes canonical ClubRecord/ClubID handling, all club metadata propagation, CSV parsing hardening, league-isolated fixtures/standings, bye-aware odd-team scheduling, pre-season pairing correction, career parser/test cleanup, and regression coverage for 156 clubs / 28 leagues, 11A7 ClubID 1098, 21-team La Liga, no odd-round double-booking and single-club Allsvenskan. Latest commit `0ea259c` adds stadium metadata, formation-aware XI selection, hidden youth-prospect lifecycle handling, match lineup/name integration and PreMatch formation/context synchronization. This records source implementation, not a successful local build or runtime pass. The 15 July 2006 historical-data audit remains open. |
-| **Phase 5E: MatchEngine Realism, Stamina, Defensive Attributes & Movement** | C++23 / GDScript | **Source implementation complete** | **Build, comparative simulation regression and Godot QA pending** | Includes stamina drain/telemetry/report handoff; attribute/OVR-weighted attacking chances; attribute-, fatigue-, role- and tactic-aware defensive tackles, duels, interceptions, blocks and clearances; defensive positioning, pressing, runner tracking, recovery runs and defensive-line behavior; movement steering; goalkeeper corridor handling; fitness-aware PreMatch selection; halftime flow; CareerState-backed lineup/bench payloads; authoritative live substitutions with five-sub/three-window limits and halftime allowance; post-match stamina/condition write-back; fixture-order club IDs/names and clash-resolved kit colors in MatchEngine; explicit user/opponent context aliases; user-relative chance triggers, opponent shooting, pass reception, scoring gates, defensive chance pacing and match telemetry; PreMatch HOME/AWAY fixture labels with user squad on the left and opponent scouting on the right; TacticalScreen user-side squad/bench/tactics/substitution handling; MatchHUD/MatchPitch labels sourced from MatchEngine. QA is intentionally tracked separately and has not been claimed as passed. |
+| **Phase 5E: MatchEngine Realism, Stamina, Defensive Attributes & Movement** | C++23 / GDScript | **Implemented; user-verified** | **User testing confirmed; reported bugs resolved** | Includes stamina drain/telemetry/report handoff; attribute/OVR-weighted attacking chances; attribute-, fatigue-, role- and tactic-aware defensive tackles, duels, interceptions, blocks and clearances; defensive positioning, pressing, runner tracking, recovery runs and defensive-line behavior; movement steering; goalkeeper corridor handling; fitness-aware PreMatch selection; halftime flow; CareerState-backed lineup/bench payloads; authoritative live substitutions with five-sub/three-window limits and halftime allowance; post-match stamina/condition write-back; fixture-order club IDs/names and clash-resolved kit colors in MatchEngine; explicit user/opponent context aliases; user-relative chance triggers, opponent shooting, pass reception, scoring gates, defensive chance pacing and match telemetry; PreMatch HOME/AWAY fixture labels with user squad on the left and opponent scouting on the right; TacticalScreen user-side squad/bench/tactics/substitution handling; MatchHUD/MatchPitch labels sourced from MatchEngine. The user reports the previous match identity/control bugs are fixed and the current 5E behavior is working. No independent assistant-run build or automated simulation suite is claimed. |
 | **Phase 5F: Stamina Persistence, ~30%/Day Recovery & Injury System** | C++23 / GDScript | **Partial source foundation; recovery/injury systems still planned** | **Career persistence source added; calendar and injury QA pending** | f27f5fbe adds post-match condition write-back for both clubs from MatchEngine stamina telemetry during commit_match_result(); configurable daily recovery, injury generation/countdown, squad availability rules, Inbox alerts and save/load acceptance remain outstanding. |
 | **Phase 5G: Audio System, Stadium Atmosphere, Commentary & Goal Celebrations** | Both | **Spec Ready** | **Scheduled (Phase 5)** | Menu/career background music, match crowd ambience, match-importance stadium intensity, contextual commentary (`GOAL`/`SAVE`/`FOUL`/`SUB`), distinct home/away goal reactions, `3.0–5.0s` touchline goal celebration run, and full-time whistle/crowd audio. | 
 | **Phase 6A: Club Management, Finances & Board** | Both | Placeholder Views | Scheduled | Separated financial ledgers, board confidence, stadium/facility upgrades. | 
@@ -179,7 +179,7 @@ Source-only corrective changes have been committed after the Phase 5E implementa
 5. Test New Career league filtering with 7-, 8- and 9-club leagues.
 6. Complete the historical 15 July 2006 data audit. Dataset coverage is complete at the club level, but historical correctness is not yet certified.
 
-### Phase 5E User-Side Identity & HOME/AWAY UI Integration Follow-Up [SOURCE IMPLEMENTED; QA PENDING]
+### Phase 5E User-Side Identity & HOME/AWAY UI Integration Follow-Up [IMPLEMENTED & USER-VERIFIED]
 
 * `CareerState::prepare_match_context()` exposes explicit `user_*` and `opponent_*` fields (club ID/name, OVR, formation, XI and bench) alongside fixture-order `home_*` / `away_*` fields.
 * `CareerState::prepare_next_match_payload()` sets MatchEngine's managed-club side, fixture club IDs/names and kit colors. If primary kits clash, the away kit uses the away club's secondary color. PreMatch's selected alternate away kit is applied to MatchEngine and the pitch.
@@ -189,9 +189,9 @@ Source-only corrective changes have been committed after the Phase 5E implementa
 * MatchHUD and MatchPitch read club display names from MatchEngine rather than placeholder team labels.
 * The standalone non-career Next Match route explicitly resets MatchEngine's user side and club names before kickoff, preventing a prior away-user career match from leaking into the default HOME/AWAY fixture.
 
-**QA status:** source changes only. SCons compilation, Godot parser/runtime checks and both user-as-HOME and user-as-AWAY match flows remain pending.
+**QA status:** the user has now confirmed the reported HOME/AWAY ownership and match-control problems are fixed and the behavior is working. Treat the 5E identity follow-up as user-verified. This is based on the user's own successful test; it does not imply an independent build or automated regression run by the assistant.
 
-### Phase 5E — MatchEngine Simulation Realism, Attribute-Coupled Defense, Stamina, Movement & Match Identity [SOURCE IMPLEMENTATION COMPLETE; QA PENDING]
+### Phase 5E — MatchEngine Simulation Realism, Attribute-Coupled Defense, Stamina, Movement & Match Identity [IMPLEMENTED & USER-VERIFIED]
 
 **Implementation snapshot (reviewed through c31f7007, b6078a95 and 041b2865):**
 
@@ -205,7 +205,7 @@ Source-only corrective changes have been committed after the Phase 5E implementa
 * MatchPitch displays role + surname labels and club-specific goal banners from MatchScene context. Halftime flow, HUD refresh hooks and post-match stamina write-back are present.
 * The redundant bench state removed in 041b286 does not remove the operative live-substitution APIs or their underlying bench storage.
 
-**Implementation status:** the agreed Phase 5E feature scope is complete in source. Comparative simulation regressions, a clean SCons build and Godot script/runtime/visual QA remain acceptance tasks and are not represented as passed.
+**Implementation and verification status:** the agreed Phase 5E feature scope is complete, and the user has confirmed that the previously reported match bugs are resolved and the current match behavior is working. Record 5E as user-verified. This status reflects the user's successful testing; no separate assistant-run clean SCons build or automated comparative simulation suite is claimed.
 
 **Preserved behavior / integration notes:** the primary visible Skip button remains (only a duplicate hidden control was removed); skip signal/backend token logic is preserved. `KEY_R` remains the post-match Next Match shortcut, not an Advanced Dribbling binding. Preserve chance-gated scoring, tactics, direct-control APIs and career/match handoff.
 
@@ -229,7 +229,7 @@ Source-only corrective changes have been committed after the Phase 5E implementa
 
    * **Match Input Mapping Audit**: Current `MatchScene.gd` maps `KEY_R` to `_request_next_match()` after full time; it is not an Advanced Dribbling binding. Preserve the Next Match shortcut and verify it is unavailable/harmless during live play. Do not remove internal dribble boost timers as part of an input cleanup.
 
-### Phase 5F — Post-Match Stamina Persistence, $\approx 30\%$/Day Recovery & Injury System
+### Phase 5F — Post-Match Stamina Persistence, $\approx 30\%$/Day Recovery, Injury System & User-Dribbling Balance
 
 1. **Dependencies & Partial Support**:
 
@@ -240,6 +240,11 @@ Source-only corrective changes have been committed after the Phase 5E implementa
    * **Stamina Persistence & Configurable Calendar Recovery**: Preserves post-match stamina without automatic full resets and recovers `stamina_recovery_rate_per_day` (default `0.30` / $30\%$ of max stamina per in-game calendar day, tunable in `0.25–0.30` range, capped at $100\%$).
 
    * **World Soccer Champs-Inspired Injury System**: Match-sustained injuries with severity-based day durations (`Minor Knock`, `Muscle Strain`, `Ligament Sprain`, `Severe Injury`), daily calendar countdown in `advance_day()`, squad selection lock while injured, `"INJURY"` Inbox alerts, and JSON save persistence.
+
+   * **User-Controlled Dribbling Pace & Defensive Recovery Balance (`MatchEngine`)**:
+     * Balance the user's attacker and opposing defenders using their individual `Pace` attributes and current stamina/fatigue during attacking chances; avoid a universal dribble-speed boost that ignores player stats.
+     * When the user commands a long-distance dribble, a faster or fresher defender must be able to accelerate, catch the attacker and win the ball. A defender with lower effective pace should not automatically outrun a faster attacker.
+     * Preserve responsive close control while tuning acceleration, top speed, turning, ball-carrying slowdown and defensive recovery. Add tests for multiple attacker/defender `Pace` matchups, stamina levels, and short- versus long-distance dribbles.
 
 ### Phase 5G — Audio System, Stadium Atmosphere, Contextual Commentary & Goal Celebrations
 
