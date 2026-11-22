@@ -3920,6 +3920,7 @@ void MatchEngine::_physics_process(double delta) {
         if (current_minute >= 45 && !halftime_triggered) {
             halftime_triggered = true;
             _trigger_halftime();
+            _flush_deferred_signals();
             return;
         }
     }
