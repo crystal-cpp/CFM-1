@@ -1061,7 +1061,7 @@ bool MatchEngine::skip_match() {
 
     chance_state = CHANCE_NONE;
     manual_control_active = false;
-    user_controlled_index = user_is_home ? 9 : 20;
+    user_controlled_index = -1;
     pending_chance_signal = false;
     pending_chance_end_signal = false;
     pending_interactive_signal = false;
@@ -4026,7 +4026,16 @@ void MatchEngine::start_match() {
 
     chance_state = CHANCE_NONE;
     manual_control_active = false;
-    user_controlled_index = -1;
+    user_controlled_index = user_is_home ? 9 : 20;
+    pending_chance_signal = false;
+    pending_chance_end_signal = false;
+    pending_interactive_signal = false;
+    pending_match_ended_signal = false;
+    pending_chance_state_val = CHANCE_NONE;
+    pending_chance_ctrl_val = user_controlled_index;
+    pending_interactive_type = 0;
+    pending_interactive_home_atk = true;
+    pending_interactive_ball_3d = Vector3();
     has_user_move_target = false;
     user_move_target = Vector2(-1.0f, -1.0f);
     pass_target_index = -1;
