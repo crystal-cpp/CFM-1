@@ -558,7 +558,9 @@ func _process(delta: float) -> void:
 						_ball_trail.remove_at(0)
 
 				if c_state == 0:
-					_update_open_play_chance_guarantee(delta)
+					# MatchEngine is the sole authority for creating open-play chances.
+					# Do not launch a second chance from this GDScript frame loop.
+					_open_play_chance_timer = 0.0
 				elif c_state == user_atk:
 					_update_attack_stop_and_go(delta)
 				elif c_state == user_def:
@@ -567,28 +569,6 @@ func _process(delta: float) -> void:
 	_update_camera_framing(delta)
 	if _pitch_canvas:
 		_pitch_canvas.queue_redraw()
-
-func _update_open_play_chance_guarantee(delta: float) -> void:
-	if _is_regression_test_running() or _is_tactical_overlay_open():
-		return
-	var carrier_idx: int = match_engine.get_ball_carrier_index()
-	var field_sz: Vector2 = match_engine.get_field_size()
-	var ball_pos: Vector2 = match_engine.get_ball_position()
-	var home_delay: float = 0.35 if _is_user_home() else 0.45
-	var away_delay: float = 0.45 if _is_user_home() else 0.35
-
-	if carrier_idx >= 1 and carrier_idx < 11 and ball_pos.x >= field_sz.x * 0.48:
-		_open_play_chance_timer += delta
-		if _open_play_chance_timer >= home_delay and match_engine.has_method("trigger_wide_range_chance"):
-			_open_play_chance_timer = 0.0
-			match_engine.trigger_wide_range_chance(true)
-	elif carrier_idx >= 12 and carrier_idx < 22 and ball_pos.x <= field_sz.x * 0.52:
-		_open_play_chance_timer += delta
-		if _open_play_chance_timer >= away_delay and match_engine.has_method("trigger_wide_range_chance"):
-			_open_play_chance_timer = 0.0
-			match_engine.trigger_wide_range_chance(false)
-	else:
-		_open_play_chance_timer = 0.0
 
 func _draw_stadium_backdrop() -> void:
 	if not _backdrop_canvas:
