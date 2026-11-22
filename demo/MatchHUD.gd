@@ -736,7 +736,7 @@ func refresh_all() -> void:
 
 	var c_state: int = match_engine.get_chance_state()
 	if match_engine.is_waiting_for_kickoff_resume():
-		_status_pill.text = "KICKOFF"
+		_status_pill.text = "HALF TIME" if match_engine.get_current_minute() == 45 else "KICKOFF"
 		_status_pill.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
 	elif is_tactical_screen_open() or _manual_paused or match_engine.is_match_paused():
 		_status_pill.text = "PAUSED"
@@ -839,7 +839,8 @@ func _on_goal_scored(home: int, away: int, is_home: bool) -> void:
 	show_toast("GOAL! %s SCORES (%d : %d)" % [scorer_side, home, away], 3.0)
 
 func _on_goal_kickoff_ready(kickoff_team: int, prompt_text: String) -> void:
-	var team_tag: String = "HOME KICKOFF" if kickoff_team == 0 else "AWAY KICKOFF"
+	var team_name: String = _home_club_name if kickoff_team == 0 else _away_club_name
+	var team_tag: String = "%s KICKOFF" % team_name
 	if _kickoff_label:
 		_kickoff_label.text = "%s\n%s" % [team_tag, prompt_text]
 	if _kickoff_overlay:
