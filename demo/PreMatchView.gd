@@ -22,6 +22,7 @@ var _selected_swap_player_id: int = -1
 
 var _importance_badge: Label
 var _importance_desc: Label
+var _stadium_label: Label
 var _home_title: Label
 var _away_title: Label
 var _home_tag_label: Label
@@ -136,6 +137,12 @@ func _build_ui() -> void:
 	_kit_status_lbl = Label.new()
 	_kit_status_lbl.add_theme_font_size_override("font_size", 13)
 	kit_row.add_child(_kit_status_lbl)
+
+	_stadium_label = Label.new()
+	_stadium_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_stadium_label.add_theme_font_size_override("font_size", 12)
+	_stadium_label.add_theme_color_override("font_color", Color(0.72, 0.80, 0.90))
+	match_vbox.add_child(_stadium_label)
 
 	_swap_kit_btn = Button.new()
 	_swap_kit_btn.text = "Toggle Away Kit"
@@ -643,6 +650,7 @@ func _refresh_view() -> void:
 	_importance_badge.text = "[ %s ]" % String(imp.get("label", "LEAGUE MATCH"))
 	_importance_badge.add_theme_color_override("font_color", imp.get("text_color", Color.WHITE))
 	_importance_desc.text = String(imp.get("description", ""))
+	_stadium_label.text = "STADIUM · %s" % String(match_context.get("stadium", "Stadium"))
 
 	_home_title.text = "%s (%d OVR)" % [match_context.get("home_club", "Home"), int(match_context.get("home_ovr", 75))]
 	_home_tag_label.text = "HOME"
