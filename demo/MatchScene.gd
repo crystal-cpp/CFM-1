@@ -40,6 +40,9 @@ func _ready() -> void:
 		overview_2d.hide()
 	else:
 		overview_2d.show()
+		if not match_engine.is_match_active():
+			match_engine.reset_standalone_match_setup()
+			match_engine.start_match()
 
 	post_match_modal = PostMatchModal.new()
 	post_match_modal.name = "PostMatchModal"
@@ -195,9 +198,14 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	if active_match_context.has("tactics") and career_state.has_method("set_club_tactics") and career_state.has_method("get_managed_club_id"):
 		career_state.set_club_tactics(career_state.get_managed_club_id(), active_match_context["tactics"])
 	if career_state.has_method("prepare_next_match_payload"):
-		career_state.prepare_next_match_payload(match_engine)
+		if not career_state.prepare_next_match_payload(match_engine):
+			push_error("MatchScene: CareerState failed to prepare the selected fixture payload.")
+			return
 	elif career_state.has_method("apply_context_to_match_engine"):
 		career_state.call("apply_context_to_match_engine", match_engine, active_match_context)
+
+	if active_match_context.has("user_is_home") and match_engine.has_method("set_user_is_home"):
+		match_engine.set_user_is_home(bool(active_match_context["user_is_home"]))
 
 	# The payload rebuilds from CareerState; reapply the user's unsaved Pre-Match XI edits afterwards.
 	if active_match_context.has("home_lineup") and active_match_context["home_lineup"] is Array and match_engine.has_method("set_home_lineup"):
