@@ -35,7 +35,7 @@
 | **Phase 5G: Audio System, Stadium Atmosphere, Commentary & Goal Celebrations** | Both | **Spec Ready** | **Scheduled (Phase 5)** | Menu/career background music, match crowd ambience, match-importance stadium intensity, contextual commentary (`GOAL`/`SAVE`/`FOUL`/`SUB`), distinct home/away goal reactions, `3.0–5.0s` touchline goal celebration run, and full-time whistle/crowd audio. | 
 | **Phase 6A: Club Management, Finances & Board** | Both | Placeholder Views | Scheduled | Separated financial ledgers, board confidence, stadium/facility upgrades. | 
 | **Phase 6B: Senior Squad Training Mechanism & `Training` Tab** | Both | **Spec Ready** | **Scheduled (Phase 6)** | Dedicated `Training` tab with 4 positional group focus programs (Attackers, Midfielders, Defenders, Goalkeepers) and potential/age-aware OVR growth. | 
-| **Phase 6C: Global UI & Typography Design System** | GDScript | **Spec Ready** | **Scheduled (Phase 6)** | Custom typography hierarchy, redesigned high-clarity player cards, and disciplined non-AI-slop dark-navy aesthetic. | 
+| **Phase 6C: Global UI & Typography Design System** | GDScript | **Spec Ready** | **Scheduled (Phase 6)** | Custom typography hierarchy, redesigned high-clarity player cards, and disciplined non-AI-slop dark-navy aesthetic. |\n| **Phase 6D: GK Rush Reliability & Three-Playstyle Attribute Display** | C++23 / GDScript | **Newly scoped** | **Scheduled (Phase 6)** | Repair the existing in-match `GK Rush` control path and verify the managed goalkeeper responds correctly in HOME/AWAY situations; display `Playstyle 1`, `Playstyle 2`, and `Playstyle 3` in player attribute/profile views. UI display is separate from Phase 7E's gated gameplay integration. | 
 | **Phase 7A–7D: Transfers, Search & Reputation** | Both | Placeholder Views | Scheduled | Valuation, fee/wage negotiations, transfer windows, six-field player search, AI transfers, loyalty, and reputation. | 
 | **Phase 7E: Exclusive** $> 96$ **Base OVR Playstyles** | Both | **Spec Ready** | **Scheduled (Phase 7)** | 22 Playstyles (`PlaystylesDescription.txt`) gated strictly to `BaseOVR > 96` non-academy players. | 
 | **Phase 7F: Mandatory Age-37 Retirement Pipeline** | Both | **Partially Implemented (Data/Save)** | **Scheduled (Phase 7)** | `RetirementAge = 37` normalization committed in CSV loader & saves; contract length clamping, `Age == 36` badge, July 1 rollover removal + Best-XI rebalance, and Board retirement report remain scheduled. | 
@@ -245,7 +245,7 @@
 
    * **Full-Time Audio**: Referee final whistle SFX + result-aware post-match crowd reaction (home win celebration, draw applause, or home defeat groan) persisting through `PostMatchModal`.
 
-### Phase 6B & 6C — Senior Squad Training Tab & Global UI/Typography Overhaul
+### Phase 6B–6D — Senior Squad Training, Global UI/Typography, Match Controls & Player Attributes
 
 1. **Dependencies & Partial Support**:
 
@@ -259,9 +259,9 @@
 
    * **UI & Typography Design System**: Bundled clean geometric/condensed font stack + tabular numerals, redesigned high-clarity player cards, and strict avoidance of AI-slop aesthetics (no heavy gradients, glowing drop-shadows, over-rounded cards, or generic dashboard clutter).
 
-### Phase 7E & 7F — Exclusive $> 96$ Base OVR Playstyles & Mandatory Age-37 Retirement
+### Phase 6D & Phase 7E/7F — Player-Facing Playstyle Display, Gated Gameplay & Retirement
 
-* **Phase 7E (`PlaystylesDescription.txt`)**: Unlocks the 22 Playstyles exclusively for senior players with `BaseOVR > 96 && !IsAcademyProduct`, wiring `Playstyle 1..3` metadata into `MatchEngine` behaviors and `PlayerProfileModal` / `SquadView` badges.
+* **Phase 6D (Player-Facing Display)**: Exposes the three existing `Playstyle 1..3` metadata fields in player attribute/profile views. This does not grant gameplay effects or alter eligibility.\n\n* **Phase 7E (`PlaystylesDescription.txt`)**: Unlocks the 22 Playstyles exclusively for senior players with `BaseOVR > 96 && !IsAcademyProduct`, wiring `Playstyle 1..3` metadata into `MatchEngine` behaviors and the relevant player UI.
 
 * **Phase 7F (Mandatory Age-37 Retirement)**: Builds on the committed `RetirementAge = 37` data/save normalization to add contract length clamping ($\min(5, \max(1, 37 - \text{Age}))$), `"Retiring at End of Season"` status badges at `Age == 36`, July 1 rollover removal of `Age >= 37` players from active squads/market/match payloads, automatic Best-XI rebalance (preserving `GK` in Slot `0`), and a `"BOARD"` Inbox retirement report.
 
@@ -295,7 +295,7 @@
 
   * `GOAL_CELEBRATION` `3.0–5.0s` touchline run timer & kickoff reset verification, contextual event emission (`GOAL`, `SAVE`, `FOUL`, `SUBSTITUTION`), home vs. away goal announcement routing, and `AudioManager` menu/match bus crossfade checks.
 
-* **Phase 6 & 7 Regression Suites**:
+* **Phase 6 & 7 Regression Suites**:\n\n  * Phase 6D: test `GK Rush` button-to-engine routing, correct managed-side keeper selection and responsiveness for both HOME/AWAY users; verify normal keeper return behavior. Verify all three Playstyle fields render in order and empty values do not produce broken UI.
 
   * `TrainingView` 4-group assignment persistence, OVR recalculation after attribute XP thresholds, and age/potential growth differentiation.
 
