@@ -1546,6 +1546,9 @@ bool MatchEngine::is_manual_dribble_active() const {
 
 
 bool MatchEngine::set_controlled_player(int p_player_idx) {
+    if (!match_active || sim_players.size() != 22) {
+        return false;
+    }
     // Allow either global sim index (11..21 for away) or local 0..10 slot
     int resolved_idx = p_player_idx;
     if (!user_is_home && p_player_idx >= 0 && p_player_idx < 11) {
@@ -1688,6 +1691,9 @@ float MatchEngine::get_recommended_camera_zoom() const {
 }
 
 int MatchEngine::_resolve_user_action_player() const {
+    if (!match_active || sim_players.size() != 22) {
+        return -1;
+    }
     int start_idx = _user_start_idx();
     int outfield_start = _user_gk_idx() + 1;
     int end_idx = _user_end_idx();
@@ -1740,7 +1746,7 @@ Array MatchEngine::get_valid_pass_targets() const {
 }
 
 bool MatchEngine::command_move_player(Vector2 p_target_pos) {
-    if (!match_active || waiting_for_kickoff_resume) {
+    if (!match_active || sim_players.size() != 22 || waiting_for_kickoff_resume) {
         return false;
     }
     if (!manual_control_active && chance_state != CHANCE_NONE) {
@@ -1792,7 +1798,7 @@ bool MatchEngine::command_move_player(Vector2 p_target_pos) {
 }
 
 bool MatchEngine::command_pass(int p_target_player_idx) {
-    if (!match_active || waiting_for_kickoff_resume || chance_state != _user_attack_chance_state()) {
+    if (!match_active || sim_players.size() != 22 || waiting_for_kickoff_resume || chance_state != _user_attack_chance_state()) {
         return false;
     }
     int resolved_target = p_target_player_idx;
@@ -1837,7 +1843,7 @@ bool MatchEngine::command_pass(int p_target_player_idx) {
 }
 
 bool MatchEngine::command_through_ball(Vector2 p_direction_or_target) {
-    if (!match_active || waiting_for_kickoff_resume || chance_state != _user_attack_chance_state()) {
+    if (!match_active || sim_players.size() != 22 || waiting_for_kickoff_resume || chance_state != _user_attack_chance_state()) {
         return false;
     }
 
@@ -1961,7 +1967,7 @@ bool MatchEngine::command_through_ball(Vector2 p_direction_or_target) {
 }
 
 bool MatchEngine::command_shot(Vector2 p_aim_target, float p_power_ratio) {
-    if (!match_active || waiting_for_kickoff_resume || chance_state != _user_attack_chance_state()) {
+    if (!match_active || sim_players.size() != 22 || waiting_for_kickoff_resume || chance_state != _user_attack_chance_state()) {
         return false;
     }
 
@@ -1992,11 +1998,14 @@ bool MatchEngine::command_shot(Vector2 p_aim_target, float p_power_ratio) {
 }
 
 bool MatchEngine::command_tackle() {
-    if (!match_active || waiting_for_kickoff_resume || chance_state != _user_defend_chance_state()) {
+    if (!match_active || sim_players.size() != 22 || waiting_for_kickoff_resume || chance_state != _user_defend_chance_state()) {
         return false;
     }
     if (!_is_user_outfield_idx(user_controlled_index)) {
         select_nearest_defender();
+    }
+    if (!_is_user_outfield_idx(user_controlled_index) || user_controlled_index < 0 || user_controlled_index >= static_cast<int>(sim_players.size())) {
+        return false;
     }
 
     SimPlayer& defender = sim_players[user_controlled_index];
@@ -2077,7 +2086,7 @@ bool MatchEngine::command_tackle() {
 }
 
 bool MatchEngine::begin_chance(bool p_is_home_attacking, int p_attacker_idx, float p_xg) {
-    if (!match_active || waiting_for_kickoff_resume) {
+    if (!match_active || sim_players.size() != 22 || waiting_for_kickoff_resume) {
         return false;
     }
 
@@ -3969,7 +3978,7 @@ void MatchEngine::pause_match(bool p_pause) {
 }
 
 void MatchEngine::resolve_manual_scenario(bool p_success, bool p_is_home_team) {
-    if (!match_active) {
+    if (!match_active || sim_players.size() != 22) {
         UtilityFunctions::printerr("MatchEngine: Ignored resolve_manual_scenario() while match is inactive.");
         return;
     }
