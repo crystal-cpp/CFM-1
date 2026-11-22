@@ -107,17 +107,42 @@ func _ready() -> void:
 		_tactical_screen.substitution_applied.connect(_on_substitution_applied)
 	_tactical_screen.visible = false
 
-	match_engine.minute_changed.connect(_on_minute_changed)
-	match_engine.goal_scored.connect(_on_goal_scored)
-	match_engine.match_event_logged.connect(_on_match_event_logged)
-	match_engine.chance_state_changed.connect(_on_chance_state_changed)
-	match_engine.goal_kickoff_ready.connect(_on_goal_kickoff_ready)
-	match_engine.goal_kickoff_resumed.connect(_on_goal_kickoff_resumed)
+	if not match_engine.minute_changed.is_connected(_on_minute_changed):
+		match_engine.minute_changed.connect(_on_minute_changed)
+	if not match_engine.goal_scored.is_connected(_on_goal_scored):
+		match_engine.goal_scored.connect(_on_goal_scored)
+	if not match_engine.match_event_logged.is_connected(_on_match_event_logged):
+		match_engine.match_event_logged.connect(_on_match_event_logged)
+	if not match_engine.chance_state_changed.is_connected(_on_chance_state_changed):
+		match_engine.chance_state_changed.connect(_on_chance_state_changed)
+	if not match_engine.goal_kickoff_ready.is_connected(_on_goal_kickoff_ready):
+		match_engine.goal_kickoff_ready.connect(_on_goal_kickoff_ready)
+	if not match_engine.goal_kickoff_resumed.is_connected(_on_goal_kickoff_resumed):
+		match_engine.goal_kickoff_resumed.connect(_on_goal_kickoff_resumed)
 	if match_engine.has_signal("squad_updated") and not match_engine.squad_updated.is_connected(_on_squad_updated):
 		match_engine.squad_updated.connect(_on_squad_updated)
 
 	_set_sim_speed(1.0)
 	refresh_all()
+
+func _exit_tree() -> void:
+	_set_sim_speed(1.0)
+	if not is_instance_valid(match_engine):
+		return
+	if match_engine.minute_changed.is_connected(_on_minute_changed):
+		match_engine.minute_changed.disconnect(_on_minute_changed)
+	if match_engine.goal_scored.is_connected(_on_goal_scored):
+		match_engine.goal_scored.disconnect(_on_goal_scored)
+	if match_engine.match_event_logged.is_connected(_on_match_event_logged):
+		match_engine.match_event_logged.disconnect(_on_match_event_logged)
+	if match_engine.chance_state_changed.is_connected(_on_chance_state_changed):
+		match_engine.chance_state_changed.disconnect(_on_chance_state_changed)
+	if match_engine.goal_kickoff_ready.is_connected(_on_goal_kickoff_ready):
+		match_engine.goal_kickoff_ready.disconnect(_on_goal_kickoff_ready)
+	if match_engine.goal_kickoff_resumed.is_connected(_on_goal_kickoff_resumed):
+		match_engine.goal_kickoff_resumed.disconnect(_on_goal_kickoff_resumed)
+	if match_engine.has_signal("squad_updated") and match_engine.squad_updated.is_connected(_on_squad_updated):
+		match_engine.squad_updated.disconnect(_on_squad_updated)
 
 func _process(_delta: float) -> void:
 	_sync_right_panel_geometry()
