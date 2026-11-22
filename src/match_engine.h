@@ -130,9 +130,6 @@ public:
     MatchEngine();
     ~MatchEngine();
 
-    void set_home_bench(const Array &p_bench);
-    void set_away_bench(const Array &p_bench);
-
     void _ready() override;
     void _physics_process(double delta) override;
 
@@ -284,9 +281,6 @@ private:
 
     void _trigger_halftime();
     bool halftime_triggered = false;
-
-    Array home_bench;
-    Array away_bench;
 
     void _initialize_default_squads();
     void _initialize_default_benches();

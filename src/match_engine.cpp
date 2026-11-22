@@ -140,10 +140,6 @@ void MatchEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("is_home_auto_shoot_enabled"), &MatchEngine::is_home_auto_shoot_enabled);
     ClassDB::bind_method(D_METHOD("trigger_wide_range_chance", "is_home_attacking"), &MatchEngine::trigger_wide_range_chance);
 
-        // Inside MatchEngine::_bind_methods():
-    ClassDB::bind_method(D_METHOD("set_home_bench", "bench"), &MatchEngine::set_home_bench);
-    ClassDB::bind_method(D_METHOD("set_away_bench", "bench"), &MatchEngine::set_away_bench);
-
     // Inspector Properties
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "home_formation"), "set_home_formation", "get_home_formation");
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "away_formation"), "set_away_formation", "get_away_formation");
