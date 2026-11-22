@@ -12,6 +12,7 @@
 #include <vector>
 #include <unordered_map>
 #include <string>
+#include <godot_cpp/variant/color.hpp>
 
 
 namespace godot {
@@ -202,6 +203,33 @@ public:
     int get_home_team_ovr() const { return home_team_ovr; }
     void set_away_team_ovr(int p_ovr);
     int get_away_team_ovr() const { return away_team_ovr; }
+    // Match Identity & User Side API (Home vs Away)
+    void set_user_is_home(bool p_is_home) { user_is_home = p_is_home; }
+    bool is_user_home() const { return user_is_home; }
+
+    void set_home_club_id(int p_id) { home_club_id = p_id; }
+    int get_home_club_id() const { return home_club_id; }
+    void set_away_club_id(int p_id) { away_club_id = p_id; }
+    int get_away_club_id() const { return away_club_id; }
+
+    void set_home_club_name(const String& p_name) { home_club_name = p_name; }
+    String get_home_club_name() const { return home_club_name; }
+    void set_away_club_name(const String& p_name) { away_club_name = p_name; }
+    String get_away_club_name() const { return away_club_name; }
+
+    void set_home_kit_color(const Color& p_color) { home_kit_color = p_color; }
+    Color get_home_kit_color() const { return home_kit_color; }
+    void set_away_kit_color(const Color& p_color) { away_kit_color = p_color; }
+    Color get_away_kit_color() const { return away_kit_color; }
+
+    Array get_away_squad_snapshot() const;
+    Array get_away_bench_snapshot() const;
+    Array get_user_squad_snapshot() const;
+    Array get_user_bench_snapshot() const;
+    bool can_make_user_substitution() const;
+    int get_user_subs_used() const { return user_is_home ? home_subs_used : away_subs_used; }
+    int get_user_sub_windows_used() const { return user_is_home ? home_sub_windows_used : away_sub_windows_used; }
+
     void set_home_lineup(const Array& p_players);
     void set_away_lineup(const Array& p_players);
     void set_home_bench(const Array& p_players);
@@ -272,6 +300,8 @@ public:
     bool is_home_auto_shoot_enabled() const;
     void trigger_wide_range_chance(bool p_is_home_attacking);
 
+    
+
 protected:
     static void _bind_methods();
 
@@ -301,7 +331,7 @@ private:
     void _sync_player_positions_array();
     bool _has_valid_formation(const std::string& p_name) const;
     float _get_fatigue_multiplier(const SimPlayer& p_player) const;
-    int _resolve_home_action_player() const;
+    int _resolve_user_action_player() const;
 
     // Dedicated Defensive Clearance Helper (1A)
     bool _try_defensive_clearance(int p_defender_idx, float p_danger_score);
@@ -383,6 +413,27 @@ private:
     int away_tempo = TIER_NORMAL;
     int home_defensive_approach = TIER_NORMAL;
     int away_defensive_approach = TIER_NORMAL;
+
+    // User-side index & direction helpers (supports playing both Home [0..10] and Away [11..21])
+    int _user_start_idx() const { return user_is_home ? 0 : 11; }
+    int _user_end_idx() const { return user_is_home ? 11 : 22; }
+    int _user_gk_idx() const { return user_is_home ? 0 : 11; }
+    int _user_attack_chance_state() const { return user_is_home ? CHANCE_HOME_ATTACK : CHANCE_AWAY_ATTACK; }
+    int _user_defend_chance_state() const { return user_is_home ? CHANCE_AWAY_ATTACK : CHANCE_HOME_ATTACK; }
+    float _user_attack_dir() const { return user_is_home ? 1.0f : -1.0f; }
+    float _user_opp_goal_x() const { return user_is_home ? field_size.x : 0.0f; }
+    bool _is_user_player_idx(int p_idx) const { return p_idx >= _user_start_idx() && p_idx < _user_end_idx(); }
+    bool _is_user_outfield_idx(int p_idx) const { return p_idx > _user_gk_idx() && p_idx < _user_end_idx(); }
+
+    int _resolve_user_action_player() const;
+
+    bool user_is_home = true;
+    int home_club_id = -1;
+    int away_club_id = -1;
+    String home_club_name = "HOME FC";
+    String away_club_name = "AWAY FC";
+    Color home_kit_color = Color(0.12f, 0.23f, 0.54f);
+    Color away_kit_color = Color(0.86f, 0.15f, 0.15f);
 
     String home_formation = "4-3-3";
     String away_formation = "4-4-2";
