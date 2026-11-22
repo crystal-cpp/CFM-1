@@ -46,9 +46,15 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	cleanup_highlight()
 
-func setup_highlight(scenario_type: int, is_home_team: bool, ball_pos: Vector3) -> void:
+func setup_highlight(scenario_type: int, is_home_team: bool, ball_pos: Vector3, player_stats: Dictionary = {}) -> void:
 	if is_highlight_active:
 		return
+
+	# Consume authoritative MatchEngine attributes; keep safe defaults only for
+	# callers that have not yet been upgraded to pass the payload.
+	for stat_name in ["pace", "shooting", "passing", "dribbling", "defending", "physical"]:
+		if player_stats.has(stat_name):
+			active_player_stats[stat_name] = clampi(int(player_stats[stat_name]), 1, 99)
 
 	is_highlight_active = true
 	current_scenario = scenario_type
