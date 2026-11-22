@@ -195,8 +195,10 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	var away_name: String = String(match_engine.get_away_club_name()) if match_engine.has_method("get_away_club_name") else String(active_match_context.get("away_club", "Away"))
 
 	var kits: Dictionary = active_match_context.get("kits", {})
-	var home_primary: Color = kits.get("home_primary", Color(0.06, 0.78, 0.48))
-	var away_primary: Color = kits.get("active_away_primary", kits.get("away_primary", kits.get("away_default_primary", Color(0.92, 0.26, 0.30))))
+	var home_primary: Color = match_engine.get_home_kit_color() if match_engine.has_method("get_home_kit_color") else kits.get("home_primary", Color(0.06, 0.78, 0.48))
+	var away_primary: Color = kits.get("active_away_primary", match_engine.get_away_kit_color() if match_engine.has_method("get_away_kit_color") else kits.get("away_primary", kits.get("away_default_primary", Color(0.92, 0.26, 0.30))))
+	if match_engine.has_method("set_away_kit_color"):
+		match_engine.set_away_kit_color(away_primary)
 	if is_instance_valid(match_pitch):
 		if match_pitch.has_method("set_kit_colors"):
 			match_pitch.set_kit_colors(home_primary, away_primary)
