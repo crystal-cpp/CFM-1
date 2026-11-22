@@ -143,6 +143,7 @@ public:
 
     // Match Flow Controls
     void start_match();
+    void reset_standalone_match_setup();
     void pause_match(bool p_pause);
     void resolve_manual_scenario(bool p_success, bool p_is_home_team = true);
     bool begin_chance(bool p_is_home_attacking, int p_attacker_idx = -1, float p_xg = 0.25f);
@@ -320,7 +321,8 @@ private:
     bool halftime_triggered = false;
 
     void _initialize_default_squads();
-    void _initialize_default_benches();
+    void _initialize_default_home_bench();
+    void _initialize_default_away_bench();
     void _apply_role_profile(SimPlayer& p_player, int p_base_ovr) const;
     void _populate_sim_player_from_dict(SimPlayer& p_player, const Dictionary& p_dict, int p_fallback_ovr) const;
     BenchPlayer _parse_bench_player_from_dict(const Dictionary& p_dict, const String& p_fallback_name, const String& p_fallback_role, int p_fallback_ovr) const;
