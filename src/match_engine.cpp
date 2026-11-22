@@ -998,8 +998,8 @@ bool MatchEngine::skip_match() {
     float home_exp = 1.35f + (ovr_diff * 0.05f);
     float away_exp = 1.10f - (ovr_diff * 0.05f);
 
-    float home_luck = static_cast<float>(UtilityFunctions::randf_range(-1.25, 1.25));
-    float away_luck = static_cast<float>(UtilityFunctions::randf_range(-1.25, 1.25));
+    float home_luck = std::clamp(static_cast<float>(UtilityFunctions::randfn(0.0, 0.70)), -1.75f, 1.75f);
+    float away_luck = std::clamp(static_cast<float>(UtilityFunctions::randfn(0.0, 0.70)), -1.75f, 1.75f);
 
     home_score = std::max(0, static_cast<int>(std::round(home_exp + home_luck)));
     away_score = std::max(0, static_cast<int>(std::round(away_exp + away_luck)));
@@ -3791,6 +3791,16 @@ void MatchEngine::_step_simulation(float dt) {
 
     _update_player_movement(dt);
     _update_ball_and_actions(dt);
+
+    // Final safety boundary for every simulation path (including loose-ball rebounds).
+    const Vector2 player_min(14.0f, 14.0f);
+    const Vector2 player_max(field_size.x - 14.0f, field_size.y - 14.0f);
+    for (SimPlayer& player : sim_players) {
+        player.position = player.position.clamp(player_min, player_max);
+        player.anchor = player.anchor.clamp(player_min, player_max);
+    }
+    ball_position.x = std::clamp(ball_position.x, 10.0f, field_size.x - 10.0f);
+    ball_position.y = std::clamp(ball_position.y, 10.0f, field_size.y - 10.0f);
     _sync_player_positions_array();
 }
 
