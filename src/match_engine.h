@@ -48,6 +48,7 @@ struct SimPlayer {
     float recovery_timer = 0.0f;
     float sprint_boost_timer = 0.0f;
     float dribble_boost_timer = 0.0f;
+    float tackle_cooldown = 0.0f;
 
     Vector2 anchor;
     Vector2 position;
@@ -100,6 +101,12 @@ class MatchEngine : public Node2D {
 public:
     static constexpr const char* PRIMARY_FORMATIONS_PATH = "res://data/formations.csv";
     static constexpr const char* FALLBACK_FORMATIONS_PATH = "res://../Players_Database/formations.csv";
+
+    bool _is_backline_role(const String& p_role) const;
+    float _get_defender_awareness_factor(const SimPlayer& p_defender) const;
+    float _get_defensive_positioning_iq(const SimPlayer& p_defender) const;
+    float _get_role_defensive_bonus(const SimPlayer& p_defender, bool p_in_box, bool p_is_aerial_or_block) const;
+    bool _is_player_recovering_position(const SimPlayer& p_player, float p_team_backline_x) const;
 
     enum ChanceState {
         CHANCE_NONE = 0,
@@ -295,8 +302,6 @@ private:
     bool _has_valid_formation(const std::string& p_name) const;
     float _get_fatigue_multiplier(const SimPlayer& p_player) const;
     int _resolve_home_action_player() const;
-    bool _is_backline_role(const String& p_role) const;
-    float _get_defender_awareness_factor(const SimPlayer& p_defender) const;
 
     // Dedicated Defensive Clearance Helper (1A)
     bool _try_defensive_clearance(int p_defender_idx, float p_danger_score);
