@@ -230,6 +230,16 @@ This milestone's startup shell, routing, save-slot entry points and scene owners
      * Tune the user's attacker movement speed during an active attacking chance against the opposing defender's movement speed so both are meaningfully governed by their individual `Pace` attributes and relevant fatigue/stamina state.
      * A long-distance dribble command must not grant the attacker an unrealistic fixed speed advantage. If the user carries the ball too far into space, a faster or fresher opponent defender should be able to accelerate, catch up, challenge and win possession; a slower defender should not automatically outrun a faster attacker.
      * Preserve responsive close-control dribbling while ensuring acceleration, top speed, turning, ball-carrying slowdown and defender recovery are balanced and consistent with player stats. Add regression scenarios covering different attacker/defender `Pace` pairings, stamina levels, and short versus long dribble distances.
+  * **4. User-Controlled Slide Tackle & Loose-Ball Deflection (`MatchEngine`)**:
+    * On a slide-tackle command, the controlled defender performs a short, readable sliding movement toward the tackle point; do not teleport the defender or make the action an automatic possession win.
+    * Resolve contact using relevant defending/physical attributes, timing, approach angle and player movement. A successful tackle knocks the ball loose rather than guaranteeing it travels safely to the user's team.
+    * The deflected ball may travel into an opponent attacker's path, allowing the opponent to recover possession and continue the attack. Include outcomes for clean dispossession, loose ball, opponent recovery, missed tackle and foul where supported by the existing foul model.
+    * Add regression scenarios for tackle timing/distance/angle, attacker and defender attributes, and loose-ball destinations on both teams.
+  * **5. Goalkeeper Rush Command, Interception & Risk (`MatchEngine`)**:
+    * On `GK Rush`, the managed goalkeeper must leave the goal area and move toward the ball using a controlled, responsive path; stop or adjust movement as the ball/player situation changes.
+    * If the goalkeeper reaches the ball first and can safely claim it, attempt a catch; if catching is not appropriate or the ball is contested, attempt a clearance/deflection away from danger according to the existing keeper action model.
+    * Rushing is a risk/reward decision, not a guaranteed save: if the command is late, poorly timed or sends the goalkeeper away from the best line, an opposing attacker may reach the ball first and score into the exposed goal.
+    * Preserve correct managed-team HOME/AWAY goalkeeper selection and add tests for early/on-time/late commands, loose balls, attacker races, catches, clearances and exposed-goal outcomes.
 
 * **5G. Audio System, Stadium Atmosphere, Contextual Commentary & Goal Celebrations (`demo/AudioManager.gd`, `MatchEngine`, `MatchHud`)**:
   * **1. Centralized `AudioManager` Autoload & Audio Buses (`demo/AudioManager.gd` & `demo/assets/audio/`)**:
