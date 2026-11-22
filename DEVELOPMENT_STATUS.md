@@ -229,7 +229,7 @@ Source-only corrective changes have been committed after the Phase 5E implementa
 
    * **Match Input Mapping Audit**: Current `MatchScene.gd` maps `KEY_R` to `_request_next_match()` after full time; it is not an Advanced Dribbling binding. Preserve the Next Match shortcut and verify it is unavailable/harmless during live play. Do not remove internal dribble boost timers as part of an input cleanup.
 
-### Phase 5F — Post-Match Stamina Persistence, $\approx 30\%$/Day Recovery, Injury System & User-Dribbling Balance
+### Phase 5F — Stamina Persistence, $\approx 30\%$/Day Recovery, Injury System & Match-Control Refinements
 
 1. **Dependencies & Partial Support**:
 
