@@ -369,7 +369,7 @@ func reset_for_new_match() -> void:
 	_atk_expected_receiver = -1
 	_atk_decision_paused = false
 	_open_play_chance_timer = 0.0
-	_last_known_chance_state = 0
+	_last_known_chance_state = match_engine.get_chance_state() if is_instance_valid(match_engine) else 0
 	_waiting_for_goal_resume = false
 	_restore_hidden_hud_nodes()
 	_set_tempo_factor(1.0)
@@ -647,6 +647,10 @@ func _ensure_user_ball_control() -> int:
 		if current_ctrl != carrier_idx and not _pointer_down:
 			match_engine.set_controlled_player(carrier_idx)
 		return carrier_idx
+	if not _is_user_idx(current_ctrl):
+		var fallback_ctrl: int = _user_start_idx() + 9
+		match_engine.set_controlled_player(fallback_ctrl)
+		return fallback_ctrl
 	return current_ctrl
 
 func _update_attack_stop_and_go(delta: float) -> void:

@@ -2460,7 +2460,8 @@ Vector2 MatchEngine::_compute_runner_tracking_offset(bool p_is_home, const SimPl
         // Avoid double-teaming a decoy runner if another teammate is already tightly marking them
         bool already_marked = false;
         int team_start = p_is_home ? 1 : 12;
-        for (int k = team_start; k < team_start + 11; k++) {
+        int team_end = p_is_home ? 11 : 22;
+        for (int k = team_start; k < team_end; k++) {
             if (&sim_players[k] == &p_defender) continue;
             if (sim_players[k].position.distance_to(opp.position) < 22.0f) {
                 already_marked = true;
@@ -3121,12 +3122,12 @@ void MatchEngine::_trigger_key_chance(int p_scenario_type, bool p_is_home_attack
     // MatchPitch and MatchHUD derive the user's input side from this value.
     chance_state = p_is_home_attacking ? CHANCE_HOME_ATTACK : CHANCE_AWAY_ATTACK;
     manual_control_active = true;
-    active_chance_timer = p_is_home_attacking ? 14.0f : 16.5f;
+    bool is_user_attacking = (p_is_home_attacking == user_is_home);
+    active_chance_timer = is_user_attacking ? 14.0f : 16.5f;
     event_cooldown = 12.0f;
     pending_chance_xg = p_xg;
     has_user_move_target = false;
 
-    bool is_user_attacking = (p_is_home_attacking == user_is_home);
     if (is_user_attacking) {
         int default_atk = user_is_home ? 9 : 20;
         user_controlled_index = _is_user_outfield_idx(p_attacker_idx) ? p_attacker_idx : default_atk;

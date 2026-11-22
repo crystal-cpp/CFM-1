@@ -204,6 +204,7 @@ public:
     int get_home_team_ovr() const { return home_team_ovr; }
     void set_away_team_ovr(int p_ovr);
     int get_away_team_ovr() const { return away_team_ovr; }
+
     // Match Identity & User Side API (Home vs Away)
     void set_user_is_home(bool p_is_home);
     bool is_user_home() const { return user_is_home; }
@@ -306,8 +307,6 @@ public:
     void set_home_auto_shoot_enabled(bool p_enabled);
     bool is_home_auto_shoot_enabled() const;
     void trigger_wide_range_chance(bool p_is_home_attacking);
-
-    
 
 protected:
     static void _bind_methods();
@@ -443,8 +442,6 @@ private:
     float _user_opp_goal_x() const { return user_is_home ? field_size.x : 0.0f; }
     bool _is_user_player_idx(int p_idx) const { return p_idx >= _user_start_idx() && p_idx < _user_end_idx(); }
     bool _is_user_outfield_idx(int p_idx) const { return p_idx > _user_gk_idx() && p_idx < _user_end_idx(); }
-
-
 
     bool user_is_home = true;
     int home_club_id = -1;

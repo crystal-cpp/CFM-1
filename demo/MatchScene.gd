@@ -88,7 +88,55 @@ func _resolve_career_shell() -> CareerShell:
 			return career_shell
 	return null
 
+func _normalize_club_name(raw_name: String) -> String:
+	return raw_name.strip_edges().to_lower()
 
+func _parse_color_safe(val: Variant, fallback: Color) -> Color:
+	if val is Color:
+		return val as Color
+	if val is String:
+		var s := (val as String).strip_edges()
+		if not s.is_empty():
+			return Color.from_string(s, fallback)
+	return fallback
+
+func _lineup_matches_club(lineup: Array, target_club_id: int, target_club_name: String) -> bool:
+	if lineup.is_empty():
+		return false
+	var norm_target := _normalize_club_name(target_club_name)
+	var id_hits: int = 0
+	var name_hits: int = 0
+	for item in lineup:
+		if not (item is Dictionary):
+			continue
+		var d := item as Dictionary
+		if target_club_id > 0:
+			var p_club_id: int = int(d.get("club_id", d.get("team_id", -1)))
+			if p_club_id == target_club_id:
+				id_hits += 1
+		if not norm_target.is_empty():
+			var p_club_name := _normalize_club_name(String(d.get("club", d.get("club_name", d.get("team", "")))))
+			if not p_club_name.is_empty() and p_club_name == norm_target:
+				name_hits += 1
+	return id_hits >= 6 or name_hits >= 6
+
+func _lineup_matches_snapshot(lineup: Array, snapshot: Array) -> bool:
+	if lineup.size() != 11 or snapshot.size() != 11:
+		return false
+	var matches: int = 0
+	for i in range(11):
+		var a: Dictionary = lineup[i] if lineup[i] is Dictionary else {}
+		var b: Dictionary = snapshot[i] if snapshot[i] is Dictionary else {}
+		var id_a := String(a.get("id", a.get("player_id", ""))).strip_edges()
+		var id_b := String(b.get("id", b.get("player_id", ""))).strip_edges()
+		if not id_a.is_empty() and id_a == id_b:
+			matches += 1
+		else:
+			var name_a := String(a.get("name", "")).strip_edges()
+			var name_b := String(b.get("name", "")).strip_edges()
+			if not name_a.is_empty() and name_a == name_b:
+				matches += 1
+	return matches >= 6
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey):
@@ -208,9 +256,20 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 		return
 
 	career_state = p_career_state
-	active_match_context = context
-	if active_match_context.has("tactics") and career_state.has_method("set_club_tactics") and career_state.has_method("get_managed_club_id"):
-		career_state.set_club_tactics(career_state.get_managed_club_id(), active_match_context["tactics"])
+	active_match_context = context.duplicate(true)
+
+	var next_fixture: Dictionary = career_state.get_next_fixture() if career_state.has_method("get_next_fixture") else {}
+	var managed_club_id: int = int(career_state.get_managed_club_id()) if career_state.has_method("get_managed_club_id") else int(active_match_context.get("managed_club_id", active_match_context.get("user_club_id", -1)))
+	var managed_club_name: String = ""
+	if career_state.has_method("get_managed_club_name"):
+		managed_club_name = String(career_state.get_managed_club_name())
+	elif career_state.has_method("get_club_name") and managed_club_id > 0:
+		managed_club_name = String(career_state.get_club_name(managed_club_id))
+	if managed_club_name.strip_edges().is_empty():
+		managed_club_name = String(active_match_context.get("managed_club_name", active_match_context.get("user_club", "")))
+
+	if active_match_context.has("tactics") and career_state.has_method("set_club_tactics") and managed_club_id > 0:
+		career_state.set_club_tactics(managed_club_id, active_match_context["tactics"])
 	if career_state.has_method("prepare_next_match_payload"):
 		if not career_state.prepare_next_match_payload(match_engine):
 			push_error("MatchScene: CareerState failed to prepare the selected fixture payload.")
@@ -218,38 +277,97 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	elif career_state.has_method("apply_context_to_match_engine"):
 		career_state.call("apply_context_to_match_engine", match_engine, active_match_context)
 
-	# Never trust a cached HOME/AWAY boolean from a view. The managed club ID
-	# and the actual fixture IDs are authoritative for user-side control.
-	if not career_state.has_method("get_managed_club_id") or not match_engine.has_method("get_home_club_id") or not match_engine.has_method("get_away_club_id"):
-		push_error("MatchScene: Cannot resolve managed club side for this fixture.")
+	var prepared_home_snapshot: Array = match_engine.get_home_squad_snapshot() if match_engine.has_method("get_home_squad_snapshot") else []
+	var prepared_away_snapshot: Array = match_engine.get_away_squad_snapshot() if match_engine.has_method("get_away_squad_snapshot") else []
+
+	# Resolve fixture club IDs and names from MatchEngine, context, and next_fixture
+	var fixture_home_id: int = int(match_engine.get_home_club_id()) if match_engine.has_method("get_home_club_id") else -1
+	var fixture_away_id: int = int(match_engine.get_away_club_id()) if match_engine.has_method("get_away_club_id") else -1
+	if fixture_home_id <= 0:
+		fixture_home_id = int(active_match_context.get("home_club_id", next_fixture.get("home_club_id", next_fixture.get("home_id", -1))))
+	if fixture_away_id <= 0:
+		fixture_away_id = int(active_match_context.get("away_club_id", next_fixture.get("away_club_id", next_fixture.get("away_id", -1))))
+
+	var fixture_home_name: String = String(match_engine.get_home_club_name()) if match_engine.has_method("get_home_club_name") else ""
+	if fixture_home_name.strip_edges().is_empty() or fixture_home_name == "HOME FC":
+		var ctx_home := String(active_match_context.get("home_club", next_fixture.get("home_club", next_fixture.get("home_name", ""))))
+		if not ctx_home.strip_edges().is_empty():
+			fixture_home_name = ctx_home
+	var fixture_away_name: String = String(match_engine.get_away_club_name()) if match_engine.has_method("get_away_club_name") else ""
+	if fixture_away_name.strip_edges().is_empty() or fixture_away_name == "AWAY FC":
+		var ctx_away := String(active_match_context.get("away_club", next_fixture.get("away_club", next_fixture.get("away_name", ""))))
+		if not ctx_away.strip_edges().is_empty():
+			fixture_away_name = ctx_away
+
+	if fixture_home_id > 0 and match_engine.has_method("set_home_club_id"):
+		match_engine.set_home_club_id(fixture_home_id)
+	if fixture_away_id > 0 and match_engine.has_method("set_away_club_id"):
+		match_engine.set_away_club_id(fixture_away_id)
+	if not fixture_home_name.strip_edges().is_empty() and match_engine.has_method("set_home_club_name"):
+		match_engine.set_home_club_name(fixture_home_name)
+	if not fixture_away_name.strip_edges().is_empty() and match_engine.has_method("set_away_club_name"):
+		match_engine.set_away_club_name(fixture_away_name)
+
+	# Authoritatively resolve HOME vs AWAY side for the managed club (e.g., FC Barcelona).
+	var authoritative_user_is_home: bool = true
+	var resolved_side: bool = false
+	if managed_club_id > 0 and (managed_club_id == fixture_home_id or managed_club_id == fixture_away_id):
+		authoritative_user_is_home = (managed_club_id == fixture_home_id)
+		resolved_side = true
+	elif not managed_club_name.strip_edges().is_empty():
+		var norm_managed := _normalize_club_name(managed_club_name)
+		if norm_managed == _normalize_club_name(fixture_home_name):
+			authoritative_user_is_home = true
+			resolved_side = true
+		elif norm_managed == _normalize_club_name(fixture_away_name):
+			authoritative_user_is_home = false
+			resolved_side = true
+
+	if not resolved_side:
+		push_error("MatchScene: Managed club (%d / '%s') does not match fixture HOME (%d / '%s') or AWAY (%d / '%s')." % [
+			managed_club_id, managed_club_name, fixture_home_id, fixture_home_name, fixture_away_id, fixture_away_name
+		])
 		return
-	var managed_club_id: int = int(career_state.get_managed_club_id())
-	var fixture_home_id: int = int(match_engine.get_home_club_id())
-	var fixture_away_id: int = int(match_engine.get_away_club_id())
-	if managed_club_id != fixture_home_id and managed_club_id != fixture_away_id:
-		push_error("MatchScene: Managed club %d is not part of fixture %d vs %d." % [managed_club_id, fixture_home_id, fixture_away_id])
-		return
-	var authoritative_user_is_home: bool = managed_club_id == fixture_home_id
+
 	match_engine.set_user_is_home(authoritative_user_is_home)
 	active_match_context["user_is_home"] = authoritative_user_is_home
+	active_match_context["home_club"] = fixture_home_name
+	active_match_context["away_club"] = fixture_away_name
 
-	# Re-map the menu's user/opponent lineups into fixture HOME/AWAY slots using
-	# the authoritative side. This prevents the managed XI appearing on the
-	# wrong team when the club is the away side.
+	# Map user/opponent and home/away lineups into authoritative HOME [0..10] and AWAY [11..21] slots.
 	var user_lineup: Array = active_match_context.get("user_lineup", [])
 	var opponent_lineup: Array = active_match_context.get("opponent_lineup", [])
 	var home_lineup: Array = active_match_context.get("home_lineup", [])
 	var away_lineup: Array = active_match_context.get("away_lineup", [])
-	if user_lineup.size() > 0:
+
+	if user_lineup.size() == 11:
 		if authoritative_user_is_home:
 			home_lineup = user_lineup
 		else:
 			away_lineup = user_lineup
-	if opponent_lineup.size() > 0:
+	if opponent_lineup.size() == 11:
 		if authoritative_user_is_home:
 			away_lineup = opponent_lineup
 		else:
 			home_lineup = opponent_lineup
+
+	# Guard against views that supplied home_lineup/away_lineup in inverted slots when user is AWAY (or HOME)
+	if user_lineup.is_empty() and home_lineup.size() == 11 and away_lineup.size() == 11:
+		var home_is_managed := _lineup_matches_club(home_lineup, managed_club_id, managed_club_name) \
+			or (_lineup_matches_snapshot(home_lineup, prepared_away_snapshot) and not _lineup_matches_snapshot(home_lineup, prepared_home_snapshot))
+		var away_is_managed := _lineup_matches_club(away_lineup, managed_club_id, managed_club_name) \
+			or (_lineup_matches_snapshot(away_lineup, prepared_home_snapshot) and not _lineup_matches_snapshot(away_lineup, prepared_away_snapshot))
+		if (authoritative_user_is_home and away_is_managed and not home_is_managed) \
+			or (not authoritative_user_is_home and home_is_managed and not away_is_managed):
+			var tmp_lineup := home_lineup
+			home_lineup = away_lineup
+			away_lineup = tmp_lineup
+
+	if home_lineup.size() != 11 and prepared_home_snapshot.size() == 11:
+		home_lineup = prepared_home_snapshot
+	if away_lineup.size() != 11 and prepared_away_snapshot.size() == 11:
+		away_lineup = prepared_away_snapshot
+
 	active_match_context["home_lineup"] = home_lineup
 	active_match_context["away_lineup"] = away_lineup
 	if home_lineup.size() != 11 or away_lineup.size() != 11:
@@ -260,8 +378,7 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	if match_engine.has_method("set_away_lineup"):
 		match_engine.call("set_away_lineup", away_lineup)
 
-	# Verify that the engine's user-side snapshot is exactly the managed club's XI.
-	# This catches HOME/AWAY slot inversion before the match simulation starts.
+	# Verify that the engine's user-side snapshot is the managed club's XI.
 	var expected_user_lineup: Array = home_lineup if authoritative_user_is_home else away_lineup
 	var actual_user_lineup: Array = match_engine.call("get_user_squad_snapshot") if match_engine.has_method("get_user_squad_snapshot") else []
 	if actual_user_lineup.size() != 11:
@@ -276,10 +393,11 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 			push_error("MatchScene: Managed squad identity mismatch at slot %d (expected player %s, engine has %s)." % [player_idx, expected_id, actual_id])
 			return
 
-	print("[MatchScene] Fixture %s vs %s | Managed club %d | Side: %s | User XI verified (%d players)." % [
+	print("[MatchScene] Fixture %s vs %s | Managed club %d (%s) | Side: %s | User XI verified (%d players)." % [
 		String(match_engine.get_home_club_name()),
 		String(match_engine.get_away_club_name()),
 		managed_club_id,
+		managed_club_name,
 		"HOME" if authoritative_user_is_home else "AWAY",
 		actual_user_lineup.size()
 	])
@@ -298,6 +416,14 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 			away_bench = opponent_bench
 		else:
 			home_bench = opponent_bench
+	if user_bench.is_empty() and (home_bench.size() > 0 or away_bench.size() > 0):
+		var home_bench_is_managed := _lineup_matches_club(home_bench, managed_club_id, managed_club_name)
+		var away_bench_is_managed := _lineup_matches_club(away_bench, managed_club_id, managed_club_name)
+		if (authoritative_user_is_home and away_bench_is_managed and not home_bench_is_managed) \
+			or (not authoritative_user_is_home and home_bench_is_managed and not away_bench_is_managed):
+			var tmp_bench := home_bench
+			home_bench = away_bench
+			away_bench = tmp_bench
 	active_match_context["home_bench"] = home_bench
 	active_match_context["away_bench"] = away_bench
 	if match_engine.has_method("set_home_bench"):
@@ -313,8 +439,11 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	var away_name: String = String(match_engine.get_away_club_name()) if match_engine.has_method("get_away_club_name") else String(active_match_context.get("away_club", "Away"))
 
 	var kits: Dictionary = active_match_context.get("kits", {})
-	var home_primary: Color = match_engine.get_home_kit_color() if match_engine.has_method("get_home_kit_color") else kits.get("home_primary", Color(0.06, 0.78, 0.48))
-	var away_primary: Color = kits.get("active_away_primary", match_engine.get_away_kit_color() if match_engine.has_method("get_away_kit_color") else kits.get("away_primary", kits.get("away_default_primary", Color(0.92, 0.26, 0.30))))
+	var default_home_col := Color(0.06, 0.78, 0.48)
+	var default_away_col := Color(0.92, 0.26, 0.30)
+	var home_primary: Color = match_engine.get_home_kit_color() if match_engine.has_method("get_home_kit_color") else _parse_color_safe(kits.get("home_primary", default_home_col), default_home_col)
+	var fallback_away: Color = match_engine.get_away_kit_color() if match_engine.has_method("get_away_kit_color") else _parse_color_safe(kits.get("away_primary", kits.get("away_default_primary", default_away_col)), default_away_col)
+	var away_primary: Color = _parse_color_safe(kits.get("active_away_primary", fallback_away), fallback_away)
 	if match_engine.has_method("set_away_kit_color"):
 		match_engine.set_away_kit_color(away_primary)
 	if is_instance_valid(match_pitch):
