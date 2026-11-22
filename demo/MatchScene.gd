@@ -305,6 +305,10 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	if match_engine.has_method("set_away_bench"):
 		match_engine.call("set_away_bench", away_bench)
 
+	# Reassert side after all lineup/bench setters so the native control slot
+	# is initialized against the final fixture ordering.
+	match_engine.set_user_is_home(authoritative_user_is_home)
+
 	var home_name: String = String(match_engine.get_home_club_name()) if match_engine.has_method("get_home_club_name") else String(active_match_context.get("home_club", "Home"))
 	var away_name: String = String(match_engine.get_away_club_name()) if match_engine.has_method("get_away_club_name") else String(active_match_context.get("away_club", "Away"))
 
