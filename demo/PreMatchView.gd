@@ -651,10 +651,15 @@ func _refresh_view() -> void:
 
 	var kits: Dictionary = match_context.get("kits", {})
 	_home_kit_swatch.color = kits.get("home_primary", Color.RED)
+	var clash_detected: bool = bool(kits.get("clash_detected", false))
+	if clash_detected:
+		use_alternate_away_kit = true
+	_swap_kit_btn.disabled = clash_detected
+	_swap_kit_btn.text = "Alternate Kit Required" if clash_detected else "Toggle Away Kit"
 	var active_away: Color = kits.get("away_primary", Color.BLUE) if use_alternate_away_kit else kits.get("away_default_primary", Color.BLUE)
 	_away_kit_swatch.color = active_away
 	kits["active_away_primary"] = active_away
-	_kit_status_lbl.text = "Kit Clash Auto-Resolved (Alternate Away Kit Active)" if bool(kits.get("clash_detected", false)) else ("Alternate Away Kit Active" if use_alternate_away_kit else "No Kit Clash Detected")
+	_kit_status_lbl.text = "Kit Clash Auto-Resolved (Alternate Away Kit Active)" if clash_detected else ("Alternate Away Kit Active" if use_alternate_away_kit else "No Kit Clash Detected")
 
 	var tactics: Dictionary = match_context.get("tactics", {})
 	var active_fmt: String = String(tactics.get("formation", "4-3-3"))
@@ -729,6 +734,10 @@ func _refresh_view() -> void:
 
 
 func _on_toggle_away_kit() -> void:
+	var kits: Dictionary = match_context.get("kits", {})
+	if bool(kits.get("clash_detected", false)):
+		use_alternate_away_kit = true
+		return
 	use_alternate_away_kit = not use_alternate_away_kit
 	var kits: Dictionary = match_context.get("kits", {})
 	var swapped: Color = kits.get("away_primary", Color.BLUE) if use_alternate_away_kit else kits.get("away_default_primary", Color.BLUE)
