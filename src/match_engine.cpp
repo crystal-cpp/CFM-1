@@ -237,6 +237,26 @@ void MatchEngine::_ready() {
     _reset_field_positions();
 }
 
+void MatchEngine::set_user_is_home(bool p_is_home) {
+    if (user_is_home == p_is_home) {
+        return;
+    }
+
+    user_is_home = p_is_home;
+
+    // Control indices are absolute simulation slots. A control selection from
+    // the previous side must never survive an HOME/AWAY handoff.
+    if (!_is_user_player_idx(user_controlled_index)) {
+        user_controlled_index = -1;
+        manual_control_active = false;
+        has_user_move_target = false;
+        user_move_target = Vector2(-1.0f, -1.0f);
+        if (match_active) {
+            emit_signal("controlled_player_changed", -1);
+        }
+    }
+}
+
 float MatchEngine::_get_fatigue_multiplier(const SimPlayer& p_player) const {
     float stamina_ratio = std::clamp(p_player.stamina / 100.0f, 0.0f, 1.0f);
     return 0.62f + (0.38f * stamina_ratio);
@@ -1203,6 +1223,19 @@ bool MatchEngine::load_formations_from_csv(const String& p_filepath) {
 bool MatchEngine::_has_valid_formation(const std::string& p_name) const {
     auto it = formation_db.find(p_name);
     return it != formation_db.end() && it->second.size() == 11;
+}
+
+bool MatchEngine::_has_valid_simulation_state() const {
+    if (sim_players.size() != 22) {
+        return false;
+    }
+    if (ball_state == BALL_CARRIED) {
+        return ball_carrier_index >= 0 && ball_carrier_index < 22;
+    }
+    if (ball_state == BALL_IN_PASS) {
+        return pass_target_index >= 0 && pass_target_index < 22;
+    }
+    return true;
 }
 
 bool MatchEngine::has_formation(const String& p_formation_name) const {
@@ -3068,12 +3101,16 @@ Vector3 MatchEngine::_to_3d_coords(Vector2 p_pos_2d) const {
 }
 
 void MatchEngine::_trigger_key_chance(int p_scenario_type, bool p_is_home_attacking, int p_attacker_idx, float p_xg) {
-    if (sim_players.size() != 22 || p_attacker_idx < 0 || p_attacker_idx >= 22 ||
+    if (!match_active || waiting_for_kickoff_resume || chance_state != CHANCE_NONE ||
+        sim_players.size() != 22 || p_attacker_idx < 0 || p_attacker_idx >= 22 ||
         ((p_attacker_idx < 11) != p_is_home_attacking)) {
-        UtilityFunctions::printerr("MatchEngine: Rejected chance with an invalid attacker index or team side.");
+        UtilityFunctions::printerr("MatchEngine: Rejected chance with an invalid transition, attacker index, or team side.");
         return;
     }
 
+    // Commit the chance state before assigning control or emitting callbacks.
+    // MatchPitch and MatchHUD derive the user's input side from this value.
+    chance_state = p_is_home_attacking ? CHANCE_HOME_ATTACK : CHANCE_AWAY_ATTACK;
     manual_control_active = true;
     active_chance_timer = p_is_home_attacking ? 14.0f : 16.5f;
     event_cooldown = 12.0f;
@@ -3086,6 +3123,13 @@ void MatchEngine::_trigger_key_chance(int p_scenario_type, bool p_is_home_attack
         user_controlled_index = _is_user_outfield_idx(p_attacker_idx) ? p_attacker_idx : default_atk;
     } else {
         select_nearest_defender();
+    }
+
+    if (!_is_user_player_idx(user_controlled_index)) {
+        UtilityFunctions::printerr("MatchEngine: Rejected chance because no managed-side player could be selected.");
+        chance_state = CHANCE_NONE;
+        manual_control_active = false;
+        return;
     }
 
     last_scenario_3d.ball_pos_3d = _to_3d_coords(ball_position);
@@ -3797,8 +3841,8 @@ void MatchEngine::_update_ball_and_actions(float dt) {
 void MatchEngine::_step_simulation(float dt) {
     // All simulation helpers use fixed HOME [0..10] / AWAY [11..21] slots.
     // Stop safely rather than indexing a partially initialized squad.
-    if (sim_players.size() != 22) {
-        UtilityFunctions::printerr("MatchEngine: Simulation stopped because the player array does not contain exactly 22 players.");
+    if (!_has_valid_simulation_state()) {
+        UtilityFunctions::printerr("MatchEngine: Simulation stopped because match state contains invalid player indices.");
         match_active = false;
         is_paused_for_manual = true;
         set_physics_process(false);
@@ -3967,6 +4011,12 @@ void MatchEngine::start_match() {
     }
 
     _reset_field_positions();
+    if (!_has_valid_simulation_state()) {
+        UtilityFunctions::printerr("MatchEngine: Cannot start match; kickoff did not produce a valid simulation state.");
+        match_active = false;
+        set_physics_process(false);
+        return;
+    }
     set_physics_process(true);
 }
 

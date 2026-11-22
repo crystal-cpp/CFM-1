@@ -43,6 +43,7 @@ func run_all_tests() -> void:
 	await _test_no_scoring_outside_active_chances()
 	await _test_chance_scoring_and_defensive_safety()
 	await _test_direct_player_control_commands()
+	await _test_user_side_chance_ownership()
 	await _test_mentality_pressing_and_stamina_effects()
 	await _test_fullscreen_tactical_screen()
 	await _test_deferred_fulltime_whistle()
@@ -228,6 +229,53 @@ func _test_direct_player_control_commands() -> void:
 	_assert(def_idx >= 1 and def_idx < 11 and match_engine.get_controlled_player_index() == def_idx, "select_nearest_defender() selects closest Home defender")
 	match_engine.resolve_manual_scenario(false, false)
 
+func _test_user_side_chance_ownership() -> void:
+	for user_is_home in [true, false]:
+		match_engine.set_user_is_home(user_is_home)
+		_start_live_match()
+
+		var user_attack_is_home: bool = user_is_home
+		var user_attacker: int = 9 if user_is_home else 20
+		var opponent_attacker: int = 20 if user_is_home else 9
+		var user_start: int = 0 if user_is_home else 11
+		var user_end: int = 11 if user_is_home else 22
+
+		match_engine.begin_chance(user_attack_is_home, user_attacker, 0.30)
+		await get_tree().process_frame
+		var attack_control: int = match_engine.get_controlled_player_index()
+		_assert(
+			match_engine.get_chance_state() == (1 if user_is_home else 2)
+			and match_engine.get_ball_carrier_index() == user_attacker
+			and attack_control == user_attacker,
+			"%s user attack controls the managed attacker" % ["HOME" if user_is_home else "AWAY"]
+		)
+		match_engine.resolve_manual_scenario(false, user_attack_is_home)
+		_assert(
+			match_engine.get_chance_state() == 0
+			and not match_engine.is_manual_control_active()
+			and match_engine.get_controlled_player_index() == -1,
+			"%s attacking chance resolves to clean open play" % ["HOME" if user_is_home else "AWAY"]
+		)
+
+		match_engine.begin_chance(not user_attack_is_home, opponent_attacker, 0.30)
+		await get_tree().process_frame
+		var defend_control: int = match_engine.get_controlled_player_index()
+		_assert(
+			match_engine.get_ball_carrier_index() == opponent_attacker
+			and defend_control >= user_start and defend_control < user_end
+			and defend_control != opponent_attacker,
+			"%s user defends with managed-side players while opponent retains its attacker" % ["HOME" if user_is_home else "AWAY"]
+		)
+		match_engine.resolve_manual_scenario(false, not user_attack_is_home)
+
+		for _chance in range(3):
+			match_engine.begin_chance(user_attack_is_home, user_attacker, 0.30)
+			await get_tree().process_frame
+			var consecutive_control: int = match_engine.get_controlled_player_index()
+			_assert(consecutive_control == user_attacker, "%s consecutive chance keeps managed-side control" % ["HOME" if user_is_home else "AWAY"])
+			match_engine.resolve_manual_scenario(false, user_attack_is_home)
+			_assert(match_engine.get_chance_state() == 0 and match_engine.get_controlled_player_index() == -1, "%s consecutive chance clears transient state" % ["HOME" if user_is_home else "AWAY"])
+
 func _test_mentality_pressing_and_stamina_effects() -> void:
 	match_engine.set_home_mentality(0)
 	match_engine.set_home_pressing(0)
@@ -352,18 +400,18 @@ func _test_pointer_lifecycle_and_gestures() -> void:
 		_assert(false, "MatchPitch node available for gesture tests")
 		return
 
-	# 1. Pointer press does not reset itself when carrier is already selected & _ensure_home_ball_control() is repeated
+	# 1. Pointer press does not reset itself when carrier is already selected & _ensure_user_ball_control() is repeated
 	_setup_attack_decision_state(9)
 	var positions: Array = match_engine.get_player_positions()
 	var carrier_local: Vector2 = match_pitch._logical_to_canvas(Vector2(positions[9]))
 	match_pitch._on_pitch_gui_input(_make_mouse_btn(carrier_local, true))
 	var down_after_press: bool = match_pitch._pointer_down
 	match_engine.set_controlled_player(9)
-	match_pitch._ensure_home_ball_control()
-	match_pitch._ensure_home_ball_control()
+	match_pitch._ensure_user_ball_control()
+	match_pitch._ensure_user_ball_control()
 	var down_after_repeated_calls: bool = match_pitch._pointer_down
 	_assert(down_after_press and down_after_repeated_calls,
-		"Pointer press stays active when carrier is already selected and _ensure_home_ball_control() is called repeatedly")
+		"Pointer press stays active when carrier is already selected and _ensure_user_ball_control() is called repeatedly")
 
 	# 2. Second touch cannot overwrite active gesture & drag remains active until matching release
 	var drag_mid: Vector2 = carrier_local + Vector2(36.0, 0.0)

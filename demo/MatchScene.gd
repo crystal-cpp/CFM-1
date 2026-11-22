@@ -270,8 +270,8 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	for player_idx in range(11):
 		var expected_player: Dictionary = expected_user_lineup[player_idx] if expected_user_lineup[player_idx] is Dictionary else {}
 		var actual_player: Dictionary = actual_user_lineup[player_idx] if actual_user_lineup[player_idx] is Dictionary else {}
-		var expected_id: String = String(expected_player.get("id", expected_player.get("player_id", "")))
-		var actual_id: String = String(actual_player.get("id", actual_player.get("player_id", "")))
+		var expected_id: String = str(expected_player.get("id", expected_player.get("player_id", "")))
+		var actual_id: String = str(actual_player.get("id", actual_player.get("player_id", "")))
 		if not expected_id.is_empty() and not actual_id.is_empty() and expected_id != actual_id:
 			push_error("MatchScene: Managed squad identity mismatch at slot %d (expected player %s, engine has %s)." % [player_idx, expected_id, actual_id])
 			return
@@ -337,6 +337,9 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 			)
 
 	match_engine.start_match()
+	if not match_engine.is_match_active() or match_engine.is_user_home() != authoritative_user_is_home:
+		push_error("MatchScene: MatchEngine failed to retain the managed HOME/AWAY side at kickoff.")
+		return
 
 	if is_instance_valid(match_pitch):
 		if match_pitch.has_method("reset_for_new_match"):

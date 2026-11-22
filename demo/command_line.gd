@@ -19,6 +19,15 @@ var peak_pointer_speed: float = 0.0
 var last_sample_pos: Vector2 = Vector2.ZERO
 var last_sample_msec: int = 0
 
+func _user_attack_chance() -> int:
+	return CHANCE_HOME_ATTACK if match_engine.is_user_home() else CHANCE_AWAY_ATTACK
+
+func _user_start_idx() -> int:
+	return 0 if match_engine.is_user_home() else 11
+
+func _user_end_idx() -> int:
+	return 11 if match_engine.is_user_home() else 22
+
 func _process(_delta: float) -> void:
 	if is_pointer_down:
 		queue_redraw()
@@ -28,7 +37,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_cancel_drag()
 		return
 
-	if match_engine.get_chance_state() != CHANCE_HOME_ATTACK:
+	if match_engine.get_chance_state() != _user_attack_chance():
 		_cancel_drag()
 		return
 
@@ -118,7 +127,7 @@ func _find_teammate_near(pos: Vector2, radius: float) -> int:
 	var positions: Array = match_engine.get_player_positions()
 	var best_idx: int = -1
 	var best_dist: float = radius
-	for i in range(1, min(11, positions.size())):
+	for i in range(_user_start_idx() + 1, min(_user_end_idx(), positions.size())):
 		var d: float = pos.distance_to(positions[i])
 		if d < best_dist:
 			best_dist = d
@@ -128,7 +137,7 @@ func _find_teammate_near(pos: Vector2, radius: float) -> int:
 func _draw() -> void:
 	if not is_pointer_down or not match_engine:
 		return
-	if match_engine.get_chance_state() != CHANCE_HOME_ATTACK:
+	if match_engine.get_chance_state() != _user_attack_chance():
 		return
 
 	var drag_vec: Vector2 = drag_current_pos - drag_start_pos

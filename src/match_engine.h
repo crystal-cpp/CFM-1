@@ -205,7 +205,7 @@ public:
     void set_away_team_ovr(int p_ovr);
     int get_away_team_ovr() const { return away_team_ovr; }
     // Match Identity & User Side API (Home vs Away)
-    void set_user_is_home(bool p_is_home) { user_is_home = p_is_home; }
+    void set_user_is_home(bool p_is_home);
     bool is_user_home() const { return user_is_home; }
 
     void set_home_club_id(int p_id) { home_club_id = p_id; }
@@ -332,6 +332,7 @@ private:
     void _reset_after_goal(bool p_conceding_is_home);
     void _sync_player_positions_array();
     bool _has_valid_formation(const std::string& p_name) const;
+    bool _has_valid_simulation_state() const;
     float _get_fatigue_multiplier(const SimPlayer& p_player) const;
     int _resolve_user_action_player() const;
 
