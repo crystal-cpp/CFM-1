@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <cstdint>
+#include <cmath>
 
 class Team {
 public:
@@ -19,7 +20,7 @@ public:
         if (StartingXI.empty()) return 0;
         int totalOVR = 0;
         for (const auto& p : StartingXI) totalOVR += p->GetOVR();
-        return totalOVR / StartingXI.size();
+        return static_cast<int>(std::lround(static_cast<double>(totalOVR) / static_cast<double>(StartingXI.size())));
     }
 
     void AddTrainingPoints(int amount) { TrainingPoints += amount; }
