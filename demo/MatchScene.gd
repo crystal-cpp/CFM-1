@@ -292,6 +292,8 @@ func _request_next_match() -> void:
 		return
 
 	Engine.time_scale = 1.0
+	if is_instance_valid(hud) and hud.has_method("_set_sim_speed"):
+		hud.call("_set_sim_speed", 1.0)
 	pending_match_ended = false
 	career_state = null
 	active_match_context.clear()
@@ -333,6 +335,8 @@ func _on_match_ended(final_home: int, final_away: int) -> void:
 
 func _process_final_whistle(final_home: int, final_away: int) -> void:
 	Engine.time_scale = 1.0
+	if is_instance_valid(hud) and hud.has_method("_set_sim_speed"):
+		hud.call("_set_sim_speed", 1.0)
 	pending_match_ended = false
 
 	if is_instance_valid(match_engine) and not _match_was_skipped:
