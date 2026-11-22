@@ -81,26 +81,26 @@ func sync_squad_from_engine(p_engine: MatchEngine = null) -> void:
 	if not is_instance_valid(match_engine):
 		return
 
-	if match_engine.has_method("get_home_squad_snapshot"):
-		var squad_snap: Array = match_engine.call("get_home_squad_snapshot")
+	if match_engine.has_method("get_user_squad_snapshot"):
+		var squad_snap: Array = match_engine.call("get_user_squad_snapshot")
 		if squad_snap.size() >= 11:
 			_starter_ovrs.clear()
 			for i in range(11):
 				var item: Dictionary = squad_snap[i] if squad_snap[i] is Dictionary else {}
 				_starter_ovrs.append(clampi(int(item.get("ovr", match_engine.get_home_team_ovr())), 40, 99))
 
-	if match_engine.has_method("get_home_bench_snapshot"):
-		var bench_snap: Array = match_engine.call("get_home_bench_snapshot")
+	if match_engine.has_method("get_user_bench_snapshot"):
+		var bench_snap: Array = match_engine.call("get_user_bench_snapshot")
 		if not bench_snap.is_empty():
 			_bench_squad.clear()
 			for entry in bench_snap:
 				if entry is Dictionary:
 					_bench_squad.append((entry as Dictionary).duplicate(true))
 
-	if match_engine.has_method("get_home_subs_used"):
-		_subs_used = int(match_engine.call("get_home_subs_used"))
-	if match_engine.has_method("get_home_sub_windows_used"):
-		_windows_used = int(match_engine.call("get_home_sub_windows_used"))
+	if match_engine.has_method("get_user_subs_used"):
+		_subs_used = int(match_engine.call("get_user_subs_used"))
+	if match_engine.has_method("get_user_sub_windows_used"):
+		_windows_used = int(match_engine.call("get_user_sub_windows_used"))
 
 	_refresh_all_views()
 
@@ -122,7 +122,7 @@ func reset_match_substitutions() -> void:
 	_selected_starter_idx = -1
 	_selected_bench_idx = -1
 	_starter_ovrs.clear()
-	if is_instance_valid(match_engine) and match_engine.has_method("get_home_bench_snapshot"):
+	if is_instance_valid(match_engine) and match_engine.has_method("get_user_bench_snapshot"):
 		sync_squad_from_engine(match_engine)
 	else:
 		_initialize_default_bench()
@@ -131,8 +131,8 @@ func _ensure_starter_ovrs() -> void:
 	if _starter_ovrs.size() == 11:
 		return
 
-	if is_instance_valid(match_engine) and match_engine.has_method("get_home_squad_snapshot"):
-		var snap: Array = match_engine.call("get_home_squad_snapshot")
+	if is_instance_valid(match_engine) and match_engine.has_method("get_user_squad_snapshot"):
+		var snap: Array = match_engine.call("get_user_squad_snapshot")
 		if snap.size() >= 11:
 			_starter_ovrs.clear()
 			for i in range(11):
@@ -535,8 +535,8 @@ func _on_resume_pressed() -> void:
 # =========================================================================
 
 func _can_substitute_now() -> bool:
-	if is_instance_valid(match_engine) and match_engine.has_method("can_make_home_substitution"):
-		return bool(match_engine.call("can_make_home_substitution"))
+	if is_instance_valid(match_engine) and match_engine.has_method("can_make_user_substitution"):
+		return bool(match_engine.call("can_make_user_substitution"))
 	return _subs_used < MAX_SUBS and _windows_used < MAX_WINDOWS
 
 func _rebuild_bench_ui() -> void:
@@ -656,12 +656,14 @@ func _execute_substitution(starter_idx: int, bench_idx: int) -> void:
 	if bool(sub.get("used", false)):
 		return
 
-	var names: PackedStringArray = match_engine.get_player_names()
-	var outgoing_name: String = names[starter_idx] if starter_idx < names.size() else ("Home #" + str(starter_idx + 1))
+	var user_is_home: bool = bool(match_engine.call("is_user_home")) if match_engine.has_method("is_user_home") else true
+	var squad_snapshot: Array = match_engine.call("get_user_squad_snapshot") if match_engine.has_method("get_user_squad_snapshot") else []
+	var outgoing: Dictionary = squad_snapshot[starter_idx] if starter_idx < squad_snapshot.size() and squad_snapshot[starter_idx] is Dictionary else {}
+	var outgoing_name: String = str(outgoing.get("name", "Player %d" % (starter_idx + 1)))
 	var incoming_name: String = str(sub.get("name", "Sub"))
 
 	if match_engine.has_method("apply_substitution"):
-		var ok: bool = bool(match_engine.call("apply_substitution", true, starter_idx, bench_idx))
+		var ok: bool = bool(match_engine.call("apply_substitution", user_is_home, starter_idx, bench_idx))
 		if not ok:
 			if _status_label:
 				_status_label.text = "Substitution blocked (5 subs / 3 windows limit reached)."
@@ -674,19 +676,18 @@ func _execute_substitution(starter_idx: int, bench_idx: int) -> void:
 			_status_label.text = "SUB (%d/%d · Win %d/%d): %s ON for %s" % [
 				_subs_used, MAX_SUBS, _windows_used, MAX_WINDOWS, incoming_name, outgoing_name
 			]
-		emit_signal("substitution_applied", true, starter_idx, bench_idx)
+		emit_signal("substitution_applied", user_is_home, starter_idx, bench_idx)
 		return
 
-	# Fallback if running against older binary without apply_substitution
+	# Compatibility fallback for an older extension without apply_substitution.
 	_ensure_starter_ovrs()
-	var roles: PackedStringArray = match_engine.get_player_roles()
-	var slot_role: String = roles[starter_idx] if starter_idx < roles.size() else "CM"
 	var sub_ovr: int = int(sub.get("ovr", match_engine.get_home_team_ovr()))
-
+	var slot_role: String = str(outgoing.get("position", "CM"))
 	var lineup_arr: Array = []
 	for i in range(11):
-		var p_name: String = names[i] if i < names.size() else ("Home #" + str(i + 1))
-		var p_role: String = roles[i] if i < roles.size() else "CM"
+		var current: Dictionary = squad_snapshot[i] if i < squad_snapshot.size() and squad_snapshot[i] is Dictionary else {}
+		var p_name: String = str(current.get("name", "Player %d" % (i + 1)))
+		var p_role: String = str(current.get("position", "CM"))
 		if i == starter_idx:
 			lineup_arr.append({
 				"name": incoming_name,
@@ -703,7 +704,10 @@ func _execute_substitution(starter_idx: int, bench_idx: int) -> void:
 		else:
 			lineup_arr.append({"name": p_name, "position": p_role})
 
-	match_engine.set_home_lineup(lineup_arr)
+	if user_is_home:
+		match_engine.set_home_lineup(lineup_arr)
+	else:
+		match_engine.set_away_lineup(lineup_arr)
 	_starter_ovrs[starter_idx] = sub_ovr
 	sub["used"] = true
 	_bench_squad[bench_idx] = sub
@@ -716,32 +720,37 @@ func _execute_substitution(starter_idx: int, bench_idx: int) -> void:
 		_status_label.text = "SUB (%d/%d): %s ON for %s" % [_subs_used, MAX_SUBS, incoming_name, outgoing_name]
 
 	_refresh_all_views()
-	emit_signal("substitution_applied", true, starter_idx, bench_idx)
+	emit_signal("substitution_applied", user_is_home, starter_idx, bench_idx)
 
 func _swap_starters(idx_a: int, idx_b: int) -> void:
 	if not is_instance_valid(match_engine):
 		return
 	_ensure_starter_ovrs()
-	var names: PackedStringArray = match_engine.get_player_names()
-	var roles: PackedStringArray = match_engine.get_player_roles()
-	if idx_a >= names.size() or idx_b >= names.size():
+	var snap: Array = match_engine.call("get_user_squad_snapshot") if match_engine.has_method("get_user_squad_snapshot") else []
+	if idx_a >= snap.size() or idx_b >= snap.size():
 		return
 
-	var snap: Array = match_engine.call("get_home_squad_snapshot") if match_engine.has_method("get_home_squad_snapshot") else []
 	var lineup_arr: Array = []
 	for i in range(11):
 		var src_idx: int = idx_b if i == idx_a else (idx_a if i == idx_b else i)
-		var d: Dictionary = (snap[src_idx] as Dictionary).duplicate(true) if (src_idx < snap.size() and snap[src_idx] is Dictionary) else {"name": names[src_idx]}
-		d["position"] = roles[i] if i < roles.size() else "CM"
+		var d: Dictionary = (snap[src_idx] as Dictionary).duplicate(true) if snap[src_idx] is Dictionary else {}
+		d["position"] = str(snap[i].get("position", "CM")) if snap[i] is Dictionary else "CM"
 		lineup_arr.append(d)
-	match_engine.set_home_lineup(lineup_arr)
+
+	var user_is_home: bool = bool(match_engine.call("is_user_home")) if match_engine.has_method("is_user_home") else true
+	if user_is_home:
+		match_engine.set_home_lineup(lineup_arr)
+	else:
+		match_engine.set_away_lineup(lineup_arr)
 
 	var tmp_ovr: int = _starter_ovrs[idx_a]
 	_starter_ovrs[idx_a] = _starter_ovrs[idx_b]
 	_starter_ovrs[idx_b] = tmp_ovr
 
 	if _status_label:
-		_status_label.text = "Swapped %s and %s positions" % [names[idx_a], names[idx_b]]
+		var name_a: String = str(snap[idx_a].get("name", "Player A")) if snap[idx_a] is Dictionary else "Player A"
+		var name_b: String = str(snap[idx_b].get("name", "Player B")) if snap[idx_b] is Dictionary else "Player B"
+		_status_label.text = "Swapped %s and %s positions" % [name_a, name_b]
 
 func _refresh_all_views() -> void:
 	_ensure_starter_ovrs()
