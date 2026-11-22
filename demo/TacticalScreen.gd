@@ -38,6 +38,14 @@ const MAX_WINDOWS: int = 3
 var _bench_squad: Array[Dictionary] = []
 var _subbed_off_names: PackedStringArray = PackedStringArray()
 
+func _is_user_home() -> bool:
+	return bool(match_engine.call("is_user_home")) if (is_instance_valid(match_engine) and match_engine.has_method("is_user_home")) else true
+
+func _get_user_base_ovr() -> int:
+	if not is_instance_valid(match_engine):
+		return 75
+	return match_engine.get_home_team_ovr() if _is_user_home() else match_engine.get_away_team_ovr()
+
 func _ready() -> void:
 	_ensure_ui_built()
 	if not is_instance_valid(match_engine):
@@ -81,13 +89,14 @@ func sync_squad_from_engine(p_engine: MatchEngine = null) -> void:
 	if not is_instance_valid(match_engine):
 		return
 
+	var base_ovr: int = _get_user_base_ovr()
 	if match_engine.has_method("get_user_squad_snapshot"):
 		var squad_snap: Array = match_engine.call("get_user_squad_snapshot")
 		if squad_snap.size() >= 11:
 			_starter_ovrs.clear()
 			for i in range(11):
 				var item: Dictionary = squad_snap[i] if squad_snap[i] is Dictionary else {}
-				_starter_ovrs.append(clampi(int(item.get("ovr", match_engine.get_home_team_ovr())), 40, 99))
+				_starter_ovrs.append(clampi(int(item.get("ovr", base_ovr)), 40, 99))
 
 	if match_engine.has_method("get_user_bench_snapshot"):
 		var bench_snap: Array = match_engine.call("get_user_bench_snapshot")
@@ -105,12 +114,12 @@ func sync_squad_from_engine(p_engine: MatchEngine = null) -> void:
 
 ## Public API for Phase 3 Main Game UI & Team Management UI to inject managed squad OVRs
 func set_managed_lineup_ovrs(ovrs: Array) -> void:
+	var fallback: int = _get_user_base_ovr()
 	_starter_ovrs.clear()
 	for i in range(11):
 		if i < ovrs.size():
 			_starter_ovrs.append(clampi(int(ovrs[i]), 40, 99))
 		else:
-			var fallback: int = match_engine.get_home_team_ovr() if is_instance_valid(match_engine) else 75
 			_starter_ovrs.append(fallback)
 	_refresh_all_views()
 
@@ -130,16 +139,16 @@ func _ensure_starter_ovrs() -> void:
 	if _starter_ovrs.size() == 11:
 		return
 
+	var base_ovr: int = _get_user_base_ovr()
 	if is_instance_valid(match_engine) and match_engine.has_method("get_user_squad_snapshot"):
 		var snap: Array = match_engine.call("get_user_squad_snapshot")
 		if snap.size() >= 11:
 			_starter_ovrs.clear()
 			for i in range(11):
 				var d: Dictionary = snap[i] if snap[i] is Dictionary else {}
-				_starter_ovrs.append(clampi(int(d.get("ovr", match_engine.get_home_team_ovr())), 40, 99))
+				_starter_ovrs.append(clampi(int(d.get("ovr", base_ovr)), 40, 99))
 			return
 
-	var base_ovr: int = match_engine.get_home_team_ovr() if is_instance_valid(match_engine) else 75
 	var offsets: Array[int] = [0, -1, 0, 1, -1, 1, 0, 1, 0, 2, -1]
 	_starter_ovrs.clear()
 	for i in range(11):
@@ -147,22 +156,23 @@ func _ensure_starter_ovrs() -> void:
 
 func _get_xi_average_ovr() -> int:
 	if _starter_ovrs.is_empty():
-		return match_engine.get_home_team_ovr() if is_instance_valid(match_engine) else 75
+		return _get_user_base_ovr()
 	var total: int = 0
 	for val in _starter_ovrs:
 		total += val
 	return int(round(float(total) / float(_starter_ovrs.size())))
 
 func _initialize_default_bench() -> void:
-	var base_ovr: int = match_engine.get_home_team_ovr() if is_instance_valid(match_engine) else 75
+	var base_ovr: int = _get_user_base_ovr()
+	var side_prefix: String = "Home" if _is_user_home() else "Away"
 	_bench_squad = [
-		{"name": "Home #12", "position": "GK",  "ovr": clampi(base_ovr - 2, 50, 99), "stamina": 100.0, "used": false},
-		{"name": "Home #13", "position": "CB",  "ovr": clampi(base_ovr - 1, 50, 99), "stamina": 100.0, "used": false},
-		{"name": "Home #14", "position": "LB",  "ovr": clampi(base_ovr - 2, 50, 99), "stamina": 100.0, "used": false},
-		{"name": "Home #15", "position": "CDM", "ovr": clampi(base_ovr,     50, 99), "stamina": 100.0, "used": false},
-		{"name": "Home #16", "position": "CM",  "ovr": clampi(base_ovr + 1, 50, 99), "stamina": 100.0, "used": false},
-		{"name": "Home #17", "position": "LW",  "ovr": clampi(base_ovr,     50, 99), "stamina": 100.0, "used": false},
-		{"name": "Home #18", "position": "ST",  "ovr": clampi(base_ovr + 1, 50, 99), "stamina": 100.0, "used": false}
+		{"name": "%s #12" % side_prefix, "position": "GK",  "ovr": clampi(base_ovr - 2, 50, 99), "stamina": 100.0, "used": false},
+		{"name": "%s #13" % side_prefix, "position": "CB",  "ovr": clampi(base_ovr - 1, 50, 99), "stamina": 100.0, "used": false},
+		{"name": "%s #14" % side_prefix, "position": "LB",  "ovr": clampi(base_ovr - 2, 50, 99), "stamina": 100.0, "used": false},
+		{"name": "%s #15" % side_prefix, "position": "CDM", "ovr": clampi(base_ovr,     50, 99), "stamina": 100.0, "used": false},
+		{"name": "%s #16" % side_prefix, "position": "CM",  "ovr": clampi(base_ovr + 1, 50, 99), "stamina": 100.0, "used": false},
+		{"name": "%s #17" % side_prefix, "position": "LW",  "ovr": clampi(base_ovr,     50, 99), "stamina": 100.0, "used": false},
+		{"name": "%s #18" % side_prefix, "position": "ST",  "ovr": clampi(base_ovr + 1, 50, 99), "stamina": 100.0, "used": false}
 	]
 
 func open_tactics() -> void:
@@ -361,7 +371,7 @@ func _build_layout() -> void:
 	)
 	_formation_option.item_selected.connect(func(_idx: int) -> void:
 		if is_instance_valid(match_engine) and _formation_option.selected >= 0:
-			match_engine.set_home_formation(_formation_option.get_item_text(_formation_option.selected))
+			_set_user_team_value("set_home_formation", "set_away_formation", _formation_option.get_item_text(_formation_option.selected))
 			_refresh_all_views()
 	)
 
@@ -477,14 +487,12 @@ func _add_selector_row(parent: VBoxContainer, label_text: String, hint_text: Str
 func _get_user_team_value(home_method: String, away_method: String) -> Variant:
 	if not is_instance_valid(match_engine):
 		return null
-	var user_is_home: bool = bool(match_engine.call("is_user_home")) if match_engine.has_method("is_user_home") else true
-	return match_engine.call(home_method if user_is_home else away_method)
+	return match_engine.call(home_method if _is_user_home() else away_method)
 
 func _set_user_team_value(home_method: String, away_method: String, value: Variant) -> void:
 	if not is_instance_valid(match_engine):
 		return
-	var user_is_home: bool = bool(match_engine.call("is_user_home")) if match_engine.has_method("is_user_home") else true
-	match_engine.call(home_method if user_is_home else away_method, value)
+	match_engine.call(home_method if _is_user_home() else away_method, value)
 
 func _sync_controls_from_snapshot(snap: Dictionary) -> void:
 	if not is_instance_valid(match_engine):
@@ -667,7 +675,7 @@ func _execute_substitution(starter_idx: int, bench_idx: int) -> void:
 	if bool(sub.get("used", false)):
 		return
 
-	var user_is_home: bool = bool(match_engine.call("is_user_home")) if match_engine.has_method("is_user_home") else true
+	var user_is_home: bool = _is_user_home()
 	var squad_snapshot: Array = match_engine.call("get_user_squad_snapshot") if match_engine.has_method("get_user_squad_snapshot") else []
 	var outgoing: Dictionary = squad_snapshot[starter_idx] if starter_idx < squad_snapshot.size() and squad_snapshot[starter_idx] is Dictionary else {}
 	var outgoing_name: String = str(outgoing.get("name", "Player %d" % (starter_idx + 1)))
@@ -692,7 +700,7 @@ func _execute_substitution(starter_idx: int, bench_idx: int) -> void:
 
 	# Compatibility fallback for an older extension without apply_substitution.
 	_ensure_starter_ovrs()
-	var sub_ovr: int = int(sub.get("ovr", match_engine.get_home_team_ovr()))
+	var sub_ovr: int = int(sub.get("ovr", _get_user_base_ovr()))
 	var slot_role: String = str(outgoing.get("position", "CM"))
 	var lineup_arr: Array = []
 	for i in range(11):
@@ -748,7 +756,7 @@ func _swap_starters(idx_a: int, idx_b: int) -> void:
 		d["position"] = str(snap[i].get("position", "CM")) if snap[i] is Dictionary else "CM"
 		lineup_arr.append(d)
 
-	var user_is_home: bool = bool(match_engine.call("is_user_home")) if match_engine.has_method("is_user_home") else true
+	var user_is_home: bool = _is_user_home()
 	if user_is_home:
 		match_engine.set_home_lineup(lineup_arr)
 	else:
@@ -793,7 +801,7 @@ func _get_role_vertical_depth(role: String) -> float:
 		return 0.21
 	return 0.13 # ST / CF
 
-func _compute_vertical_slots(roles: PackedStringArray, positions: Array, field_sz: Vector2) -> Array[Vector2]:
+func _compute_vertical_slots(roles: PackedStringArray, positions: Array, field_sz: Vector2, invert_lateral: bool = false) -> Array[Vector2]:
 	var slots: Array[Vector2] = []
 	slots.resize(11)
 
@@ -803,7 +811,8 @@ func _compute_vertical_slots(roles: PackedStringArray, positions: Array, field_s
 		var vy: float = _get_role_vertical_depth(r)
 		var vx: float = 0.50
 		if i < positions.size() and field_sz.y > 1.0:
-			vx = clampf(Vector2(positions[i]).y / field_sz.y, 0.14, 0.86)
+			var raw_x: float = clampf(Vector2(positions[i]).y / field_sz.y, 0.14, 0.86)
+			vx = (1.0 - raw_x) if invert_lateral else raw_x
 		slots[i] = Vector2(vx, vy)
 
 		if r == "GK":
@@ -862,7 +871,7 @@ func _draw_vertical_pitch() -> void:
 	var small_h: float = sz.y * 0.07
 	_pitch_preview.draw_rect(Rect2(Vector2((sz.x - small_w) * 0.5, sz.y - small_h), Vector2(small_w, small_h)), line_col, false, 1.8)
 
-	var user_is_home: bool = bool(match_engine.call("is_user_home")) if match_engine.has_method("is_user_home") else true
+	var user_is_home: bool = _is_user_home()
 	var user_start_idx: int = 0 if user_is_home else 11
 	var all_positions: Array = match_engine.get_player_positions()
 	var positions: Array = []
@@ -878,7 +887,7 @@ func _draw_vertical_pitch() -> void:
 		staminas.append(float(player.get("stamina", 100.0)))
 	var field_sz: Vector2 = match_engine.get_field_size()
 
-	var norm_slots: Array[Vector2] = _compute_vertical_slots(roles, positions, field_sz)
+	var norm_slots: Array[Vector2] = _compute_vertical_slots(roles, positions, field_sz, not user_is_home)
 	_starter_card_rects.resize(11)
 
 	var card_w: float = clampf(sz.x * 0.20, 68.0, 94.0)

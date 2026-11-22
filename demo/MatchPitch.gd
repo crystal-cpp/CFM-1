@@ -80,6 +80,48 @@ const SHOT_SWIPE_SPEED_PX: float = 225.0
 const SHOT_BOX_SWIPE_SPEED_PX: float = 180.0
 const SHOT_MAX_HOLD_SEC: float = 1.35
 
+func _is_user_home() -> bool:
+	return match_engine.is_user_home() if (is_instance_valid(match_engine) and match_engine.has_method("is_user_home")) else true
+
+func _user_attack_chance() -> int:
+	return 1 if _is_user_home() else 2
+
+func _user_defend_chance() -> int:
+	return 2 if _is_user_home() else 1
+
+func _user_start_idx() -> int:
+	return 0 if _is_user_home() else 11
+
+func _user_end_idx() -> int:
+	return 11 if _is_user_home() else 22
+
+func _user_gk_idx() -> int:
+	return 0 if _is_user_home() else 11
+
+func _opp_start_idx() -> int:
+	return 11 if _is_user_home() else 0
+
+func _opp_end_idx() -> int:
+	return 22 if _is_user_home() else 11
+
+func _is_user_idx(idx: int) -> bool:
+	return idx >= _user_start_idx() and idx < _user_end_idx()
+
+func _is_user_outfield_idx(idx: int) -> bool:
+	return idx > _user_gk_idx() and idx < _user_end_idx()
+
+func _is_opp_idx(idx: int) -> bool:
+	return idx >= _opp_start_idx() and idx < _opp_end_idx()
+
+func _user_attack_dir() -> float:
+	return 1.0 if _is_user_home() else -1.0
+
+func _user_target_goal_x(field_w: float) -> float:
+	return field_w if _is_user_home() else 0.0
+
+func _user_own_goal_x(field_w: float) -> float:
+	return 0.0 if _is_user_home() else field_w
+
 func set_team_names(home_name: String, away_name: String) -> void:
 	_home_club_display_name = home_name if not home_name.strip_edges().is_empty() else "HOME FC"
 	_away_club_display_name = away_name if not away_name.strip_edges().is_empty() else "AWAY FC"
@@ -387,27 +429,28 @@ func is_gk_rush_active() -> bool:
 	return _gk_rush_active
 
 func toggle_gk_rush() -> bool:
-	if not is_instance_valid(match_engine) or match_engine.get_chance_state() != 2:
+	if not is_instance_valid(match_engine) or match_engine.get_chance_state() != _user_defend_chance():
 		_gk_rush_active = false
 		return false
 	_gk_rush_active = not _gk_rush_active
+	var gk_idx: int = _user_gk_idx()
 	if _gk_rush_active:
-		match_engine.set_controlled_player(0)
+		match_engine.set_controlled_player(gk_idx)
 		var positions: Array = match_engine.get_player_positions()
-		if positions.size() > 0:
-			_show_marker(Vector2(positions[0]), Color(1.0, 0.78, 0.18), "GK RUSH")
+		if gk_idx < positions.size():
+			_show_marker(Vector2(positions[gk_idx]), Color(1.0, 0.78, 0.18), "GK RUSH")
 	else:
 		match_engine.select_nearest_defender()
 	return _gk_rush_active
 
 func continue_attack_play() -> void:
 	if _atk_phase == AttackPhase.DECIDING and is_instance_valid(match_engine):
-		var ctrl_idx: int = _ensure_home_ball_control()
+		var ctrl_idx: int = _ensure_user_ball_control()
 		var positions: Array = match_engine.get_player_positions()
 		var field_sz: Vector2 = match_engine.get_field_size()
 		if ctrl_idx >= 0 and ctrl_idx < positions.size():
 			var p := Vector2(positions[ctrl_idx])
-			var advance_target := Vector2(minf(field_sz.x - 30.0, p.x + 76.0), p.y)
+			var advance_target := Vector2(clampf(p.x + 76.0 * _user_attack_dir(), 30.0, field_sz.x - 30.0), p.y)
 			match_engine.pause_match(false)
 			if match_engine.command_move_player(advance_target):
 				_atk_dribble_target = advance_target
@@ -450,13 +493,13 @@ func _on_chance_state_changed(new_state: int, _ctrl_idx: int) -> void:
 		_sync_engine_pause_state()
 		return
 
-	if new_state == 1:
+	if new_state == _user_attack_chance():
 		_atk_phase = AttackPhase.SETTLING
 		_atk_phase_timer = 0.0
 		_atk_expected_receiver = -1
 		_atk_decision_paused = false
 		_sync_engine_pause_state()
-	elif new_state == 2:
+	elif new_state == _user_defend_chance():
 		_atk_phase = AttackPhase.INACTIVE
 		_atk_decision_paused = false
 		_sync_engine_pause_state()
@@ -496,7 +539,9 @@ func _process(delta: float) -> void:
 
 	if is_instance_valid(match_engine) and match_engine.is_match_active():
 		var c_state: int = match_engine.get_chance_state()
-		if c_state == 1 and _atk_decision_paused and not match_engine.is_match_paused():
+		var user_atk: int = _user_attack_chance()
+		var user_def: int = _user_defend_chance()
+		if c_state == user_atk and _atk_decision_paused and not match_engine.is_match_paused():
 			_atk_decision_paused = false
 			if _atk_phase == AttackPhase.DECIDING:
 				_atk_phase = AttackPhase.EXECUTING_PASS if match_engine.get_ball_carrier_index() == -1 else AttackPhase.EXECUTING_DRIBBLE
@@ -514,9 +559,9 @@ func _process(delta: float) -> void:
 
 				if c_state == 0:
 					_update_open_play_chance_guarantee(delta)
-				elif c_state == 1:
+				elif c_state == user_atk:
 					_update_attack_stop_and_go(delta)
-				elif c_state == 2:
+				elif c_state == user_def:
 					_update_defend_realtime()
 
 	_update_camera_framing(delta)
@@ -529,15 +574,17 @@ func _update_open_play_chance_guarantee(delta: float) -> void:
 	var carrier_idx: int = match_engine.get_ball_carrier_index()
 	var field_sz: Vector2 = match_engine.get_field_size()
 	var ball_pos: Vector2 = match_engine.get_ball_position()
+	var home_delay: float = 0.35 if _is_user_home() else 0.45
+	var away_delay: float = 0.45 if _is_user_home() else 0.35
 
 	if carrier_idx >= 1 and carrier_idx < 11 and ball_pos.x >= field_sz.x * 0.48:
 		_open_play_chance_timer += delta
-		if _open_play_chance_timer >= 0.35 and match_engine.has_method("trigger_wide_range_chance"):
+		if _open_play_chance_timer >= home_delay and match_engine.has_method("trigger_wide_range_chance"):
 			_open_play_chance_timer = 0.0
 			match_engine.trigger_wide_range_chance(true)
 	elif carrier_idx >= 12 and carrier_idx < 22 and ball_pos.x <= field_sz.x * 0.52:
 		_open_play_chance_timer += delta
-		if _open_play_chance_timer >= 0.45 and match_engine.has_method("trigger_wide_range_chance"):
+		if _open_play_chance_timer >= away_delay and match_engine.has_method("trigger_wide_range_chance"):
 			_open_play_chance_timer = 0.0
 			match_engine.trigger_wide_range_chance(false)
 	else:
@@ -558,11 +605,11 @@ func _draw_stadium_backdrop() -> void:
 	_backdrop_canvas.draw_circle(glow_center, pitch_rect.size.x * 0.36, Color(0.06, 0.18, 0.14, 0.22))
 	_backdrop_canvas.draw_rect(pitch_rect.grow(4.0), Color(0.012, 0.020, 0.036, 0.85), true)
 
-func _has_confirmed_home_possession() -> bool:
+func _has_confirmed_user_possession() -> bool:
 	if not is_instance_valid(match_engine):
 		return false
 	var carrier_idx: int = match_engine.get_ball_carrier_index()
-	if carrier_idx < 0 or carrier_idx >= 11:
+	if not _is_user_idx(carrier_idx):
 		return false
 	var positions: Array = match_engine.get_player_positions()
 	if carrier_idx >= positions.size():
@@ -570,12 +617,12 @@ func _has_confirmed_home_possession() -> bool:
 	var ball_pos: Vector2 = match_engine.get_ball_position()
 	return ball_pos.distance_to(Vector2(positions[carrier_idx])) <= 22.0
 
-func _ensure_home_ball_control() -> int:
+func _ensure_user_ball_control() -> int:
 	if not is_instance_valid(match_engine):
 		return -1
 	var carrier_idx: int = match_engine.get_ball_carrier_index()
 	var current_ctrl: int = match_engine.get_controlled_player_index()
-	if carrier_idx >= 0 and carrier_idx < 11:
+	if _is_user_idx(carrier_idx):
 		if current_ctrl != carrier_idx and not _pointer_down:
 			match_engine.set_controlled_player(carrier_idx)
 		return carrier_idx
@@ -595,8 +642,8 @@ func _update_attack_stop_and_go(delta: float) -> void:
 
 	match _atk_phase:
 		AttackPhase.SETTLING:
-			if _atk_phase_timer >= 0.10 and (_has_confirmed_home_possession() or _atk_phase_timer >= 1.50):
-				_ensure_home_ball_control()
+			if _atk_phase_timer >= 0.10 and (_has_confirmed_user_possession() or _atk_phase_timer >= 1.50):
+				_ensure_user_ball_control()
 				_atk_phase = AttackPhase.DECIDING
 				_atk_phase_timer = 0.0
 				_set_attack_decision_paused(true)
@@ -604,15 +651,15 @@ func _update_attack_stop_and_go(delta: float) -> void:
 		AttackPhase.EXECUTING_PASS:
 			var truly_received := false
 			if _atk_phase_timer >= 0.12:
-				if _atk_expected_receiver >= 0 and _atk_expected_receiver < 11 and _atk_expected_receiver < positions.size():
+				if _is_user_idx(_atk_expected_receiver) and _atk_expected_receiver < positions.size():
 					var rec_pos := Vector2(positions[_atk_expected_receiver])
 					if carrier_idx == _atk_expected_receiver and ball_pos.distance_to(rec_pos) <= 22.0:
 						truly_received = true
-				elif _has_confirmed_home_possession():
+				elif _has_confirmed_user_possession():
 					truly_received = true
 
 			if truly_received or _atk_phase_timer >= 2.10:
-				_ensure_home_ball_control()
+				_ensure_user_ball_control()
 				_atk_expected_receiver = -1
 				_atk_phase = AttackPhase.DECIDING
 				_atk_phase_timer = 0.0
@@ -620,7 +667,7 @@ func _update_attack_stop_and_go(delta: float) -> void:
 
 		AttackPhase.EXECUTING_DRIBBLE:
 			var done_dribble := false
-			if not _has_confirmed_home_possession() and _atk_phase_timer >= 0.25:
+			if not _has_confirmed_user_possession() and _atk_phase_timer >= 0.25:
 				done_dribble = true
 			elif ctrl_idx >= 0 and ctrl_idx < positions.size():
 				var p_pos := Vector2(positions[ctrl_idx])
@@ -631,17 +678,17 @@ func _update_attack_stop_and_go(delta: float) -> void:
 				elif not engine_dribbling and (_atk_phase_timer >= 0.30 or moved_dist >= 18.0):
 					done_dribble = true
 			if done_dribble or _atk_phase_timer >= 1.45:
-				_ensure_home_ball_control()
+				_ensure_user_ball_control()
 				_atk_phase = AttackPhase.DECIDING
 				_atk_phase_timer = 0.0
 				_set_attack_decision_paused(true)
 
 		AttackPhase.EXECUTING_SHOT:
-			if match_engine.get_chance_state() != 1:
+			if match_engine.get_chance_state() != _user_attack_chance():
 				_atk_phase = AttackPhase.INACTIVE
 				_atk_decision_paused = false
-			elif (_atk_phase_timer >= 0.45 and _has_confirmed_home_possession()) or _atk_phase_timer >= 4.5:
-				_ensure_home_ball_control()
+			elif (_atk_phase_timer >= 0.45 and _has_confirmed_user_possession()) or _atk_phase_timer >= 4.5:
+				_ensure_user_ball_control()
 				_atk_phase = AttackPhase.DECIDING
 				_atk_phase_timer = 0.0
 				_set_attack_decision_paused(true)
@@ -651,11 +698,12 @@ func _update_defend_realtime() -> void:
 		return
 	var positions: Array = match_engine.get_player_positions()
 	var carrier_idx: int = match_engine.get_ball_carrier_index()
-	var target_pos: Vector2 = Vector2(positions[carrier_idx]) if (carrier_idx >= 11 and carrier_idx < positions.size()) else match_engine.get_ball_position()
-	match_engine.set_controlled_player(0)
+	var gk_idx: int = _user_gk_idx()
+	var target_pos: Vector2 = Vector2(positions[carrier_idx]) if (_is_opp_idx(carrier_idx) and carrier_idx < positions.size()) else match_engine.get_ball_position()
+	match_engine.set_controlled_player(gk_idx)
 	match_engine.command_move_player(target_pos)
 
-	if positions.size() > 0 and Vector2(positions[0]).distance_to(target_pos) <= 34.0:
+	if gk_idx < positions.size() and Vector2(positions[gk_idx]).distance_to(target_pos) <= 34.0:
 		match_engine.command_tackle()
 
 func _update_camera_framing(delta: float) -> void:
@@ -670,8 +718,10 @@ func _update_camera_framing(delta: float) -> void:
 	var target_focus: Vector2 = logical_size * 0.5
 
 	var c_state: int = match_engine.get_chance_state()
+	var user_atk: int = _user_attack_chance()
+	var user_def: int = _user_defend_chance()
 	var suppress_zoom: bool = is_waiting_for_kickoff_or_resume()
-	if match_engine.is_match_active() and not suppress_zoom and (c_state == 1 or c_state == 2):
+	if match_engine.is_match_active() and not suppress_zoom and (c_state == user_atk or c_state == user_def):
 		var ball_pos: Vector2 = match_engine.get_ball_position()
 		var positions: Array = match_engine.get_player_positions()
 		var ctrl_idx: int = match_engine.get_controlled_player_index()
@@ -684,14 +734,16 @@ func _update_camera_framing(delta: float) -> void:
 			min_pt = min_pt.min(cp)
 			max_pt = max_pt.max(cp)
 
-		if c_state == 1:
-			var goal_top := Vector2(logical_size.x + 8.0, logical_size.y * 0.5 - 65.0)
-			var goal_bot := Vector2(logical_size.x + 8.0, logical_size.y * 0.5 + 65.0)
+		if c_state == user_atk:
+			var target_goal_x: float = _user_target_goal_x(logical_size.x) + (8.0 * _user_attack_dir())
+			var goal_top := Vector2(target_goal_x, logical_size.y * 0.5 - 65.0)
+			var goal_bot := Vector2(target_goal_x, logical_size.y * 0.5 + 65.0)
 			min_pt = min_pt.min(goal_top)
 			max_pt = max_pt.max(goal_bot)
 		else:
-			var def_goal_top := Vector2(-8.0, logical_size.y * 0.5 - 65.0)
-			var def_goal_bot := Vector2(-8.0, logical_size.y * 0.5 + 65.0)
+			var own_goal_x: float = _user_own_goal_x(logical_size.x) - (8.0 * _user_attack_dir())
+			var def_goal_top := Vector2(own_goal_x, logical_size.y * 0.5 - 65.0)
+			var def_goal_bot := Vector2(own_goal_x, logical_size.y * 0.5 + 65.0)
 			min_pt = min_pt.min(def_goal_top)
 			max_pt = max_pt.max(def_goal_bot)
 
@@ -751,10 +803,12 @@ func _get_effective_swipe_speed() -> float:
 ## Fast Swipe toward goal = SHOT; Slower/Deliberate Drag = THROUGH_BALL
 func _is_goal_directed_shot(carrier_pos: Vector2, drag_vec_pitch: Vector2, effective_speed: float, hold_sec: float) -> bool:
 	var field_sz: Vector2 = match_engine.get_field_size()
-	if drag_vec_pitch.x <= 8.0:
+	var atk_dir: float = _user_attack_dir()
+	if drag_vec_pitch.x * atk_dir <= 8.0:
 		return false
 
-	var goal_center := Vector2(field_sz.x, field_sz.y * 0.5)
+	var goal_x: float = _user_target_goal_x(field_sz.x)
+	var goal_center := Vector2(goal_x, field_sz.y * 0.5)
 	if carrier_pos.distance_to(goal_center) > 640.0:
 		return false
 
@@ -763,32 +817,35 @@ func _is_goal_directed_shot(carrier_pos: Vector2, drag_vec_pitch: Vector2, effec
 	var alignment: float = drag_dir.dot(to_goal_dir)
 
 	var intersects_goal_mouth := false
-	if drag_dir.x >= 0.25:
-		var t: float = (field_sz.x - carrier_pos.x) / drag_dir.x
+	if drag_dir.x * atk_dir >= 0.25:
+		var t: float = (goal_x - carrier_pos.x) / drag_dir.x
 		var projected_y: float = carrier_pos.y + drag_dir.y * t
 		intersects_goal_mouth = absf(projected_y - goal_center.y) <= 115.0
 
-	var in_box: bool = carrier_pos.x >= (field_sz.x * 0.78)
+	var in_box: bool = (carrier_pos.x >= field_sz.x * 0.78) if _is_user_home() else (carrier_pos.x <= field_sz.x * 0.22)
 	var required_speed: float = SHOT_BOX_SWIPE_SPEED_PX if in_box else SHOT_SWIPE_SPEED_PX
 	return hold_sec <= SHOT_MAX_HOLD_SEC and effective_speed >= required_speed and (alignment >= 0.30 or intersects_goal_mouth)
 
 func _project_shot_to_goal_line(ball_pos: Vector2, drag_vec_pitch: Vector2) -> Vector2:
 	var field_sz: Vector2 = match_engine.get_field_size()
 	var goal_center_y: float = field_sz.y * 0.5
-	var dir: Vector2 = drag_vec_pitch.normalized() if drag_vec_pitch.length() > 0.1 else Vector2.RIGHT
-	if dir.x < 0.15:
-		dir.x = 0.15
+	var atk_dir: float = _user_attack_dir()
+	var goal_x: float = _user_target_goal_x(field_sz.x)
+	var dir: Vector2 = drag_vec_pitch.normalized() if drag_vec_pitch.length() > 0.1 else Vector2(atk_dir, 0.0)
+	if dir.x * atk_dir < 0.15:
+		dir.x = 0.15 * atk_dir
 		dir = dir.normalized()
-	var t: float = maxf(0.0, (field_sz.x - ball_pos.x) / dir.x)
+	var t: float = maxf(0.0, (goal_x - ball_pos.x) / dir.x)
 	var aim_y: float = clampf(ball_pos.y + dir.y * t, goal_center_y - 68.0, goal_center_y + 68.0)
-	return Vector2(field_sz.x, aim_y)
+	return Vector2(goal_x, aim_y)
 
 func _compute_smart_through_ball(carrier_idx: int, carrier_pos: Vector2, start_pitch: Vector2, end_pitch: Vector2) -> Dictionary:
 	var field_sz: Vector2 = match_engine.get_field_size()
 	var positions: Array = match_engine.get_player_positions()
+	var atk_dir: float = _user_attack_dir()
 	var drag_vec_pitch: Vector2 = end_pitch - start_pitch
 	var raw_len: float = drag_vec_pitch.length()
-	var drag_dir: Vector2 = (drag_vec_pitch / raw_len) if raw_len > 0.5 else Vector2.RIGHT
+	var drag_dir: Vector2 = (drag_vec_pitch / raw_len) if raw_len > 0.5 else Vector2(atk_dir, 0.0)
 
 	var desired_space: Vector2
 	if start_pitch.distance_to(carrier_pos) <= CARRIER_ORIGIN_RADIUS_LOGICAL:
@@ -807,7 +864,7 @@ func _compute_smart_through_ball(carrier_idx: int, carrier_pos: Vector2, start_p
 	var best_tm: int = -1
 	var best_score: float = -9999.0
 
-	for i in range(1, mini(11, positions.size())):
+	for i in range(_user_gk_idx() + 1, mini(_user_end_idx(), positions.size())):
 		if i == carrier_idx:
 			continue
 		var tm_pos := Vector2(positions[i])
@@ -818,7 +875,7 @@ func _compute_smart_through_ball(carrier_idx: int, carrier_pos: Vector2, start_p
 
 		var dist_to_space: float = tm_pos.distance_to(desired_space)
 		var align: float = (to_tm / dist_from_passer).dot(drag_dir)
-		var forward_bonus: float = (tm_pos.x - carrier_pos.x) * 0.35
+		var forward_bonus: float = (tm_pos.x - carrier_pos.x) * atk_dir * 0.35
 		var score: float = (align * 120.0) + forward_bonus - (dist_to_space * 0.85)
 		if score > best_score:
 			best_score = score
@@ -930,10 +987,10 @@ func _on_pointer_pressed(screen_pos: Vector2, ptr_idx: int) -> bool:
 	_preview_through_runner = -1
 	_drag_started_on_carrier = false
 
-	if is_instance_valid(match_engine) and match_engine.get_chance_state() == 1:
+	if is_instance_valid(match_engine) and match_engine.get_chance_state() == _user_attack_chance():
 		var start_pitch: Vector2 = _screen_to_pitch(screen_pos)
 		var carrier_idx: int = match_engine.get_ball_carrier_index()
-		var ctrl_idx: int = carrier_idx if (carrier_idx >= 0 and carrier_idx < 11) else match_engine.get_controlled_player_index()
+		var ctrl_idx: int = carrier_idx if _is_user_idx(carrier_idx) else match_engine.get_controlled_player_index()
 		var positions: Array = match_engine.get_player_positions()
 		var ball_pos: Vector2 = match_engine.get_ball_position()
 		if ctrl_idx >= 0 and ctrl_idx < positions.size():
@@ -960,9 +1017,9 @@ func _on_pointer_moved(screen_pos: Vector2) -> void:
 	var hold_sec: float = _get_drag_hold_sec()
 	var c_state: int = match_engine.get_chance_state()
 
-	if c_state == 1 and drag_dist >= DRAG_THRESHOLD_PX:
+	if c_state == _user_attack_chance() and drag_dist >= DRAG_THRESHOLD_PX:
 		var carrier_idx: int = match_engine.get_ball_carrier_index()
-		var ctrl_idx: int = carrier_idx if (carrier_idx >= 0 and carrier_idx < 11) else match_engine.get_controlled_player_index()
+		var ctrl_idx: int = carrier_idx if _is_user_idx(carrier_idx) else match_engine.get_controlled_player_index()
 		var positions: Array = match_engine.get_player_positions()
 		var carrier_pos: Vector2 = Vector2(positions[ctrl_idx]) if (ctrl_idx >= 0 and ctrl_idx < positions.size()) else match_engine.get_ball_position()
 		var start_pitch: Vector2 = _screen_to_pitch(_drag_start_screen)
@@ -977,7 +1034,7 @@ func _on_pointer_moved(screen_pos: Vector2) -> void:
 			var tb_info: Dictionary = _compute_smart_through_ball(ctrl_idx, carrier_pos, start_pitch, end_pitch)
 			_preview_through_runner = int(tb_info["runner"])
 			_preview_through_target = Vector2(tb_info["target"])
-	elif c_state == 2 and drag_dist >= 24.0:
+	elif c_state == _user_defend_chance() and drag_dist >= 24.0:
 		_gesture_mode = "SLIDE_TACKLE"
 	else:
 		_gesture_mode = "NONE"
@@ -1001,14 +1058,14 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 	var positions: Array = match_engine.get_player_positions()
 
 	# MODE A: ATTACK CHANCE — STOP-AND-GO DECISION GAMEPLAY
-	if chance_state == 1:
+	if chance_state == _user_attack_chance():
 		var was_decision_paused: bool = _atk_decision_paused
 		if was_decision_paused and _atk_phase != AttackPhase.DECIDING:
 			_gesture_mode = "NONE"
 			_preview_through_runner = -1
 			return
 
-		var ctrl_idx: int = _ensure_home_ball_control()
+		var ctrl_idx: int = _ensure_user_ball_control()
 		var carrier_pos: Vector2 = Vector2(positions[ctrl_idx]) if (ctrl_idx >= 0 and ctrl_idx < positions.size()) else match_engine.get_ball_position()
 		var ball_pos: Vector2 = match_engine.get_ball_position()
 
@@ -1059,7 +1116,7 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 		var best_tm_dist: float = 34.0
 		for target_var in valid_targets:
 			var t_idx: int = int(target_var)
-			if t_idx >= 1 and t_idx < mini(11, positions.size()) and t_idx != ctrl_idx:
+			if _is_user_outfield_idx(t_idx) and t_idx < positions.size() and t_idx != ctrl_idx:
 				var d: float = end_pitch.distance_to(Vector2(positions[t_idx]))
 				if d < best_tm_dist:
 					best_tm_dist = d
@@ -1079,9 +1136,9 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 			_preview_through_runner = -1
 			return
 
-		var move_dest: Vector2 = ball_pos if (ctrl_idx >= 0 and ctrl_idx < 11 and ball_pos.distance_to(carrier_pos) > 22.0) else end_pitch
+		var move_dest: Vector2 = ball_pos if (_is_user_idx(ctrl_idx) and ball_pos.distance_to(carrier_pos) > 22.0) else end_pitch
 		if move_dest.distance_to(carrier_pos) < 18.0:
-			move_dest = Vector2(minf(match_engine.get_field_size().x - 24.0, carrier_pos.x + 76.0), carrier_pos.y)
+			move_dest = Vector2(clampf(carrier_pos.x + 76.0 * _user_attack_dir(), 24.0, match_engine.get_field_size().x - 24.0), carrier_pos.y)
 
 		if match_engine.command_move_player(move_dest):
 			_show_marker(move_dest, Color(0.95, 0.88, 0.30), "DRIBBLE")
@@ -1095,15 +1152,16 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 			_sync_engine_pause_state()
 
 	# MODE B: DEFEND CHANCE — CONTINUOUS REAL-TIME GAMEPLAY
-	elif chance_state == 2:
+	elif chance_state == _user_defend_chance():
+		var gk_idx: int = _user_gk_idx()
 		if drag_dist_screen >= 24.0 or _gesture_mode == "SLIDE_TACKLE":
 			_gk_rush_active = false
 			var carrier_idx: int = match_engine.get_ball_carrier_index()
-			var target_pt: Vector2 = Vector2(positions[carrier_idx]) if (carrier_idx >= 11 and carrier_idx < positions.size()) else match_engine.get_ball_position()
+			var target_pt: Vector2 = Vector2(positions[carrier_idx]) if (_is_opp_idx(carrier_idx) and carrier_idx < positions.size()) else match_engine.get_ball_position()
 			var ctrl_def: int = match_engine.get_controlled_player_index()
-			if ctrl_def < 1 or ctrl_def >= 11 or Vector2(positions[ctrl_def]).distance_to(target_pt) > 70.0:
+			if not _is_user_outfield_idx(ctrl_def) or Vector2(positions[ctrl_def]).distance_to(target_pt) > 70.0:
 				ctrl_def = match_engine.select_nearest_defender()
-			if ctrl_def >= 1 and ctrl_def < positions.size():
+			if _is_user_outfield_idx(ctrl_def) and ctrl_def < positions.size():
 				var def_pos := Vector2(positions[ctrl_def])
 				_slide_tackle_pos = def_pos
 				_slide_tackle_dir = (target_pt - def_pos).normalized() if def_pos.distance_to(target_pt) > 1.0 else drag_vec_pitch.normalized()
@@ -1114,12 +1172,12 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 			_gesture_mode = "NONE"
 			return
 
-		if positions.size() > 0 and end_pitch.distance_to(Vector2(positions[0])) <= 28.0:
+		if gk_idx < positions.size() and end_pitch.distance_to(Vector2(positions[gk_idx])) <= 28.0:
 			toggle_gk_rush()
 			_gesture_mode = "NONE"
 			return
 
-		var clicked_def: int = _find_nearest_player_in_range(end_pitch, positions, 1, 10, 32.0, -1)
+		var clicked_def: int = _find_nearest_player_in_range(end_pitch, positions, _user_gk_idx() + 1, _user_end_idx() - 1, 32.0, -1)
 		if clicked_def != -1:
 			_gk_rush_active = false
 			match_engine.set_controlled_player(clicked_def)
@@ -1128,14 +1186,14 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 			return
 
 		var opp_carrier: int = match_engine.get_ball_carrier_index()
-		if opp_carrier >= 11 and opp_carrier < positions.size():
+		if _is_opp_idx(opp_carrier) and opp_carrier < positions.size():
 			var opp_pos := Vector2(positions[opp_carrier])
 			if end_pitch.distance_to(opp_pos) <= 32.0:
 				_gk_rush_active = false
 				var ctrl_d: int = match_engine.get_controlled_player_index()
-				if ctrl_d < 1 or ctrl_d >= 11:
+				if not _is_user_outfield_idx(ctrl_d):
 					ctrl_d = match_engine.select_nearest_defender()
-				if ctrl_d >= 1 and ctrl_d < positions.size():
+				if _is_user_outfield_idx(ctrl_d) and ctrl_d < positions.size():
 					if Vector2(positions[ctrl_d]).distance_to(opp_pos) <= 38.0:
 						match_engine.command_tackle()
 						_show_marker(opp_pos, Color(1.0, 0.38, 0.35), "TACKLE!")
@@ -1286,9 +1344,11 @@ func _draw_pitch_scene() -> void:
 	var carrier_idx: int = match_engine.get_ball_carrier_index()
 	var ctrl_idx: int = match_engine.get_controlled_player_index()
 	var chance_state: int = match_engine.get_chance_state()
+	var user_atk: int = _user_attack_chance()
+	var user_def: int = _user_defend_chance()
 
 	# Active Dribble Execution Path Guide
-	if chance_state == 1 and _atk_phase == AttackPhase.EXECUTING_DRIBBLE and ctrl_idx >= 0 and ctrl_idx < positions.size():
+	if chance_state == user_atk and _atk_phase == AttackPhase.EXECUTING_DRIBBLE and ctrl_idx >= 0 and ctrl_idx < positions.size():
 		var d_start: Vector2 = _logical_to_canvas(Vector2(positions[ctrl_idx]))
 		var d_end: Vector2 = _logical_to_canvas(_atk_dribble_target)
 		var d_col := Color(0.95, 0.88, 0.30, 0.85)
@@ -1297,7 +1357,7 @@ func _draw_pitch_scene() -> void:
 		_pitch_canvas.draw_arc(d_end, 9.0 * eff_scale, 0.0, TAU, 20, d_col, 2.0)
 
 	# Valid Pass Lanes & Receivers
-	if not is_waiting_for_kickoff_or_resume() and chance_state == 1 and ctrl_idx >= 0 and ctrl_idx < positions.size():
+	if not is_waiting_for_kickoff_or_resume() and chance_state == user_atk and ctrl_idx >= 0 and ctrl_idx < positions.size():
 		var ctrl_canvas: Vector2 = _logical_to_canvas(Vector2(positions[ctrl_idx]))
 		var pass_targets: Array = match_engine.get_valid_pass_targets()
 		for target_var in pass_targets:
@@ -1309,7 +1369,7 @@ func _draw_pitch_scene() -> void:
 				_pitch_canvas.draw_arc(tm_canvas, 15.0 * eff_scale, 0.0, TAU, 28, Color(0.30, 0.95, 0.60, 0.85), 2.0)
 
 	# Live Shot & Through-Ball Trajectory Preview
-	if _pointer_down and chance_state == 1:
+	if _pointer_down and chance_state == user_atk:
 		var ball_pos_logical: Vector2 = match_engine.get_ball_position()
 		var ball_canvas: Vector2 = _logical_to_canvas(ball_pos_logical)
 		var drag_vec: Vector2 = _drag_current_screen - _drag_start_screen
@@ -1357,15 +1417,15 @@ func _draw_pitch_scene() -> void:
 
 		if not is_waiting_for_kickoff_or_resume():
 			if i == ctrl_idx:
-				var ring_col: Color = Color(1.0, 0.90, 0.22) if chance_state == 1 else Color(0.35, 0.82, 1.0)
+				var ring_col: Color = Color(1.0, 0.90, 0.22) if chance_state == user_atk else Color(0.35, 0.82, 1.0)
 				_pitch_canvas.draw_arc(pos, p_radius + 6.0, 0.0, TAU, 32, ring_col, 2.8)
 			elif i == carrier_idx:
 				_pitch_canvas.draw_arc(pos, p_radius + 3.5, 0.0, TAU, 32, Color(1.0, 1.0, 1.0, 0.75), 1.8)
 
-			if i == 0 and _gk_rush_active:
+			if i == _user_gk_idx() and _gk_rush_active:
 				_pitch_canvas.draw_arc(pos, p_radius + 9.0, 0.0, TAU, 32, Color(1.0, 0.78, 0.18, 0.95), 2.5)
 
-			if chance_state == 2 and i == carrier_idx and not is_home and ctrl_idx >= 1 and ctrl_idx < positions.size():
+			if chance_state == user_def and i == carrier_idx and _is_opp_idx(i) and _is_user_outfield_idx(ctrl_idx) and ctrl_idx < positions.size():
 				if Vector2(positions[ctrl_idx]).distance_to(Vector2(positions[i])) <= 38.0:
 					_pitch_canvas.draw_arc(pos, p_radius + 8.0, 0.0, TAU, 32, Color(1.0, 0.35, 0.30, 0.95), 2.5)
 
@@ -1404,10 +1464,12 @@ func _draw_pitch_scene() -> void:
 		_pitch_canvas.draw_string(default_font, card_pos + Vector2(0.0, 64.0), main_prompt, HORIZONTAL_ALIGNMENT_CENTER, int(card_w), 21, Color.WHITE)
 		return
 
-	if chance_state == 1:
+	if chance_state == user_atk:
 		var b_pos: Vector2 = match_engine.get_ball_position()
-		var dist_m: int = int(round(b_pos.distance_to(Vector2(logical_size.x, logical_size.y * 0.5)) * 0.1))
-		var zone_tag: String = "IN BOX (%dm)" % dist_m if b_pos.x >= (logical_size.x * 0.84) else "OUTSIDE BOX (%dm)" % dist_m
+		var target_goal_x: float = _user_target_goal_x(logical_size.x)
+		var dist_m: int = int(round(b_pos.distance_to(Vector2(target_goal_x, logical_size.y * 0.5)) * 0.1))
+		var in_atk_box: bool = (b_pos.x >= logical_size.x * 0.84) if _is_user_home() else (b_pos.x <= logical_size.x * 0.16)
+		var zone_tag: String = "IN BOX (%dm)" % dist_m if in_atk_box else "OUTSIDE BOX (%dm)" % dist_m
 
 		var banner_rect := Rect2(Vector2(14.0, 12.0), Vector2(minf(base_rect.size.x - 28.0, 520.0), 32.0))
 		var b_bg := Color(0.06, 0.24, 0.16, 0.92) if is_attack_decision_paused() else Color(0.06, 0.12, 0.20, 0.86)
@@ -1416,10 +1478,12 @@ func _draw_pitch_scene() -> void:
 		_pitch_canvas.draw_rect(banner_rect, b_border, false, 1.6)
 		var banner_txt: String = "%s · Tap=Dribble/Pass · Slow Drag=Through Ball · Fast Swipe=Shot" % zone_tag if is_attack_decision_paused() else "%s · Executing your move..." % zone_tag
 		_pitch_canvas.draw_string(default_font, banner_rect.position + Vector2(10.0, 21.0), banner_txt, HORIZONTAL_ALIGNMENT_LEFT, int(banner_rect.size.x - 16.0), 11, Color.WHITE)
-	elif chance_state == 2:
+	elif chance_state == user_def:
 		var b_pos_def: Vector2 = match_engine.get_ball_position()
-		var dist_def_m: int = int(round(b_pos_def.distance_to(Vector2(0.0, logical_size.y * 0.5)) * 0.1))
-		var def_zone_tag: String = "IN BOX (%dm)" % dist_def_m if b_pos_def.x <= (logical_size.x * 0.16) else "OUTSIDE BOX (%dm)" % dist_def_m
+		var own_goal_x: float = _user_own_goal_x(logical_size.x)
+		var dist_def_m: int = int(round(b_pos_def.distance_to(Vector2(own_goal_x, logical_size.y * 0.5)) * 0.1))
+		var in_def_box: bool = (b_pos_def.x <= logical_size.x * 0.16) if _is_user_home() else (b_pos_def.x >= logical_size.x * 0.84)
+		var def_zone_tag: String = "IN BOX (%dm)" % dist_def_m if in_def_box else "OUTSIDE BOX (%dm)" % dist_def_m
 
 		var def_rect := Rect2(Vector2(14.0, 12.0), Vector2(minf(base_rect.size.x - 28.0, 520.0), 32.0))
 		_pitch_canvas.draw_rect(def_rect, Color(0.28, 0.08, 0.10, 0.90), true)

@@ -61,6 +61,15 @@ var _manual_paused: bool = false
 var _home_club_name: String = "HOME FC"
 var _away_club_name: String = "AWAY FC"
 
+func _is_user_home() -> bool:
+	return match_engine.is_user_home() if (is_instance_valid(match_engine) and match_engine.has_method("is_user_home")) else true
+
+func _user_attack_chance() -> int:
+	return 1 if _is_user_home() else 2
+
+func _user_defend_chance() -> int:
+	return 2 if _is_user_home() else 1
+
 func set_team_names(home_name: String, away_name: String) -> void:
 	_home_club_name = home_name.strip_edges() if not home_name.strip_edges().is_empty() else "HOME FC"
 	_away_club_name = away_name.strip_edges() if not away_name.strip_edges().is_empty() else "AWAY FC"
@@ -614,11 +623,11 @@ func _update_chance_controls() -> void:
 	var gk_rushing: bool = pitch_node != null and pitch_node.has_method("is_gk_rush_active") and bool(pitch_node.is_gk_rush_active())
 
 	if _nearest_def_button:
-		_nearest_def_button.visible = (c_state == 2)
+		_nearest_def_button.visible = (c_state == _user_defend_chance())
 	if _slide_tackle_btn:
-		_slide_tackle_btn.visible = (c_state == 2)
+		_slide_tackle_btn.visible = (c_state == _user_defend_chance())
 	if _gk_rush_btn:
-		_gk_rush_btn.visible = (c_state == 2)
+		_gk_rush_btn.visible = (c_state == _user_defend_chance())
 		_gk_rush_btn.text = "Cancel GK Rush [G]" if gk_rushing else "GK Rush Out [G]"
 
 	if _chance_status_label:
@@ -627,14 +636,14 @@ func _update_chance_controls() -> void:
 			_status_pill.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
 			_chance_status_label.text = "Click anywhere on the pitch to resume."
 			_chance_status_label.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
-		elif c_state == 1:
+		elif c_state == _user_attack_chance():
 			if decision_paused:
 				_chance_status_label.text = "DECISION PAUSED: Tap teammate to pass, drag slow for through ball, tap pitch to dribble, or swipe fast to shoot."
 				_chance_status_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.30))
 			else:
 				_chance_status_label.text = "Executing action in real time..."
 				_chance_status_label.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
-		elif c_state == 2:
+		elif c_state == _user_defend_chance():
 			_chance_status_label.text = "REAL-TIME DEFEND: Swipe to slide tackle, tap pitch to block lanes, or rush GK out."
 			_chance_status_label.add_theme_color_override("font_color", Color(1.0, 0.50, 0.42))
 		else:
@@ -732,10 +741,10 @@ func refresh_all() -> void:
 	elif is_tactical_screen_open() or _manual_paused or match_engine.is_match_paused():
 		_status_pill.text = "PAUSED"
 		_status_pill.add_theme_color_override("font_color", Color(1.0, 0.82, 0.30))
-	elif c_state == 1:
+	elif c_state == _user_attack_chance():
 		_status_pill.text = "ATTACK CHANCE"
 		_status_pill.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
-	elif c_state == 2:
+	elif c_state == _user_defend_chance():
 		_status_pill.text = "DEFEND CHANCE"
 		_status_pill.add_theme_color_override("font_color", Color(1.0, 0.45, 0.35))
 	else:
@@ -819,9 +828,9 @@ func _on_minute_changed(_minute: int) -> void:
 
 func _on_chance_state_changed(new_state: int, _ctrl_idx: int) -> void:
 	refresh_all()
-	if new_state == 1:
+	if new_state == _user_attack_chance():
 		show_toast("ATTACK CHANCE — Decision Paused! Choose Pass, Through Ball, Dribble, or Shot.", 3.0)
-	elif new_state == 2:
+	elif new_state == _user_defend_chance():
 		show_toast("DEFEND CHANCE — Real-Time! Swipe to Slide Tackle or tap to block lanes.", 3.0)
 
 func _on_goal_scored(home: int, away: int, is_home: bool) -> void:

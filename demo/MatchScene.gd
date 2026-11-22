@@ -10,6 +10,8 @@ var active_match_context: Dictionary = {}
 var pre_match_view: PreMatchView
 var post_match_modal: PostMatchModal
 
+var _match_was_skipped: bool = false
+
 var pending_match_ended: bool = false
 var cached_final_home: int = 0
 var cached_final_away: int = 0
@@ -90,15 +92,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle_career_shell()
 		get_viewport().set_input_as_handled()
 	elif key_event.keycode == KEY_Q:
-		if is_instance_valid(match_engine) and match_engine.get_chance_state() == 2:
+		var def_state: int = 2 if (not match_engine.has_method("is_user_home") or match_engine.is_user_home()) else 1
+		if is_instance_valid(match_engine) and match_engine.get_chance_state() == def_state:
 			match_engine.select_nearest_defender()
 			get_viewport().set_input_as_handled()
 	elif key_event.keycode == KEY_E:
-		if is_instance_valid(match_engine) and match_engine.get_chance_state() == 2:
+		var def_state: int = 2 if (not match_engine.has_method("is_user_home") or match_engine.is_user_home()) else 1
+		if is_instance_valid(match_engine) and match_engine.get_chance_state() == def_state:
 			match_engine.command_tackle()
 			get_viewport().set_input_as_handled()
 	elif key_event.keycode == KEY_G:
-		if is_instance_valid(match_engine) and match_engine.get_chance_state() == 2:
+		var def_state: int = 2 if (not match_engine.has_method("is_user_home") or match_engine.is_user_home()) else 1
+		if is_instance_valid(match_engine) and match_engine.get_chance_state() == def_state:
 			if match_pitch and match_pitch.has_method("toggle_gk_rush"):
 				match_pitch.toggle_gk_rush()
 			get_viewport().set_input_as_handled()
@@ -131,6 +136,8 @@ func toggle_manual_pause() -> void:
 	match_engine.pause_match(next_paused)
 	if hud and hud.has_method("refresh_all"):
 		hud.refresh_all()
+	if hud and hud.has_method("_on_pause_btn_pressed"):
+		hud._on_pause_btn_pressed()
 
 func open_pre_match_center(p_career_state: CareerState) -> bool:
 	if not is_instance_valid(p_career_state):
@@ -259,6 +266,7 @@ func _request_skip_match() -> void:
 
 	if match_engine.can_skip_match():
 		match_engine.skip_match()
+		_match_was_skipped = true
 	else:
 		var played: int = match_engine.get_manual_matches_played()
 		var remaining: int = 5 - (played % 5)
@@ -308,6 +316,10 @@ func _on_match_ended(final_home: int, final_away: int) -> void:
 
 func _process_final_whistle(final_home: int, final_away: int) -> void:
 	pending_match_ended = false
+
+	if is_instance_valid(match_engine) and not _match_was_skipped:
+		match_engine.record_manual_match_completed()
+	_match_was_skipped = false
 
 	if is_instance_valid(career_state) and not active_match_context.is_empty():
 		var committed: bool = career_state.commit_match_result(match_engine)

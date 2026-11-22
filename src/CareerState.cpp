@@ -2538,13 +2538,13 @@ bool CareerState::prepare_next_match_payload(MatchEngine *p_engine) const {
 		return bench;
 	};
 
+	p_engine->set_home_team_ovr(home_team->GetTeamRating());
+	p_engine->set_away_team_ovr(away_team->GetTeamRating());
+
 	p_engine->set_home_lineup(build_lineup(home_team));
 	p_engine->set_away_lineup(build_lineup(away_team));
 	p_engine->set_home_bench(build_bench(home_team));
 	p_engine->set_away_bench(build_bench(away_team));
-
-	p_engine->set_home_team_ovr(home_team->GetTeamRating());
-	p_engine->set_away_team_ovr(away_team->GetTeamRating());
 
 	p_engine->set_home_mentality(home_team->Mentality);
 	p_engine->set_away_mentality(away_team->Mentality);
@@ -2616,35 +2616,35 @@ bool CareerState::commit_match_result(MatchEngine *p_engine) {
 				std::unordered_set<int32_t> processed_ids;
 				const auto &xi = user_club_it->second->GetStartingXI();
 
-				// 1. Sync final on-pitch 11 (includes starters who finished the match + subbed-on bench players)
-				for (size_t i = 0; i < xi.size(); i++) {
-					if (!xi[i]) continue;
-					int32_t pid = xi[i]->GetId();
-					processed_ids.insert(pid);
-					xi[i]->RecordAppearance();
-					if (static_cast<int>(i) < end_stamina.size()) {
-						int final_cond = std::clamp(static_cast<int>(end_stamina[static_cast<int>(i)]), 25, 100);
-						xi[i]->SetCondition(final_cond);
-					} else {
-						xi[i]->SetCondition(std::max(40, xi[i]->GetCondition() - (fix.is_friendly ? 8 : 14)));
+				// 1. Sync subbed-off starters FIRST (exact stamina at moment of substitution)
+				for (int o = 0; o < sub_off_records.size(); o++) {
+					if (sub_off_records[o].get_type() != Variant::DICTIONARY) continue;
+					Dictionary rec = sub_off_records[o];
+					int32_t off_pid = String(rec.get("id", "0")).to_int();
+					if (off_pid <= 0 || processed_ids.count(off_pid)) continue;
+					auto p_it = _players_by_id.find(off_pid);
+					if (p_it != _players_by_id.end() && p_it->second) {
+						processed_ids.insert(off_pid);
+						p_it->second->RecordAppearance();
+						int off_stam = std::clamp(static_cast<int>(rec.get("stamina", 65)), 25, 100);
+						p_it->second->SetCondition(off_stam);
 					}
 				}
 
-				// 2. Sync subbed-on bench players by ID (appearance credit + ending match stamina)
+				// 2. Sync subbed-on bench players by matching player ID in live squad snapshot
+				Array final_squad = is_user_home ? p_engine->get_home_squad_snapshot() : p_engine->get_away_squad_snapshot();
 				for (int s = 0; s < sub_on_ids.size(); s++) {
-					int32_t sub_pid = String(sub_on_ids[s]).to_int();
-					if (sub_pid <= 0 || processed_ids.find(sub_pid) != processed_ids.end()) continue;
+					String sub_pid_str = String(sub_on_ids[s]);
+					int32_t sub_pid = sub_pid_str.to_int();
+					if (sub_pid <= 0 || processed_ids.count(sub_pid)) continue;
 					auto p_it = _players_by_id.find(sub_pid);
 					if (p_it != _players_by_id.end() && p_it->second) {
 						processed_ids.insert(sub_pid);
 						p_it->second->RecordAppearance();
 						int final_cond = std::max(45, p_it->second->GetCondition() - (fix.is_friendly ? 5 : 9));
-						// Check matching slot stamina if present in active lineup
-						PackedStringArray live_names = p_engine->get_player_names();
-						int offset = is_user_home ? 0 : 11;
-						String target_name = String(p_it->second->GetName().c_str());
-						for (int slot = 0; slot < 11 && (offset + slot) < live_names.size(); slot++) {
-							if (live_names[offset + slot] == target_name && slot < end_stamina.size()) {
+						for (int slot = 0; slot < final_squad.size(); slot++) {
+							Dictionary sd = final_squad[slot];
+							if (String(sd.get("id", "")) == sub_pid_str && slot < end_stamina.size()) {
 								final_cond = std::clamp(static_cast<int>(end_stamina[slot]), 25, 100);
 								break;
 							}
@@ -2653,18 +2653,17 @@ bool CareerState::commit_match_result(MatchEngine *p_engine) {
 					}
 				}
 
-				// 3. Sync subbed-off starters (appearance credit + exact stamina at time of substitution)
-				for (int o = 0; o < sub_off_records.size(); o++) {
-					if (sub_off_records[o].get_type() != Variant::DICTIONARY) continue;
-					Dictionary rec = sub_off_records[o];
-					int32_t off_pid = String(rec.get("id", "0")).to_int();
-					if (off_pid <= 0 || processed_ids.find(off_pid) != processed_ids.end()) continue;
-					auto p_it = _players_by_id.find(off_pid);
-					if (p_it != _players_by_id.end() && p_it->second) {
-						processed_ids.insert(off_pid);
-						p_it->second->RecordAppearance();
-						int off_stam = std::clamp(static_cast<int>(rec.get("stamina", 65)), 25, 100);
-						p_it->second->SetCondition(off_stam);
+				// 3. Sync remaining starters who played the full match
+				for (size_t i = 0; i < xi.size(); i++) {
+					if (!xi[i]) continue;
+					int32_t pid = xi[i]->GetId();
+					if (processed_ids.count(pid)) continue;
+					processed_ids.insert(pid);
+					xi[i]->RecordAppearance();
+					if (static_cast<int>(i) < end_stamina.size()) {
+						xi[i]->SetCondition(std::clamp(static_cast<int>(end_stamina[static_cast<int>(i)]), 25, 100));
+					} else {
+						xi[i]->SetCondition(std::max(40, xi[i]->GetCondition() - (fix.is_friendly ? 8 : 14)));
 					}
 				}
 			}
