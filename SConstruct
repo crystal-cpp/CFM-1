@@ -45,12 +45,20 @@ sources = Glob("src/*.cpp") + Glob("Players_Database/*.cpp")
 
 env.Append(LIBPATH=["godot-cpp/bin"])
 env.Append(LIBS=[
-    f"godot-cpp.windows.{env['target']}.x86_64"
+    f"godot-cpp.{env['platform']}.{env['target']}.x86_64"
 ])
+
+if env["platform"] == "windows":
+    target_ext = ".dll"
+    env.Append(LINKFLAGS=["-static", "-static-libgcc", "-static-libstdc++"])
+elif env["platform"] == "darwin":
+    target_ext = ".dylib"
+else:
+    target_ext = ".so"
 
 target_path = (
     f"demo/bin/libfootball."
-    f"{env['platform']}.{env['target']}.x86_64.dll"
+    f"{env['platform']}.{env['target']}.x86_64{target_ext}"
 )
 
 library = env.SharedLibrary(
@@ -59,9 +67,3 @@ library = env.SharedLibrary(
 )
 
 Default(library)
-
-env.Append(LINKFLAGS=[
-    "-static",
-    "-static-libgcc",
-    "-static-libstdc++"
-])
