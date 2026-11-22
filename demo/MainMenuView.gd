@@ -90,13 +90,13 @@ func _build_ui() -> void:
 	card.add_child(vbox)
 
 	var badge := Label.new()
-	badge.text = "CRYSTAL FOOTBALL MANAGER 1"
+	badge.text = "CRYSTAL FOOTBALL MANAGER 1 - CFM1"
 	badge.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	badge.add_theme_font_size_override("font_size", 12)
 	vbox.add_child(badge)
 
 	var title := Label.new()
-	title.text = "MANAGER CAREER"
+	title.text = "CAREER SELECTION"
 	title.add_theme_color_override("font_color", Color.WHITE)
 	title.add_theme_font_size_override("font_size", 24)
 	vbox.add_child(title)
