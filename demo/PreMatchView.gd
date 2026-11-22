@@ -18,6 +18,7 @@ var career_state: Node = null
 var match_context: Dictionary = {}
 var use_alternate_away_kit: bool = false
 var _available_formations: PackedStringArray = PackedStringArray()
+var _selected_swap_player_id: int = -1
 
 var _importance_badge: Label
 var _importance_desc: Label
@@ -31,6 +32,9 @@ var _formation_opt: OptionButton
 var _mentality_opt: OptionButton
 var _pressing_opt: OptionButton
 var _lineup_list: VBoxContainer
+var _bench_header_lbl: Label
+var _bench_list: VBoxContainer
+var _swap_hint_lbl: Label
 var _warning_lbl: Label
 
 
@@ -128,7 +132,7 @@ func _build_ui() -> void:
 	_importance_desc.add_theme_color_override("font_color", Color(0.75, 0.80, 0.88))
 	match_vbox.add_child(_importance_desc)
 
-	# Body Split: Left = Tactical Setup, Right = Starting XI Fitness & Injury Check
+	# Body Split: Left = Tactical Setup, Right = Synced Starting XI & Dynamic Bench
 	var body_hbox := HBoxContainer.new()
 	body_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body_hbox.add_theme_constant_override("separation", 18)
@@ -166,22 +170,48 @@ func _build_ui() -> void:
 	_pressing_opt.item_selected.connect(_on_tactics_changed)
 	tac_vbox.add_child(_labeled_row("Pressing:", _pressing_opt))
 
+	_swap_hint_lbl = Label.new()
+	_swap_hint_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_swap_hint_lbl.add_theme_font_size_override("font_size", 12)
+	_swap_hint_lbl.add_theme_color_override("font_color", Color(0.65, 0.78, 0.92))
+	_swap_hint_lbl.text = "Tip: Click Swap on any starter and bench player to adjust your lineup."
+	tac_vbox.add_child(_swap_hint_lbl)
+
 	var squad_panel := PanelContainer.new()
 	squad_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body_hbox.add_child(squad_panel)
 
+	var squad_scroll := ScrollContainer.new()
+	squad_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	squad_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	squad_panel.add_child(squad_scroll)
+
 	var squad_vbox := VBoxContainer.new()
+	squad_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	squad_vbox.add_theme_constant_override("separation", 6)
-	squad_panel.add_child(squad_vbox)
+	squad_scroll.add_child(squad_vbox)
 
 	var xi_hdr := Label.new()
-	xi_hdr.text = "STARTING XI & FITNESS READINESS"
-	xi_hdr.add_theme_font_size_override("font_size", 16)
+	xi_hdr.text = "STARTING XI & FITNESS READINESS (11)"
+	xi_hdr.add_theme_font_size_override("font_size", 15)
 	squad_vbox.add_child(xi_hdr)
 
 	_lineup_list = VBoxContainer.new()
 	_lineup_list.add_theme_constant_override("separation", 4)
 	squad_vbox.add_child(_lineup_list)
+
+	var sep := HSeparator.new()
+	squad_vbox.add_child(sep)
+
+	_bench_header_lbl = Label.new()
+	_bench_header_lbl.text = "BENCH / SUBSTITUTES (0)"
+	_bench_header_lbl.add_theme_font_size_override("font_size", 14)
+	_bench_header_lbl.add_theme_color_override("font_color", Color(0.75, 0.84, 0.96))
+	squad_vbox.add_child(_bench_header_lbl)
+
+	_bench_list = VBoxContainer.new()
+	_bench_list.add_theme_constant_override("separation", 4)
+	squad_vbox.add_child(_bench_list)
 
 	# Footer Action Bar
 	var footer := HBoxContainer.new()
@@ -259,6 +289,7 @@ func _populate_formation_options() -> void:
 
 func setup(p_career_state: Node, fixture: Dictionary, db: PlayerDatabase = null) -> void:
 	career_state = p_career_state
+	_selected_swap_player_id = -1
 	_populate_formation_options()
 
 	if is_instance_valid(career_state) and career_state.has_method("prepare_match_context"):
@@ -291,35 +322,57 @@ func _sync_context_with_career_state() -> void:
 	else:
 		match_context["away_formation"] = active_fmt
 
-	var live_lineup: Array = []
 	if career_state.has_method("get_club_squad"):
 		var squad: Array = career_state.get_club_squad(managed_id)
-		live_lineup = _extract_active_starting_xi(squad, active_fmt)
+		var split := _split_xi_and_bench(squad, active_fmt)
+		var live_lineup: Array = split["xi"]
+		var live_bench: Array = split["bench"]
 
-	if not live_lineup.is_empty():
 		if user_is_home:
 			match_context["home_lineup"] = live_lineup
+			match_context["home_bench"] = live_bench
+			match_context["home_squad"] = squad.duplicate(true)
 		else:
 			match_context["away_lineup"] = live_lineup
+			match_context["away_bench"] = live_bench
+			match_context["away_squad"] = squad.duplicate(true)
 
 
-func _extract_active_starting_xi(squad: Array, formation: String) -> Array:
+func _split_xi_and_bench(squad: Array, formation: String) -> Dictionary:
 	if squad.size() <= 11:
-		return squad.duplicate(true)
+		return {"xi": squad.duplicate(true), "bench": []}
 
-	# 1. Respect the exact Starting XI configured in SquadView / CareerState
+	# Respect the exact Starting XI order maintained by CareerState (0..10 starters, 11..N-1 bench)
 	var starters: Array = []
+	var bench: Array = []
 	for p: Variant in squad:
 		if p is Dictionary and bool(p.get("is_starting_xi", p.get("is_starter", false))):
 			starters.append(p)
+		else:
+			bench.append(p)
+
 	if starters.size() == 11:
-		return starters
+		return {"xi": starters, "bench": bench}
 
-	# 2. CareerState keeps indices 0..10 as the active Starting XI
-	if starters.is_empty() and squad.size() >= 11:
-		return squad.slice(0, 11)
+	if starters.is_empty():
+		return {
+			"xi": squad.slice(0, 11),
+			"bench": squad.slice(11),
+		}
 
-	return _select_formation_aware_xi(squad, formation)
+	var picked_xi := _select_formation_aware_xi(squad, formation)
+	var xi_ids: Dictionary = {}
+	for p: Dictionary in picked_xi:
+		xi_ids[p.get("id", p.get("name", ""))] = true
+
+	var rem_bench: Array = []
+	for p: Variant in squad:
+		if p is Dictionary:
+			var key: Variant = p.get("id", p.get("name", ""))
+			if not xi_ids.has(key):
+				rem_bench.append(p)
+
+	return {"xi": picked_xi, "bench": rem_bench}
 
 
 func _select_formation_aware_xi(squad: Array, formation: String) -> Array:
@@ -411,6 +464,7 @@ func _build_fallback_match_context(fixture: Dictionary) -> Dictionary:
 	var home_color: Color = _parse_color(home_info.get("primary_color", home_info.get("kit_primary", "")), Color(0.06, 0.78, 0.48))
 	var away_color: Color = _parse_color(away_info.get("primary_color", away_info.get("kit_primary", "")), Color(0.92, 0.26, 0.30))
 	var away_alt_color: Color = _parse_color(away_info.get("secondary_color", away_info.get("kit_secondary", "")), away_color.inverted())
+	var clash := home_color.is_equal_approx(away_color)
 
 	var tactics: Dictionary = {}
 	if is_instance_valid(career_state) and career_state.has_method("get_club_tactics"):
@@ -419,6 +473,8 @@ func _build_fallback_match_context(fixture: Dictionary) -> Dictionary:
 
 	var home_squad: Array = career_state.get_club_squad(home_id) if is_instance_valid(career_state) and career_state.has_method("get_club_squad") else []
 	var away_squad: Array = career_state.get_club_squad(away_id) if is_instance_valid(career_state) and career_state.has_method("get_club_squad") else []
+	var home_split := _split_xi_and_bench(home_squad, active_fmt if home_id == managed_id else "4-3-3")
+	var away_split := _split_xi_and_bench(away_squad, active_fmt if away_id == managed_id else "4-3-3")
 
 	var stadium_name := String(fixture.get("stadium", home_info.get("stadium", "%s Stadium" % home_name)))
 	var competition_name := String(fixture.get("competition", "League Match"))
@@ -431,8 +487,12 @@ func _build_fallback_match_context(fixture: Dictionary) -> Dictionary:
 		"away_club": away_name,
 		"home_ovr": int(home_info.get("team_rating", home_info.get("reputation", 75))),
 		"away_ovr": int(away_info.get("team_rating", away_info.get("reputation", 75))),
-		"home_lineup": _extract_active_starting_xi(home_squad, active_fmt if home_id == managed_id else "4-3-3"),
-		"away_lineup": _extract_active_starting_xi(away_squad, active_fmt if away_id == managed_id else "4-3-3"),
+		"home_lineup": home_split["xi"],
+		"away_lineup": away_split["xi"],
+		"home_bench": home_split["bench"],
+		"away_bench": away_split["bench"],
+		"home_squad": home_squad,
+		"away_squad": away_squad,
 		"home_formation": active_fmt if home_id == managed_id else "4-3-3",
 		"away_formation": active_fmt if away_id == managed_id else "4-3-3",
 		"tactics": tactics,
@@ -446,12 +506,73 @@ func _build_fallback_match_context(fixture: Dictionary) -> Dictionary:
 		},
 		"kits": {
 			"home_primary": home_color,
-			"away_primary": away_alt_color,
+			"away_primary": away_alt_col,
 			"away_default_primary": away_color,
-			"active_away_primary": away_color,
-			"clash_detected": home_color.is_equal_approx(away_color),
+			"active_away_primary": away_alt_col if clash else away_color,
+			"clash_detected": clash,
 		},
 	}
+
+
+func _create_player_row(p: Dictionary, is_starter: bool) -> HBoxContainer:
+	var pid := int(p.get("id", -1))
+	var fitness: float = float(p.get("condition", p.get("stamina", 100.0)))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+
+	var name_lbl := Label.new()
+	var tag := "" if is_starter else "SUB · "
+	name_lbl.text = "%s[%s] %s (OVR %d)" % [tag, p.get("position", "CM"), p.get("name", "Player"), int(p.get("ovr", 75))]
+	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if pid == _selected_swap_player_id:
+		name_lbl.add_theme_color_override("font_color", Color(0.25, 0.90, 1.0))
+	elif not is_starter:
+		name_lbl.add_theme_color_override("font_color", Color(0.80, 0.85, 0.92))
+	row.add_child(name_lbl)
+
+	var stam_lbl := Label.new()
+	stam_lbl.text = "%d%%" % int(round(fitness))
+	stam_lbl.add_theme_color_override(
+		"font_color",
+		Color(0.35, 0.95, 0.55) if fitness >= 75.0 else (Color(1.0, 0.80, 0.30) if fitness >= 55.0 else Color(1.0, 0.35, 0.35))
+	)
+	row.add_child(stam_lbl)
+
+	if pid > 0 and is_instance_valid(career_state) and career_state.has_method("swap_squad_players"):
+		var swap_btn := Button.new()
+		swap_btn.custom_minimum_size = Vector2(78, 24)
+		if pid == _selected_swap_player_id:
+			swap_btn.text = "Cancel"
+		elif _selected_swap_player_id > 0:
+			swap_btn.text = "Swap In"
+		else:
+			swap_btn.text = "Swap"
+		swap_btn.pressed.connect(func() -> void: _on_player_swap_clicked(pid))
+		row.add_child(swap_btn)
+
+	return row
+
+
+func _on_player_swap_clicked(player_id: int) -> void:
+	if _selected_swap_player_id == player_id:
+		_selected_swap_player_id = -1
+		_refresh_view()
+		return
+
+	if _selected_swap_player_id <= 0:
+		_selected_swap_player_id = player_id
+		_refresh_view()
+		return
+
+	var first_id := _selected_swap_player_id
+	_selected_swap_player_id = -1
+
+	if is_instance_valid(career_state) and career_state.has_method("swap_squad_players"):
+		var managed_id: int = int(career_state.get_managed_club_id()) if career_state.has_method("get_managed_club_id") else int(match_context.get("home_club_id", 1))
+		career_state.swap_squad_players(managed_id, first_id, player_id)
+		_sync_context_with_career_state()
+
+	_refresh_view()
 
 
 func _refresh_view() -> void:
@@ -494,27 +615,34 @@ func _refresh_view() -> void:
 
 	for child: Node in _lineup_list.get_children():
 		child.queue_free()
+	for child: Node in _bench_list.get_children():
+		child.queue_free()
 
 	var user_is_home: bool = bool(match_context.get("user_is_home", true))
 	var xi: Array = match_context.get("home_lineup", []) if user_is_home else match_context.get("away_lineup", [])
+	var bench: Array = match_context.get("home_bench", []) if user_is_home else match_context.get("away_bench", [])
 	var tired_count: int = 0
 
 	for p: Dictionary in xi:
-		# Read match fitness ("condition") so it matches SquadView and reflects post-match fatigue
 		var fitness: float = float(p.get("condition", p.get("stamina", 100.0)))
 		if fitness < 65.0:
 			tired_count += 1
-		var row := HBoxContainer.new()
-		var name_lbl := Label.new()
-		name_lbl.text = "[%s] %s (OVR %d)" % [p.get("position", "CM"), p.get("name", "Player"), int(p.get("ovr", 75))]
-		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(name_lbl)
+		_lineup_list.add_child(_create_player_row(p, true))
 
-		var stam_lbl := Label.new()
-		stam_lbl.text = "Fitness: %d%%" % int(round(fitness))
-		stam_lbl.add_theme_color_override("font_color", Color(0.35, 0.95, 0.55) if fitness >= 75.0 else (Color(1.0, 0.80, 0.30) if fitness >= 55.0 else Color(1.0, 0.35, 0.35)))
-		row.add_child(stam_lbl)
-		_lineup_list.add_child(row)
+	_bench_header_lbl.text = "BENCH / SUBSTITUTES (%d)" % bench.size()
+	if bench.is_empty():
+		var empty_bench_lbl := Label.new()
+		empty_bench_lbl.text = "No extra bench players available in squad."
+		empty_bench_lbl.add_theme_color_override("font_color", Color(0.60, 0.66, 0.76))
+		_bench_list.add_child(empty_bench_lbl)
+	else:
+		for bp: Dictionary in bench:
+			_bench_list.add_child(_create_player_row(bp, false))
+
+	if _selected_swap_player_id > 0:
+		_swap_hint_lbl.text = "Select a second player to complete the lineup swap (or click Cancel)."
+	else:
+		_swap_hint_lbl.text = "Bench synced to squad (%d reserve(s)). Click Swap on any two players to adjust your XI." % bench.size()
 
 	_warning_lbl.text = "Warning: %d starter(s) below 65%% fitness — higher injury risk." % tired_count if tired_count > 0 else "Squad condition optimal."
 

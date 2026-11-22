@@ -184,11 +184,29 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	elif career_state.has_method("apply_context_to_match_engine"):
 		career_state.call("apply_context_to_match_engine", match_engine, active_match_context)
 
+	var home_bench: Array = active_match_context.get("home_bench", [])
+	var away_bench: Array = active_match_context.get("away_bench", [])
+	if match_engine.has_method("set_home_bench"):
+		match_engine.call("set_home_bench", home_bench)
+	if match_engine.has_method("set_away_bench"):
+		match_engine.call("set_away_bench", away_bench)
+
+	var home_name: String = String(active_match_context.get("home_club", "Home"))
+	var away_name: String = String(active_match_context.get("away_club", "Away"))
+
 	var kits: Dictionary = active_match_context.get("kits", {})
 	var home_primary: Color = kits.get("home_primary", Color(0.06, 0.78, 0.48))
 	var away_primary: Color = kits.get("active_away_primary", kits.get("away_primary", kits.get("away_default_primary", Color(0.92, 0.26, 0.30))))
-	if is_instance_valid(match_pitch) and match_pitch.has_method("set_kit_colors"):
-		match_pitch.set_kit_colors(home_primary, away_primary)
+	if is_instance_valid(match_pitch):
+		if match_pitch.has_method("set_kit_colors"):
+			match_pitch.set_kit_colors(home_primary, away_primary)
+		if match_pitch.has_method("set_team_names"):
+			match_pitch.set_team_names(home_name, away_name)
+		if match_pitch.has_method("set_match_lineups"):
+			match_pitch.set_match_lineups(
+				active_match_context.get("home_lineup", []),
+				active_match_context.get("away_lineup", [])
+			)
 
 	if is_instance_valid(pre_match_view):
 		pre_match_view.queue_free()
@@ -198,16 +216,15 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	match_engine.start_match()
 
 	if is_instance_valid(match_pitch):
+		if match_pitch.has_method("reset_for_new_match"):
+			match_pitch.reset_for_new_match()
 		if match_pitch.has_method("refresh_player_names"):
 			match_pitch.call("refresh_player_names")
 		match_pitch.queue_redraw()
 
 	if hud:
 		if hud.has_method("set_team_names"):
-			hud.set_team_names(
-				String(active_match_context.get("home_club", "Home")),
-				String(active_match_context.get("away_club", "Away"))
-			)
+			hud.set_team_names(home_name, away_name)
 		if hud.has_method("hide_fulltime_summary"):
 			hud.hide_fulltime_summary()
 		if hud.has_method("refresh_all"):
@@ -248,6 +265,13 @@ func _request_next_match() -> void:
 	active_match_context.clear()
 	overview_2d.show()
 	match_engine.start_match()
+	if is_instance_valid(match_pitch):
+		if match_pitch.has_method("set_team_names"):
+			match_pitch.set_team_names("HOME FC", "AWAY FC")
+		if match_pitch.has_method("set_match_lineups"):
+			match_pitch.set_match_lineups([], [])
+		if match_pitch.has_method("reset_for_new_match"):
+			match_pitch.reset_for_new_match()
 	if hud and hud.has_method("hide_fulltime_summary"):
 		hud.hide_fulltime_summary()
 		hud.show_toast("KICK OFF! New Match Started", 2.0)
@@ -269,20 +293,21 @@ func _process_final_whistle(final_home: int, final_away: int) -> void:
 	pending_match_ended = false
 
 	if is_instance_valid(career_state) and not active_match_context.is_empty():
-		# The native CareerState commit API returns bool, not a report Dictionary.
 		var committed: bool = career_state.commit_match_result(match_engine)
 		if not committed:
 			push_warning("CareerState could not commit this match result; showing the match report without a confirmed career update.")
 
+		var user_is_home: bool = bool(active_match_context.get("user_is_home", true))
 		var match_stats: Dictionary = match_engine.get_match_stats() if is_instance_valid(match_engine) else {}
 		var summary: Dictionary = {
 			"home_club": String(active_match_context.get("home_club", "Home")),
 			"away_club": String(active_match_context.get("away_club", "Away")),
 			"home_goals": final_home,
 			"away_goals": final_away,
-			"user_is_home": bool(active_match_context.get("user_is_home", true)),
+			"user_is_home": user_is_home,
 			"stats": match_stats,
-			"stamina_report": match_stats.get("home_player_stamina", []) if bool(active_match_context.get("user_is_home", true)) else match_stats.get("away_player_stamina", []),
+			"stamina_report": match_stats.get("home_player_stamina", []) if user_is_home else match_stats.get("away_player_stamina", []),
+			"bench": active_match_context.get("home_bench", []) if user_is_home else active_match_context.get("away_bench", []),
 			"new_injuries": [],
 			"skip_tokens": match_engine.get_skip_tokens() if is_instance_valid(match_engine) else 0,
 			"manual_matches_played": match_engine.get_manual_matches_played() if is_instance_valid(match_engine) else 0,
@@ -295,7 +320,6 @@ func _process_final_whistle(final_home: int, final_away: int) -> void:
 
 	if hud and hud.has_method("show_fulltime_summary"):
 		hud.show_fulltime_summary(final_home, final_away)
-
 func _toggle_career_shell() -> void:
 	var shell := _resolve_career_shell()
 	if not is_instance_valid(shell):

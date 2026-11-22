@@ -3005,7 +3005,14 @@ void MatchEngine::_physics_process(double delta) {
     if (new_minute != current_minute) {
         current_minute = new_minute;
         emit_signal("minute_changed", current_minute);
+        if (current_minute >= 45 && !halftime_triggered) {
+            halftime_triggered = true;
+            _trigger_halftime();
+            return;
+        }
     }
+
+    
 
     if (current_minute >= 90) {
         _end_active_chance(false);
@@ -3051,6 +3058,8 @@ void MatchEngine::start_match() {
     pass_target_index = -1;
     is_through_ball_in_flight = false;
     active_chance_timer = 0.0f;
+
+    halftime_triggered = false;
 
     stats = MatchStats();
 
@@ -3130,6 +3139,42 @@ void MatchEngine::resolve_manual_scenario(bool p_success, bool p_is_home_team) {
 
 void MatchEngine::_log_event(const String& p_type, bool p_is_home, const String& p_player_name, const String& p_desc) {
     emit_signal("match_event_logged", current_minute, p_type, p_is_home, p_player_name, p_desc);
+}
+
+void MatchEngine::_trigger_halftime() {
+    _end_active_chance(false);
+
+    // +20% stamina recovery at half-time (capped at player's starting match condition)
+    for (auto& p : sim_players) {
+        float max_cap = std::clamp(p.starting_stamina, 10.0f, 100.0f);
+        p.stamina = std::min(max_cap, p.stamina + 20.0f);
+        p.recovery_timer = 0.0f;
+        p.sprint_boost_timer = 0.0f;
+        p.dribble_boost_timer = 0.0f;
+        p.velocity = Vector2(0.0f, 0.0f);
+    }
+
+    ball_velocity = Vector2(0.0f, 0.0f);
+    ball_target = field_size * 0.5f;
+    pass_target_index = -1;
+    is_through_ball_in_flight = false;
+    shot_hits_crossbar = false;
+    event_cooldown = 5.0f;
+
+    // Snap all 22 players to formation halves & place ball + taker on the middle line
+    // false = Away kicks off 2nd half (Home kicked off 1st half); use true if you want Home kickoff
+    bool second_half_home_kickoff = false;
+    _apply_formation_positions(false, true);
+    _give_kickoff(second_half_home_kickoff);
+    _sync_player_positions_array();
+
+    is_paused_for_manual = false;
+    waiting_for_kickoff_resume = true;
+    kickoff_team = second_half_home_kickoff ? 0 : 1;
+
+    _log_event("halftime", true, "Referee", "Half-time! Players recover stamina and line up for the second half.");
+    emit_signal("chance_state_changed", chance_state, -1);
+    emit_signal("goal_kickoff_ready", kickoff_team, String("HALF TIME (45') · CLICK TO RESUME"));
 }
 
 Array MatchEngine::get_player_positions() const {

@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <string>
 
+
 namespace godot {
 
 struct TacticalPosition {
@@ -244,6 +245,9 @@ private:
         BALL_IN_SHOT = 2,
         BALL_LOOSE = 3
     };
+
+    void _trigger_halftime();
+    bool halftime_triggered = false;
 
     void _initialize_default_squads();
     void _apply_role_profile(SimPlayer& p_player, int p_base_ovr) const;

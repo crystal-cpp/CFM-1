@@ -623,7 +623,9 @@ func _update_chance_controls() -> void:
 
 	if _chance_status_label:
 		if match_engine.is_waiting_for_kickoff_resume():
-			_chance_status_label.text = "Players lined up for kickoff. Click anywhere on the pitch to resume."
+			_status_pill.text = "HALF TIME" if match_engine.get_current_minute() == 45 else "KICKOFF"
+			_status_pill.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
+			_chance_status_label.text = "Click anywhere on the pitch to resume."
 			_chance_status_label.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
 		elif c_state == 1:
 			if decision_paused:
