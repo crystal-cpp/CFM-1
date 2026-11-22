@@ -1372,7 +1372,8 @@ func _draw_pitch_scene() -> void:
 		var m_canvas: Vector2 = _logical_to_canvas(_target_marker_pos)
 		_pitch_canvas.draw_arc(m_canvas, pulse_r, 0.0, TAU, 28, col, 2.6)
 		if not _target_marker_label.is_empty():
-			_pitch_canvas.draw_string(default_font, m_canvas + Vector2(-48.0, -(pulse_r + 6.0)), _target_marker_label, HORIZONTAL_ALIGNMENT_CENTER, 96, 11, col)
+			if default_font != null:
+				_pitch_canvas.draw_string(default_font, m_canvas + Vector2(-48.0, -(pulse_r + 6.0)), _target_marker_label, HORIZONTAL_ALIGNMENT_CENTER, 96, 11, col)
 
 	if _slide_tackle_timer > 0.0:
 		var t_pos: Vector2 = _logical_to_canvas(_slide_tackle_pos)
@@ -1435,7 +1436,8 @@ func _draw_pitch_scene() -> void:
 				_draw_arrow_head(goal_aim_canvas, goal_aim_canvas - ball_canvas, shot_col, 13.0)
 				_pitch_canvas.draw_arc(goal_aim_canvas, 10.0, 0.0, TAU, 24, shot_col, 2.2)
 				var pwr_pct: int = int(round(power_ratio * 100.0))
-				_pitch_canvas.draw_string(default_font, goal_aim_canvas + Vector2(-46.0, -14.0), "SHOT %d%%" % pwr_pct, HORIZONTAL_ALIGNMENT_CENTER, 92, 12, shot_col)
+				if default_font != null:
+					_pitch_canvas.draw_string(default_font, goal_aim_canvas + Vector2(-46.0, -14.0), "SHOT %d%%" % pwr_pct, HORIZONTAL_ALIGNMENT_CENTER, 92, 12, shot_col)
 			elif _gesture_mode == "THROUGH_BALL":
 				var tb_col := Color(0.18, 0.92, 1.0, 0.95)
 				var tb_canvas: Vector2 = _logical_to_canvas(_preview_through_target)
@@ -1443,7 +1445,8 @@ func _draw_pitch_scene() -> void:
 				_draw_arrow_head(tb_canvas, tb_canvas - ball_canvas, tb_col, 12.0)
 				_pitch_canvas.draw_arc(tb_canvas, 13.0 * eff_scale, 0.0, TAU, 24, tb_col, 2.6)
 				_pitch_canvas.draw_circle(tb_canvas, 4.0, tb_col)
-				_pitch_canvas.draw_string(default_font, tb_canvas + Vector2(-52.0, -16.0), "THROUGH BALL", HORIZONTAL_ALIGNMENT_CENTER, 104, 11, tb_col)
+				if default_font != null:
+					_pitch_canvas.draw_string(default_font, tb_canvas + Vector2(-52.0, -16.0), "THROUGH BALL", HORIZONTAL_ALIGNMENT_CENTER, 104, 11, tb_col)
 				if _preview_through_runner >= 0 and _preview_through_runner < positions.size():
 					var run_canvas: Vector2 = _logical_to_canvas(Vector2(positions[_preview_through_runner]))
 					var run_col := Color(1.0, 0.92, 0.30, 0.92)
@@ -1481,8 +1484,10 @@ func _draw_pitch_scene() -> void:
 		var role_text: String = roles[i] if i < roles.size() else ("H" + str(i + 1) if is_home else "A" + str(i - 10))
 		var custom_name: String = _player_display_names[i] if i < _player_display_names.size() else ""
 		var label_text: String = ("%s · %s" % [role_text, custom_name]) if not custom_name.is_empty() else role_text
-		_pitch_canvas.draw_string(default_font, pos + Vector2(-47.0, -(p_radius + 3.0)), label_text, HORIZONTAL_ALIGNMENT_CENTER, 96, 10, Color(0.0, 0.0, 0.0, 0.78))
-		_pitch_canvas.draw_string(default_font, pos + Vector2(-48.0, -(p_radius + 4.0)), label_text, HORIZONTAL_ALIGNMENT_CENTER, 96, 10, Color.WHITE)
+		if default_font != null:
+			_pitch_canvas.draw_string(default_font, pos + Vector2(-47.0, -(p_radius + 3.0)), label_text, HORIZONTAL_ALIGNMENT_CENTER, 96, 10, Color(0.0, 0.0, 0.0, 0.78))
+		if default_font != null:
+			_pitch_canvas.draw_string(default_font, pos + Vector2(-48.0, -(p_radius + 4.0)), label_text, HORIZONTAL_ALIGNMENT_CENTER, 96, 10, Color.WHITE)
 
 	var ball_pos: Vector2 = _logical_to_canvas(match_engine.get_ball_position())
 	var ball_r: float = maxf(4.5, 5.5 * eff_scale)
@@ -1506,8 +1511,10 @@ func _draw_pitch_scene() -> void:
 		var main_prompt: String = "CLICK TO RESUME" if is_goal_card else "CLICK TO START"
 		var sub_col: Color = Color(1.0, 0.88, 0.32) if is_goal_card else Color(0.20, 0.94, 0.58)
 
-		_pitch_canvas.draw_string(default_font, card_pos + Vector2(0.0, 32.0), sub_title, HORIZONTAL_ALIGNMENT_CENTER, int(card_w), 13, sub_col)
-		_pitch_canvas.draw_string(default_font, card_pos + Vector2(0.0, 64.0), main_prompt, HORIZONTAL_ALIGNMENT_CENTER, int(card_w), 21, Color.WHITE)
+		if default_font != null:
+			_pitch_canvas.draw_string(default_font, card_pos + Vector2(0.0, 32.0), sub_title, HORIZONTAL_ALIGNMENT_CENTER, int(card_w), 13, sub_col)
+		if default_font != null:
+			_pitch_canvas.draw_string(default_font, card_pos + Vector2(0.0, 64.0), main_prompt, HORIZONTAL_ALIGNMENT_CENTER, int(card_w), 21, Color.WHITE)
 		return
 
 	if chance_state == user_atk:
@@ -1523,7 +1530,8 @@ func _draw_pitch_scene() -> void:
 		_pitch_canvas.draw_rect(banner_rect, b_bg, true)
 		_pitch_canvas.draw_rect(banner_rect, b_border, false, 1.6)
 		var banner_txt: String = "%s · Tap=Dribble/Pass · Slow Drag=Through Ball · Fast Swipe=Shot" % zone_tag if is_attack_decision_paused() else "%s · Executing your move..." % zone_tag
-		_pitch_canvas.draw_string(default_font, banner_rect.position + Vector2(10.0, 21.0), banner_txt, HORIZONTAL_ALIGNMENT_LEFT, int(banner_rect.size.x - 16.0), 11, Color.WHITE)
+		if default_font != null:
+			_pitch_canvas.draw_string(default_font, banner_rect.position + Vector2(10.0, 21.0), banner_txt, HORIZONTAL_ALIGNMENT_LEFT, int(banner_rect.size.x - 16.0), 11, Color.WHITE)
 	elif chance_state == user_def:
 		var b_pos_def: Vector2 = match_engine.get_ball_position()
 		var own_goal_x: float = _user_own_goal_x(logical_size.x)
@@ -1535,7 +1543,8 @@ func _draw_pitch_scene() -> void:
 		_pitch_canvas.draw_rect(def_rect, Color(0.28, 0.08, 0.10, 0.90), true)
 		_pitch_canvas.draw_rect(def_rect, Color(1.0, 0.42, 0.35, 0.90), false, 1.6)
 		var def_txt: String = "%s · GK RUSHING OUT! Tap defender to cancel" % def_zone_tag if _gk_rush_active else "%s · Swipe=Slide Tackle · Tap=Block Lane · Tap GK=Rush" % def_zone_tag
-		_pitch_canvas.draw_string(default_font, def_rect.position + Vector2(10.0, 21.0), def_txt, HORIZONTAL_ALIGNMENT_LEFT, int(def_rect.size.x - 16.0), 11, Color.WHITE)
+		if default_font != null:
+			_pitch_canvas.draw_string(default_font, def_rect.position + Vector2(10.0, 21.0), def_txt, HORIZONTAL_ALIGNMENT_LEFT, int(def_rect.size.x - 16.0), 11, Color.WHITE)
 
 func _on_minute_changed(minute: int) -> void:
 	if minute % 15 == 0:
