@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <algorithm>
+#include <cmath>
 #include "mainplayer.h"
 
 struct Coach {
@@ -72,7 +73,7 @@ public:
         if (coaches.empty()) return 10;
         int total = 0;
         for (const auto& c : coaches) total += c.coachingSkill;
-        return total / static_cast<int>(coaches.size());
+        return static_cast<int>(std::lround(static_cast<double>(total) / static_cast<double>(coaches.size())));
     }
 
     double GetTotalWeeklySalaries() const {
