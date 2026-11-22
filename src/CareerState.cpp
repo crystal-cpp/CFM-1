@@ -419,7 +419,6 @@ CareerState::CareerState() {
 	_load_unlock_persistence();
 }
 
-// Replace CareerState::prepare_match_context in CareerState_2.cpp
 Dictionary CareerState::prepare_match_context(const Dictionary &p_fixture, const Ref<PlayerDatabase> &/*p_db*/) const {
 	Dictionary fix = p_fixture.is_empty() ? get_next_fixture() : p_fixture;
 	int home_id = static_cast<int>(fix.get("home_club_id", _managed_club_id));
@@ -437,36 +436,29 @@ Dictionary CareerState::prepare_match_context(const Dictionary &p_fixture, const
 	Array home_squad = get_club_squad(home_id);
 	Array away_squad = get_club_squad(away_id);
 
-	const int home_xi_count = std::min<int>(11, home_squad.size());
 	Array home_xi;
-	Array home_bench;
-	for (int i = 0; i < home_squad.size(); ++i) {
-		if (i < home_xi_count) {
-			home_xi.append(home_squad[i]);
-		} else {
-			home_bench.append(home_squad[i]);
-		}
+	for (int i = 0; i < std::min<int>(11, home_squad.size()); ++i) {
+		home_xi.append(home_squad[i]);
 	}
-
-	const int away_xi_count = std::min<int>(11, away_squad.size());
 	Array away_xi;
-	Array away_bench;
-	for (int i = 0; i < away_squad.size(); ++i) {
-		if (i < away_xi_count) {
-			away_xi.append(away_squad[i]);
-		} else {
-			away_bench.append(away_squad[i]);
-		}
+	for (int i = 0; i < std::min<int>(11, away_squad.size()); ++i) {
+		away_xi.append(away_squad[i]);
+	}
+	Array home_bench_arr;
+	for (int i = 11; i < std::min<int>(23, home_squad.size()); ++i) {
+		home_bench_arr.append(home_squad[i]);
+	}
+	Array away_bench_arr;
+	for (int i = 11; i < std::min<int>(23, away_squad.size()); ++i) {
+		away_bench_arr.append(away_squad[i]);
 	}
 
 	Color home_col = Color::html(String(home_info.get("primary_color", "#1E3A8A")));
 	Color away_col = Color::html(String(away_info.get("primary_color", "#DC2626")));
 	Color away_alt_col = Color::html(String(away_info.get("secondary_color", "#F8FAFC")));
-	bool clash = home_col.is_equal_approx(away_col);
 
 	bool is_user_home = (home_id == _managed_club_id);
-	int tactics_club_id = (home_id == _managed_club_id || away_id == _managed_club_id) ? _managed_club_id : home_id;
-	Dictionary active_tactics = get_club_tactics(tactics_club_id);
+	Dictionary active_tactics = get_club_tactics(_managed_club_id);
 
 	Dictionary imp;
 	imp["label"] = String(fix.get("match_importance", "STANDARD"));
@@ -477,8 +469,8 @@ Dictionary CareerState::prepare_match_context(const Dictionary &p_fixture, const
 	kits["home_primary"] = home_col;
 	kits["away_primary"] = away_alt_col;
 	kits["away_default_primary"] = away_col;
-	kits["active_away_primary"] = clash ? away_alt_col : away_col;
-	kits["clash_detected"] = clash;
+	kits["active_away_primary"] = away_col;
+	kits["clash_detected"] = (home_col.is_equal_approx(away_col));
 
 	Dictionary ctx;
 	ctx["fixture"] = fix;
@@ -492,12 +484,9 @@ Dictionary CareerState::prepare_match_context(const Dictionary &p_fixture, const
 	ctx["away_formation"] = away_fmt;
 	ctx["home_lineup"] = home_xi;
 	ctx["away_lineup"] = away_xi;
-	ctx["home_bench"] = home_bench;
-	ctx["away_bench"] = away_bench;
-	ctx["home_squad"] = home_squad;
-	ctx["away_squad"] = away_squad;
+	ctx["home_bench"] = home_bench_arr;
+	ctx["away_bench"] = away_bench_arr;
 	ctx["user_is_home"] = is_user_home;
-
 	String stad_name = String(fix.get("stadium", ""));
 	if (stad_name.is_empty()) {
 		stad_name = String(home_info.get("stadium", home_name + " Stadium"));
@@ -2508,8 +2497,25 @@ bool CareerState::prepare_next_match_payload(MatchEngine *p_engine) const {
 		return lineup;
 	};
 
+	auto build_bench = [this](Team *team) -> Array {
+		Array bench;
+		std::unordered_set<int32_t> xi_ids;
+		for (const auto &sp : team->GetStartingXI()) {
+			if (sp) xi_ids.insert(sp->GetId());
+		}
+		for (const auto &rp : team->GetRoster()) {
+			if (!rp) continue;
+			if (xi_ids.find(rp->GetId()) != xi_ids.end()) continue;
+			bench.append(_player_to_dict(rp));
+			if (bench.size() >= 12) break;
+		}
+		return bench;
+	};
+
 	p_engine->set_home_lineup(build_lineup(home_team));
 	p_engine->set_away_lineup(build_lineup(away_team));
+	p_engine->set_home_bench(build_bench(home_team));
+	p_engine->set_away_bench(build_bench(away_team));
 
 	p_engine->set_home_team_ovr(home_team->GetTeamRating());
 	p_engine->set_away_team_ovr(away_team->GetTeamRating());
@@ -2532,7 +2538,6 @@ bool CareerState::prepare_next_match_payload(MatchEngine *p_engine) const {
 	return true;
 }
 
-// Replace CareerState::commit_match_result in CareerState_2.cpp
 bool CareerState::commit_match_result(MatchEngine *p_engine) {
 	if (!p_engine) return false;
 
@@ -2542,101 +2547,19 @@ bool CareerState::commit_match_result(MatchEngine *p_engine) {
 	int fix_id = fix_dict["fixture_id"];
 	int home_score = p_engine->get_home_score();
 	int away_score = p_engine->get_away_score();
-	Dictionary match_stats = p_engine->get_match_stats();
-
-	auto sync_team_post_match = [&](int32_t club_id, const Array &stamina_arr, int fallback_drop) {
-		auto club_it = _clubs.find(club_id);
-		if (club_it == _clubs.end() || !club_it->second) return;
-
-		const auto &xi = club_it->second->GetStartingXI();
-		std::unordered_map<int32_t, int> stamina_by_id;
-		for (int i = 0; i < stamina_arr.size(); ++i) {
-			Variant entry = stamina_arr[i];
-			if (entry.get_type() == Variant::DICTIONARY) {
-				Dictionary sd = entry;
-				int pid = static_cast<int>(sd.get("id", sd.get("player_id", -1)));
-				int cond_val = static_cast<int>(sd.get("condition", sd.get("stamina", -1)));
-				if (pid > 0 && cond_val >= 0) {
-					stamina_by_id[pid] = std::clamp(cond_val, 25, 100);
-				}
-			}
-		}
-
-		for (size_t i = 0; i < xi.size(); ++i) {
-			const auto &p = xi[i];
-			if (!p) continue;
-			p->RecordAppearance();
-
-			auto found_id = stamina_by_id.find(p->GetId());
-			if (found_id != stamina_by_id.end()) {
-				p->SetCondition(found_id->second);
-			} else if (static_cast<int>(i) < stamina_arr.size() &&
-				(stamina_arr[i].get_type() == Variant::INT || stamina_arr[i].get_type() == Variant::FLOAT)) {
-				int val = static_cast<int>(stamina_arr[i]);
-				p->SetCondition(std::clamp(val, 25, 100));
-			} else {
-				p->SetCondition(std::max(35, p->GetCondition() - fallback_drop));
-			}
-		}
-	};
 
 	for (auto &fix : _fixtures) {
 		if (fix.fixture_id == fix_id) {
 			fix.home_goals = home_score;
 			fix.away_goals = away_score;
 			fix.played = true;
-
-			bool populated_from_engine = false;
-			if (match_stats.has("events") && match_stats["events"].get_type() == Variant::ARRAY) {
-				Array ev_list = match_stats["events"];
-				fix.events.clear();
-				for (int i = 0; i < ev_list.size(); ++i) {
-					if (ev_list[i].get_type() != Variant::DICTIONARY) continue;
-					Dictionary ed = ev_list[i];
-					String ev_type = String(ed.get("type", "")).to_upper();
-					if (ev_type != "GOAL") continue;
-
-					MatchEventRecord rec;
-					rec.minute = std::clamp<int>(ed.get("minute", 1), 1, 120);
-					rec.club_id = ed.get("club_id", -1);
-					rec.player_id = ed.get("player_id", -1);
-					rec.player_name = String(ed.get("player_name", "")).utf8().get_data();
-					rec.assist_player_id = ed.get("assist_player_id", -1);
-					rec.assist_player_name = String(ed.get("assist_player_name", "")).utf8().get_data();
-					rec.type = "GOAL";
-
-					auto pit = _players_by_id.find(rec.player_id);
-					if (pit != _players_by_id.end() && pit->second) {
-						pit->second->SetGoals(pit->second->GetGoals() + 1);
-						if (rec.player_name.empty()) rec.player_name = pit->second->GetName();
-						if (rec.club_id <= 0) rec.club_id = pit->second->GetClubId();
-					}
-					auto ait = _players_by_id.find(rec.assist_player_id);
-					if (ait != _players_by_id.end() && ait->second) {
-						ait->second->SetAssists(ait->second->GetAssists() + 1);
-						if (rec.assist_player_name.empty()) rec.assist_player_name = ait->second->GetName();
-					}
-					fix.events.push_back(rec);
-				}
-				populated_from_engine = !fix.events.empty() || (home_score == 0 && away_score == 0);
-			}
-
-			if (!populated_from_engine) {
-				_populate_fixture_goal_events(fix);
-			}
-
-			int fallback_drop = fix.is_friendly ? 8 : 14;
-			Array home_stam = match_stats.get("home_player_stamina", Array());
-			Array away_stam = match_stats.get("away_player_stamina", Array());
-			sync_team_post_match(fix.home_club_id, home_stam, fallback_drop);
-			sync_team_post_match(fix.away_club_id, away_stam, fallback_drop);
+			_populate_fixture_goal_events(fix);
 
 			bool is_user_home = (fix.home_club_id == _managed_club_id);
 			int user_goals = is_user_home ? home_score : away_score;
 			int opp_goals = is_user_home ? away_score : home_score;
 
 			if (!fix.is_friendly) {
-				_current_matchday = std::max(_current_matchday, fix.matchday + 1);
 				if (user_goals > opp_goals) {
 					_manager.career_wins++;
 					_manager.board_confidence = std::min(100, _manager.board_confidence + 3);
@@ -2651,6 +2574,75 @@ bool CareerState::commit_match_result(MatchEngine *p_engine) {
 			int64_t gate_receipts = fix.is_friendly ? (is_user_home ? 650000 : 250000) : (is_user_home ? 1800000 : 450000);
 			_finances.total_balance += gate_receipts;
 
+			auto user_club_it = _clubs.find(_managed_club_id);
+			if (user_club_it != _clubs.end() && user_club_it->second) {
+				Dictionary m_stats = p_engine->get_match_stats();
+				Array end_stamina = is_user_home
+					? Array(m_stats.get("home_player_stamina", Array()))
+					: Array(m_stats.get("away_player_stamina", Array()));
+				Array sub_off_records = is_user_home
+					? Array(m_stats.get("home_subbed_off_records", Array()))
+					: Array(m_stats.get("away_subbed_off_records", Array()));
+				Array sub_on_ids = is_user_home
+					? Array(m_stats.get("home_subbed_on_ids", Array()))
+					: Array(m_stats.get("away_subbed_on_ids", Array()));
+
+				std::unordered_set<int32_t> processed_ids;
+				const auto &xi = user_club_it->second->GetStartingXI();
+
+				// 1. Sync final on-pitch 11 (includes starters who finished the match + subbed-on bench players)
+				for (size_t i = 0; i < xi.size(); i++) {
+					if (!xi[i]) continue;
+					int32_t pid = xi[i]->GetId();
+					processed_ids.insert(pid);
+					xi[i]->RecordAppearance();
+					if (static_cast<int>(i) < end_stamina.size()) {
+						int final_cond = std::clamp(static_cast<int>(end_stamina[static_cast<int>(i)]), 25, 100);
+						xi[i]->SetCondition(final_cond);
+					} else {
+						xi[i]->SetCondition(std::max(40, xi[i]->GetCondition() - (fix.is_friendly ? 8 : 14)));
+					}
+				}
+
+				// 2. Sync subbed-on bench players by ID (appearance credit + ending match stamina)
+				for (int s = 0; s < sub_on_ids.size(); s++) {
+					int32_t sub_pid = String(sub_on_ids[s]).to_int();
+					if (sub_pid <= 0 || processed_ids.find(sub_pid) != processed_ids.end()) continue;
+					auto p_it = _players_by_id.find(sub_pid);
+					if (p_it != _players_by_id.end() && p_it->second) {
+						processed_ids.insert(sub_pid);
+						p_it->second->RecordAppearance();
+						int final_cond = std::max(45, p_it->second->GetCondition() - (fix.is_friendly ? 5 : 9));
+						// Check matching slot stamina if present in active lineup
+						PackedStringArray live_names = p_engine->get_player_names();
+						int offset = is_user_home ? 0 : 11;
+						String target_name = String(p_it->second->GetName().c_str());
+						for (int slot = 0; slot < 11 && (offset + slot) < live_names.size(); slot++) {
+							if (live_names[offset + slot] == target_name && slot < end_stamina.size()) {
+								final_cond = std::clamp(static_cast<int>(end_stamina[slot]), 25, 100);
+								break;
+							}
+						}
+						p_it->second->SetCondition(final_cond);
+					}
+				}
+
+				// 3. Sync subbed-off starters (appearance credit + exact stamina at time of substitution)
+				for (int o = 0; o < sub_off_records.size(); o++) {
+					if (sub_off_records[o].get_type() != Variant::DICTIONARY) continue;
+					Dictionary rec = sub_off_records[o];
+					int32_t off_pid = String(rec.get("id", "0")).to_int();
+					if (off_pid <= 0 || processed_ids.find(off_pid) != processed_ids.end()) continue;
+					auto p_it = _players_by_id.find(off_pid);
+					if (p_it != _players_by_id.end() && p_it->second) {
+						processed_ids.insert(off_pid);
+						p_it->second->RecordAppearance();
+						int off_stam = std::clamp(static_cast<int>(rec.get("stamina", 65)), 25, 100);
+						p_it->second->SetCondition(off_stam);
+					}
+				}
+			}
+
 			std::string result_str = is_user_home ?
 				(std::to_string(home_score) + " - " + std::to_string(away_score)) :
 				(std::to_string(away_score) + " - " + std::to_string(home_score));
@@ -2664,7 +2656,6 @@ bool CareerState::commit_match_result(MatchEngine *p_engine) {
 
 	_recalculate_standings();
 	emit_signal("standings_updated");
-	emit_signal("squad_updated", _managed_club_id);
 	emit_signal("balance_changed", _finances.total_balance, _finances.transfer_budget, _finances.wage_budget);
 	return true;
 }

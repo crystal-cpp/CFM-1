@@ -31,10 +31,12 @@ struct Scenario3DData {
 
 struct SimPlayer {
     String name;
+    String player_id = "";
     String role = "CM";
     bool is_home = true;
     int slot_index = 0;
 
+    int ovr = 70;
     int pace = 70;
     int shooting = 70;
     int passing = 70;
@@ -50,6 +52,21 @@ struct SimPlayer {
     Vector2 anchor;
     Vector2 position;
     Vector2 velocity;
+};
+
+struct BenchPlayer {
+    String name;
+    String player_id = "";
+    String role = "CM";
+    int ovr = 70;
+    int pace = 70;
+    int shooting = 70;
+    int passing = 70;
+    int dribbling = 70;
+    int defending = 70;
+    int physical = 70;
+    float stamina = 100.0f;
+    bool used = false;
 };
 
 struct MatchStats {
@@ -69,6 +86,8 @@ struct MatchStats {
     int away_tackles = 0;
     int home_interceptions = 0;
     int away_interceptions = 0;
+    int home_clearances = 0;
+    int away_clearances = 0;
     int home_saves = 0;
     int away_saves = 0;
     int home_corners = 0;
@@ -110,6 +129,9 @@ public:
 
     MatchEngine();
     ~MatchEngine();
+
+    void set_home_bench(const Array &p_bench);
+    void set_away_bench(const Array &p_bench);
 
     void _ready() override;
     void _physics_process(double delta) override;
@@ -171,13 +193,24 @@ public:
     void set_field_size(Vector2 p_size);
     Vector2 get_field_size() const { return field_size; }
 
-    // Team OVR & Squad Lineup API
+    // Team OVR, Squad Lineup & Live Substitution API (2A: 5 subs / 3 stoppage windows)
     void set_home_team_ovr(int p_ovr);
     int get_home_team_ovr() const { return home_team_ovr; }
     void set_away_team_ovr(int p_ovr);
     int get_away_team_ovr() const { return away_team_ovr; }
     void set_home_lineup(const Array& p_players);
     void set_away_lineup(const Array& p_players);
+    void set_home_bench(const Array& p_players);
+    void set_away_bench(const Array& p_players);
+    Array get_home_squad_snapshot() const;
+    Array get_home_bench_snapshot() const;
+    bool apply_substitution(bool p_is_home, int p_pitch_slot, int p_bench_slot);
+    bool can_make_home_substitution() const;
+    int get_home_subs_used() const { return home_subs_used; }
+    int get_home_sub_windows_used() const { return home_sub_windows_used; }
+    int get_max_subs() const { return MAX_MATCH_SUBS; }
+    int get_max_sub_windows() const { return MAX_SUB_WINDOWS; }
+    bool is_halftime_break() const { return waiting_for_kickoff_resume && current_minute == 45; }
 
     // Tactical Instructions API
     void set_home_mentality(int p_mentality);
@@ -239,6 +272,9 @@ protected:
     static void _bind_methods();
 
 private:
+    static constexpr int MAX_MATCH_SUBS = 5;
+    static constexpr int MAX_SUB_WINDOWS = 3;
+
     enum BallState {
         BALL_CARRIED = 0,
         BALL_IN_PASS = 1,
@@ -249,8 +285,15 @@ private:
     void _trigger_halftime();
     bool halftime_triggered = false;
 
+    Array home_bench;
+    Array away_bench;
+
     void _initialize_default_squads();
+    void _initialize_default_benches();
     void _apply_role_profile(SimPlayer& p_player, int p_base_ovr) const;
+    void _populate_sim_player_from_dict(SimPlayer& p_player, const Dictionary& p_dict, int p_fallback_ovr) const;
+    BenchPlayer _parse_bench_player_from_dict(const Dictionary& p_dict, const String& p_fallback_name, const String& p_fallback_role, int p_fallback_ovr) const;
+    void _recompute_team_ovrs_from_lineups();
     void _reset_field_positions();
     void _apply_formation_positions(bool p_reset_ball, bool p_force_snap_all = false);
     void _reset_after_goal(bool p_conceding_is_home);
@@ -259,6 +302,11 @@ private:
     float _get_fatigue_multiplier(const SimPlayer& p_player) const;
     int _resolve_home_action_player() const;
     bool _is_backline_role(const String& p_role) const;
+    float _get_defender_awareness_factor(const SimPlayer& p_defender) const;
+
+    // Dedicated Defensive Clearance Helper (1A)
+    bool _try_defensive_clearance(int p_defender_idx, float p_danger_score);
+    void _execute_clearance(int p_defender_idx);
 
     // Organized Defensive & Attacking Run Coordination Helpers
     int _select_smart_presser(bool p_is_home, int p_exclude_idx = -1) const;
@@ -295,6 +343,16 @@ private:
     // Post-Goal Kickoff Reset & Pause State
     bool waiting_for_kickoff_resume = false;
     int kickoff_team = -1; // 0 = home kickoff, 1 = away kickoff, -1 = none
+
+    // Substitution & Window Tracking (2A: 5 subs, max 3 stoppage windows, halftime free)
+    int home_subs_used = 0;
+    int away_subs_used = 0;
+    int home_sub_windows_used = 0;
+    int away_sub_windows_used = 0;
+    int last_home_sub_minute = -999;
+    int last_away_sub_minute = -999;
+    bool last_home_sub_was_halftime = false;
+    bool last_away_sub_was_halftime = false;
 
     // Authoritative Chance & Direct Control State
     int chance_state = CHANCE_NONE;
@@ -350,6 +408,12 @@ private:
     float last_shot_power_ratio = 0.75f;
 
     std::vector<SimPlayer> sim_players;
+    std::vector<BenchPlayer> home_bench;
+    std::vector<BenchPlayer> away_bench;
+    Array home_subbed_off_records;
+    Array away_subbed_off_records;
+    Array home_subbed_on_ids;
+    Array away_subbed_on_ids;
     Array player_positions;
     MatchStats stats;
     Scenario3DData last_scenario_3d;

@@ -8,6 +8,7 @@
 
 using namespace godot;
 
+
 void MatchEngine::_bind_methods() {
     // Control Methods
     ClassDB::bind_method(D_METHOD("start_match"), &MatchEngine::start_match);
@@ -70,6 +71,17 @@ void MatchEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_away_team_ovr"), &MatchEngine::get_away_team_ovr);
     ClassDB::bind_method(D_METHOD("set_home_lineup", "players"), &MatchEngine::set_home_lineup);
     ClassDB::bind_method(D_METHOD("set_away_lineup", "players"), &MatchEngine::set_away_lineup);
+    ClassDB::bind_method(D_METHOD("set_home_bench", "players"), &MatchEngine::set_home_bench);
+    ClassDB::bind_method(D_METHOD("set_away_bench", "players"), &MatchEngine::set_away_bench);
+    ClassDB::bind_method(D_METHOD("get_home_squad_snapshot"), &MatchEngine::get_home_squad_snapshot);
+    ClassDB::bind_method(D_METHOD("get_home_bench_snapshot"), &MatchEngine::get_home_bench_snapshot);
+    ClassDB::bind_method(D_METHOD("apply_substitution", "is_home", "pitch_slot", "bench_slot"), &MatchEngine::apply_substitution);
+    ClassDB::bind_method(D_METHOD("can_make_home_substitution"), &MatchEngine::can_make_home_substitution);
+    ClassDB::bind_method(D_METHOD("get_home_subs_used"), &MatchEngine::get_home_subs_used);
+    ClassDB::bind_method(D_METHOD("get_home_sub_windows_used"), &MatchEngine::get_home_sub_windows_used);
+    ClassDB::bind_method(D_METHOD("get_max_subs"), &MatchEngine::get_max_subs);
+    ClassDB::bind_method(D_METHOD("get_max_sub_windows"), &MatchEngine::get_max_sub_windows);
+    ClassDB::bind_method(D_METHOD("is_halftime_break"), &MatchEngine::is_halftime_break);
 
     // Tactical Instructions Methods
     ClassDB::bind_method(D_METHOD("set_home_mentality", "mentality"), &MatchEngine::set_home_mentality);
@@ -128,6 +140,10 @@ void MatchEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("is_home_auto_shoot_enabled"), &MatchEngine::is_home_auto_shoot_enabled);
     ClassDB::bind_method(D_METHOD("trigger_wide_range_chance", "is_home_attacking"), &MatchEngine::trigger_wide_range_chance);
 
+        // Inside MatchEngine::_bind_methods():
+    ClassDB::bind_method(D_METHOD("set_home_bench", "bench"), &MatchEngine::set_home_bench);
+    ClassDB::bind_method(D_METHOD("set_away_bench", "bench"), &MatchEngine::set_away_bench);
+
     // Inspector Properties
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "home_formation"), "set_home_formation", "get_home_formation");
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "away_formation"), "set_away_formation", "get_away_formation");
@@ -148,6 +164,12 @@ void MatchEngine::_bind_methods() {
         PropertyInfo(Variant::INT, "controlled_player_index")));
     ADD_SIGNAL(MethodInfo("controlled_player_changed",
         PropertyInfo(Variant::INT, "controlled_player_index")));
+
+    ADD_SIGNAL(MethodInfo("squad_updated"));
+    ADD_SIGNAL(MethodInfo("substitution_applied",
+        PropertyInfo(Variant::BOOL, "is_home"),
+        PropertyInfo(Variant::INT, "pitch_slot"),
+        PropertyInfo(Variant::INT, "bench_slot")));
 
     ADD_SIGNAL(MethodInfo("goal_scored",
         PropertyInfo(Variant::INT, "home_score"),
@@ -182,6 +204,7 @@ void MatchEngine::_bind_methods() {
 
 MatchEngine::MatchEngine() {
     _initialize_default_squads();
+    _initialize_default_benches();
 }
 
 MatchEngine::~MatchEngine() {}
@@ -201,6 +224,107 @@ bool MatchEngine::_is_backline_role(const String& p_role) const {
     return (p_role == "CB" || p_role == "LB" || p_role == "RB" || p_role == "LWB" || p_role == "RWB");
 }
 
+float MatchEngine::_get_defender_awareness_factor(const SimPlayer& p_defender) const {
+    float def_stat = static_cast<float>(p_defender.defending);
+    float phy_stat = static_cast<float>(p_defender.physical);
+    float role_bonus = (p_defender.role == "CB") ? 0.14f :
+                       ((p_defender.role == "CDM") ? 0.08f :
+                       (_is_backline_role(p_defender.role) ? 0.05f : -0.06f));
+    float base = 0.72f + ((def_stat * 0.70f + phy_stat * 0.30f - 50.0f) / 100.0f) * 0.56f + role_bonus;
+    return std::clamp(base * _get_fatigue_multiplier(p_defender), 0.55f, 1.32f);
+}
+
+void MatchEngine::_execute_clearance(int p_defender_idx) {
+    SimPlayer& defender = sim_players[p_defender_idx];
+    bool is_home = defender.is_home;
+    float clear_dir = is_home ? 1.0f : -1.0f;
+    float fatigue = _get_fatigue_multiplier(defender);
+
+    defender.stamina = std::max(10.0f, defender.stamina - 0.55f);
+    if (is_home) {
+        stats.home_clearances++;
+    } else {
+        stats.away_clearances++;
+    }
+
+    // Aim clearance toward open flank / channels upfield rather than straight back to central attackers
+    float center_y = field_size.y * 0.5f;
+    float flank_sign = (defender.position.y >= center_y) ? 1.0f : -1.0f;
+    float clear_dist = std::clamp((240.0f + defender.physical * 1.45f + defender.defending * 0.65f) * fatigue, 210.0f, 430.0f);
+    float lateral_spread = flank_sign * static_cast<float>(UtilityFunctions::randf_range(75.0, 175.0));
+
+    Vector2 target(
+        std::clamp(defender.position.x + clear_dir * clear_dist, 36.0f, field_size.x - 36.0f),
+        std::clamp(defender.position.y + lateral_spread, 28.0f, field_size.y - 28.0f)
+    );
+
+    Vector2 delta = target - ball_position;
+    float dist = std::max(1.0f, delta.length());
+    float clear_speed = std::clamp((315.0f + defender.physical * 1.35f) * fatigue, 290.0f, 470.0f);
+
+    ball_position = defender.position + Vector2(clear_dir * 9.0f, 0.0f);
+    ball_position.x = std::clamp(ball_position.x, 12.0f, field_size.x - 12.0f);
+    ball_position.y = std::clamp(ball_position.y, 12.0f, field_size.y - 12.0f);
+
+    ball_target = target;
+    ball_velocity = (delta / dist) * clear_speed;
+    ball_state = BALL_LOOSE;
+    possession_team = -1;
+    ball_carrier_index = -1;
+    pass_target_index = -1;
+    is_through_ball_in_flight = false;
+    last_touch_index = p_defender_idx;
+
+    _log_event("clearance", is_home, defender.name,
+        defender.name + String(" hooks the danger clear upfield!"));
+
+    if ((chance_state == CHANCE_HOME_ATTACK && !is_home) ||
+        (chance_state == CHANCE_AWAY_ATTACK && is_home)) {
+        _end_active_chance(false);
+    }
+}
+
+bool MatchEngine::_try_defensive_clearance(int p_defender_idx, float p_danger_score) {
+    if (p_defender_idx < 0 || p_defender_idx >= 22) return false;
+    if (manual_control_active && p_defender_idx == user_controlled_index) return false;
+
+    const SimPlayer& defender = sim_players[p_defender_idx];
+    if (defender.role == "GK") return false;
+
+    bool is_home = defender.is_home;
+    float own_goal_x = is_home ? 0.0f : field_size.x;
+    float dist_to_own_goal = std::abs(defender.position.x - own_goal_x);
+
+    // Only clear inside the defensive third / danger box
+    if (dist_to_own_goal > 205.0f) {
+        return false;
+    }
+
+    int opp_start = is_home ? 11 : 0;
+    float nearest_opp = 1e9f;
+    for (int j = opp_start; j < opp_start + 11; j++) {
+        nearest_opp = std::min(nearest_opp, defender.position.distance_to(sim_players[j].position));
+    }
+
+    // Clear immediately when pressed inside the box or facing heavy danger
+    bool inside_box = dist_to_own_goal < 135.0f && std::abs(defender.position.y - field_size.y * 0.5f) < 165.0f;
+    if (!inside_box && nearest_opp > 46.0f && p_danger_score < 0.55f) {
+        return false;
+    }
+
+    float awareness = _get_defender_awareness_factor(defender);
+    float clear_prob = std::clamp((0.46f + p_danger_score * 0.35f) * awareness, 0.25f, 0.92f);
+    if (inside_box && nearest_opp < 42.0f) {
+        clear_prob = std::max(clear_prob, 0.78f);
+    }
+
+    if (UtilityFunctions::randf() < clear_prob) {
+        _execute_clearance(p_defender_idx);
+        return true;
+    }
+    return false;
+}
+
 void MatchEngine::_initialize_default_squads() {
     sim_players.resize(22);
     for (int i = 0; i < 22; i++) {
@@ -209,8 +333,10 @@ void MatchEngine::_initialize_default_squads() {
         SimPlayer& p = sim_players[i];
         p.is_home = is_home;
         p.slot_index = i;
+        p.player_id = "";
         p.name = (is_home ? String("Home #") : String("Away #")) + String::num_int64(local_idx + 1);
         p.role = (local_idx == 0) ? String("GK") : String("CM");
+        p.ovr = is_home ? home_team_ovr : away_team_ovr;
         p.stamina = 100.0f;
         p.recovery_timer = 0.0f;
         p.sprint_boost_timer = 0.0f;
@@ -220,8 +346,47 @@ void MatchEngine::_initialize_default_squads() {
     }
 }
 
+void MatchEngine::_initialize_default_benches() {
+    static const char* BENCH_ROLES[7] = { "GK", "CB", "LB", "CDM", "CM", "LW", "ST" };
+    static const int BENCH_OFFSETS[7] = { -2, -1, -2, 0, 1, 0, 1 };
+    home_bench.clear();
+    away_bench.clear();
+    for (int b = 0; b < 7; b++) {
+        BenchPlayer hb;
+        hb.name = String("Home #") + String::num_int64(12 + b);
+        hb.player_id = "";
+        hb.role = String(BENCH_ROLES[b]);
+        hb.ovr = std::clamp(home_team_ovr + BENCH_OFFSETS[b], 50, 99);
+        hb.pace = hb.ovr;
+        hb.shooting = hb.ovr;
+        hb.passing = hb.ovr;
+        hb.dribbling = hb.ovr;
+        hb.defending = hb.ovr;
+        hb.physical = hb.ovr;
+        hb.stamina = 100.0f;
+        hb.used = false;
+        home_bench.push_back(hb);
+
+        BenchPlayer ab;
+        ab.name = String("Away #") + String::num_int64(12 + b);
+        ab.player_id = "";
+        ab.role = String(BENCH_ROLES[b]);
+        ab.ovr = std::clamp(away_team_ovr + BENCH_OFFSETS[b], 50, 99);
+        ab.pace = ab.ovr;
+        ab.shooting = ab.ovr;
+        ab.passing = ab.ovr;
+        ab.dribbling = ab.ovr;
+        ab.defending = ab.ovr;
+        ab.physical = ab.ovr;
+        ab.stamina = 100.0f;
+        ab.used = false;
+        away_bench.push_back(ab);
+    }
+}
+
 void MatchEngine::_apply_role_profile(SimPlayer& p_player, int p_base_ovr) const {
     int base = std::clamp(p_base_ovr, 1, 99);
+    p_player.ovr = base;
     String r = p_player.role.to_upper();
 
     p_player.starting_stamina = static_cast<float>(std::clamp(base, 40, 95));
@@ -300,6 +465,105 @@ void MatchEngine::set_away_team_ovr(int p_ovr) {
     }
 }
 
+void MatchEngine::_populate_sim_player_from_dict(SimPlayer& p_player, const Dictionary& p_dict, int p_fallback_ovr) const {
+    int base_ovr = p_dict.has("ovr")
+        ? std::clamp(static_cast<int>(p_dict["ovr"]), 1, 99)
+        : std::clamp(p_fallback_ovr, 1, 99);
+
+    if (p_dict.has("position")) {
+        String pos_str = String(p_dict["position"]).strip_edges().to_upper();
+        if (!pos_str.is_empty()) {
+            p_player.role = pos_str;
+        }
+    }
+    _apply_role_profile(p_player, base_ovr);
+
+    if (p_dict.has("id") || p_dict.has("player_id")) {
+        Variant id_var = p_dict.has("id") ? p_dict["id"] : p_dict["player_id"];
+        String id_str = String(id_var).strip_edges();
+        if (!id_str.is_empty() && id_str != "-1" && id_str != "0") {
+            p_player.player_id = id_str;
+        }
+    }
+    if (p_dict.has("name")) {
+        String player_name = String(p_dict["name"]).strip_edges();
+        if (!player_name.is_empty()) {
+            p_player.name = player_name;
+        }
+    }
+    if (p_dict.has("pace")) p_player.pace = std::clamp(static_cast<int>(p_dict["pace"]), 1, 99);
+    if (p_dict.has("shooting")) p_player.shooting = std::clamp(static_cast<int>(p_dict["shooting"]), 1, 99);
+    if (p_dict.has("passing")) p_player.passing = std::clamp(static_cast<int>(p_dict["passing"]), 1, 99);
+    if (p_dict.has("dribbling")) p_player.dribbling = std::clamp(static_cast<int>(p_dict["dribbling"]), 1, 99);
+    if (p_dict.has("defending")) p_player.defending = std::clamp(static_cast<int>(p_dict["defending"]), 1, 99);
+    if (p_dict.has("physical")) p_player.physical = std::clamp(static_cast<int>(p_dict["physical"]), 1, 99);
+
+    if (p_dict.has("condition")) {
+        float cond = std::clamp(static_cast<float>(p_dict["condition"]), 10.0f, 100.0f);
+        p_player.starting_stamina = cond;
+        p_player.stamina = cond;
+    } else if (p_dict.has("stamina")) {
+        float stam = std::clamp(static_cast<float>(p_dict["stamina"]), 10.0f, 100.0f);
+        p_player.starting_stamina = stam;
+        p_player.stamina = stam;
+    }
+}
+
+BenchPlayer MatchEngine::_parse_bench_player_from_dict(const Dictionary& p_dict, const String& p_fallback_name, const String& p_fallback_role, int p_fallback_ovr) const {
+    BenchPlayer bp;
+    bp.name = p_fallback_name;
+    bp.role = p_fallback_role;
+    bp.ovr = std::clamp(p_fallback_ovr, 40, 99);
+
+    if (p_dict.has("id") || p_dict.has("player_id")) {
+        Variant id_var = p_dict.has("id") ? p_dict["id"] : p_dict["player_id"];
+        String id_str = String(id_var).strip_edges();
+        if (!id_str.is_empty() && id_str != "-1" && id_str != "0") {
+            bp.player_id = id_str;
+        }
+    }
+    if (p_dict.has("name")) {
+        String n = String(p_dict["name"]).strip_edges();
+        if (!n.is_empty()) bp.name = n;
+    }
+    if (p_dict.has("position")) {
+        String r = String(p_dict["position"]).strip_edges().to_upper();
+        if (!r.is_empty()) bp.role = r;
+    }
+    if (p_dict.has("ovr")) {
+        bp.ovr = std::clamp(static_cast<int>(p_dict["ovr"]), 40, 99);
+    }
+
+    bp.pace = p_dict.has("pace") ? std::clamp(static_cast<int>(p_dict["pace"]), 1, 99) : bp.ovr;
+    bp.shooting = p_dict.has("shooting") ? std::clamp(static_cast<int>(p_dict["shooting"]), 1, 99) : bp.ovr;
+    bp.passing = p_dict.has("passing") ? std::clamp(static_cast<int>(p_dict["passing"]), 1, 99) : bp.ovr;
+    bp.dribbling = p_dict.has("dribbling") ? std::clamp(static_cast<int>(p_dict["dribbling"]), 1, 99) : bp.ovr;
+    bp.defending = p_dict.has("defending") ? std::clamp(static_cast<int>(p_dict["defending"]), 1, 99) : bp.ovr;
+    bp.physical = p_dict.has("physical") ? std::clamp(static_cast<int>(p_dict["physical"]), 1, 99) : bp.ovr;
+
+    if (p_dict.has("condition")) {
+        bp.stamina = std::clamp(static_cast<float>(p_dict["condition"]), 10.0f, 100.0f);
+    } else if (p_dict.has("stamina")) {
+        bp.stamina = std::clamp(static_cast<float>(p_dict["stamina"]), 10.0f, 100.0f);
+    } else {
+        bp.stamina = 100.0f;
+    }
+    bp.used = bool(p_dict.get("used", false));
+    return bp;
+}
+
+void MatchEngine::_recompute_team_ovrs_from_lineups() {
+    if (sim_players.size() < 22) return;
+    int home_sum = 0;
+    int away_sum = 0;
+    for (int i = 0; i < 11; i++) {
+        home_sum += sim_players[i].ovr;
+        away_sum += sim_players[11 + i].ovr;
+    }
+    home_team_ovr = std::clamp(static_cast<int>(std::round(home_sum / 11.0f)), 40, 99);
+    away_team_ovr = std::clamp(static_cast<int>(std::round(away_sum / 11.0f)), 40, 99);
+}
+
 void MatchEngine::set_home_lineup(const Array& p_players) {
     if (sim_players.size() != 22) {
         _initialize_default_squads();
@@ -310,26 +574,10 @@ void MatchEngine::set_home_lineup(const Array& p_players) {
         if (p_players[i].get_type() != Variant::DICTIONARY) {
             continue;
         }
-        Dictionary d = p_players[i];
-        SimPlayer& p = sim_players[i];
-        if (d.has("name")) {
-            String player_name = String(d["name"]).strip_edges();
-            if (!player_name.is_empty()) {
-                p.name = player_name;
-            }
-        }
-        if (d.has("position")) p.role = String(d["position"]).strip_edges().to_upper();
-        if (d.has("pace")) p.pace = std::clamp(static_cast<int>(d["pace"]), 1, 99);
-        if (d.has("shooting")) p.shooting = std::clamp(static_cast<int>(d["shooting"]), 1, 99);
-        if (d.has("passing")) p.passing = std::clamp(static_cast<int>(d["passing"]), 1, 99);
-        if (d.has("dribbling")) p.dribbling = std::clamp(static_cast<int>(d["dribbling"]), 1, 99);
-        if (d.has("defending")) p.defending = std::clamp(static_cast<int>(d["defending"]), 1, 99);
-        if (d.has("physical")) p.physical = std::clamp(static_cast<int>(d["physical"]), 1, 99);
-        if (d.has("stamina")) {
-            p.starting_stamina = std::clamp(static_cast<float>(d["stamina"]), 1.0f, 99.0f);
-            p.stamina = p.starting_stamina;
-        }
+        _populate_sim_player_from_dict(sim_players[i], p_players[i], home_team_ovr);
     }
+    _recompute_team_ovrs_from_lineups();
+    emit_signal("squad_updated");
 }
 
 void MatchEngine::set_away_lineup(const Array& p_players) {
@@ -341,26 +589,187 @@ void MatchEngine::set_away_lineup(const Array& p_players) {
         if (p_players[i].get_type() != Variant::DICTIONARY) {
             continue;
         }
-        Dictionary d = p_players[i];
-        SimPlayer& p = sim_players[11 + i];
-        if (d.has("name")) {
-            String player_name = String(d["name"]).strip_edges();
-            if (!player_name.is_empty()) {
-                p.name = player_name;
-            }
+        _populate_sim_player_from_dict(sim_players[11 + i], p_players[i], away_team_ovr);
+    }
+    _recompute_team_ovrs_from_lineups();
+    emit_signal("squad_updated");
+}
+
+void MatchEngine::set_home_bench(const Array& p_players) {
+    home_bench.clear();
+    if (p_players.is_empty()) {
+        _initialize_default_benches();
+        return;
+    }
+    int limit = std::min(12, static_cast<int>(p_players.size()));
+    for (int i = 0; i < limit; i++) {
+        if (p_players[i].get_type() != Variant::DICTIONARY) continue;
+        String fb_name = String("Home #") + String::num_int64(12 + i);
+        home_bench.push_back(_parse_bench_player_from_dict(p_players[i], fb_name, "CM", home_team_ovr));
+    }
+    emit_signal("squad_updated");
+}
+
+void MatchEngine::set_away_bench(const Array& p_players) {
+    away_bench.clear();
+    if (p_players.is_empty()) {
+        return;
+    }
+    int limit = std::min(12, static_cast<int>(p_players.size()));
+    for (int i = 0; i < limit; i++) {
+        if (p_players[i].get_type() != Variant::DICTIONARY) continue;
+        String fb_name = String("Away #") + String::num_int64(12 + i);
+        away_bench.push_back(_parse_bench_player_from_dict(p_players[i], fb_name, "CM", away_team_ovr));
+    }
+}
+
+Array MatchEngine::get_home_squad_snapshot() const {
+    Array arr;
+    for (int i = 0; i < 11 && i < static_cast<int>(sim_players.size()); i++) {
+        const SimPlayer& p = sim_players[i];
+        Dictionary d;
+        d["slot"] = i;
+        d["id"] = p.player_id;
+        d["name"] = p.name;
+        d["position"] = p.role;
+        d["ovr"] = p.ovr;
+        d["stamina"] = p.stamina;
+        d["pace"] = p.pace;
+        d["shooting"] = p.shooting;
+        d["passing"] = p.passing;
+        d["dribbling"] = p.dribbling;
+        d["defending"] = p.defending;
+        d["physical"] = p.physical;
+        arr.append(d);
+    }
+    return arr;
+}
+
+Array MatchEngine::get_home_bench_snapshot() const {
+    Array arr;
+    for (size_t i = 0; i < home_bench.size(); i++) {
+        const BenchPlayer& b = home_bench[i];
+        Dictionary d;
+        d["bench_slot"] = static_cast<int>(i);
+        d["id"] = b.player_id;
+        d["name"] = b.name;
+        d["position"] = b.role;
+        d["ovr"] = b.ovr;
+        d["stamina"] = b.stamina;
+        d["used"] = b.used;
+        d["pace"] = b.pace;
+        d["shooting"] = b.shooting;
+        d["passing"] = b.passing;
+        d["dribbling"] = b.dribbling;
+        d["defending"] = b.defending;
+        d["physical"] = b.physical;
+        arr.append(d);
+    }
+    return arr;
+}
+
+bool MatchEngine::can_make_home_substitution() const {
+    if (home_subs_used >= MAX_MATCH_SUBS) {
+        return false;
+    }
+    // Half-time break (45' kickoff pause) does not consume one of the 3 stoppage windows
+    if (is_halftime_break()) {
+        return true;
+    }
+    // Multiple subs in the exact same match stoppage minute share 1 stoppage window
+    if (home_subs_used > 0 && !last_home_sub_was_halftime && current_minute == last_home_sub_minute) {
+        return true;
+    }
+    return home_sub_windows_used < MAX_SUB_WINDOWS;
+}
+
+bool MatchEngine::apply_substitution(bool p_is_home, int p_pitch_slot, int p_bench_slot) {
+    if (p_pitch_slot < 0 || p_pitch_slot >= 11) {
+        return false;
+    }
+    std::vector<BenchPlayer>& bench_vec = p_is_home ? home_bench : away_bench;
+    int& subs_used = p_is_home ? home_subs_used : away_subs_used;
+    int& windows_used = p_is_home ? home_sub_windows_used : away_sub_windows_used;
+    int& last_sub_min = p_is_home ? last_home_sub_minute : last_away_sub_minute;
+    bool& last_was_ht = p_is_home ? last_home_sub_was_halftime : last_away_sub_was_halftime;
+
+    if (p_bench_slot < 0 || p_bench_slot >= static_cast<int>(bench_vec.size())) {
+        return false;
+    }
+    if (subs_used >= MAX_MATCH_SUBS || bench_vec[p_bench_slot].used) {
+        return false;
+    }
+
+    bool at_ht = is_halftime_break();
+    bool same_stoppage = (subs_used > 0 && !last_was_ht && current_minute == last_sub_min);
+    if (!at_ht && !same_stoppage && windows_used >= MAX_SUB_WINDOWS) {
+        UtilityFunctions::push_warning("MatchEngine: Substitution rejected — all 3 stoppage windows used.");
+        return false;
+    }
+
+    int sim_idx = p_is_home ? p_pitch_slot : (11 + p_pitch_slot);
+    SimPlayer& outgoing = sim_players[sim_idx];
+    BenchPlayer& incoming = bench_vec[p_bench_slot];
+
+    // Record subbed-off player's exact fatigue & ID so CareerState::commit_match_result() syncs them too
+    Dictionary off_rec;
+    off_rec["id"] = outgoing.player_id;
+    off_rec["name"] = outgoing.name;
+    off_rec["stamina"] = static_cast<int>(std::round(std::clamp(outgoing.stamina, 1.0f, 99.0f)));
+    off_rec["minute_off"] = current_minute;
+
+    if (p_is_home) {
+        home_subbed_off_records.append(off_rec);
+        if (!incoming.player_id.is_empty()) {
+            home_subbed_on_ids.append(incoming.player_id);
         }
-        if (d.has("position")) p.role = String(d["position"]).strip_edges().to_upper();
-        if (d.has("pace")) p.pace = std::clamp(static_cast<int>(d["pace"]), 1, 99);
-        if (d.has("shooting")) p.shooting = std::clamp(static_cast<int>(d["shooting"]), 1, 99);
-        if (d.has("passing")) p.passing = std::clamp(static_cast<int>(d["passing"]), 1, 99);
-        if (d.has("dribbling")) p.dribbling = std::clamp(static_cast<int>(d["dribbling"]), 1, 99);
-        if (d.has("defending")) p.defending = std::clamp(static_cast<int>(d["defending"]), 1, 99);
-        if (d.has("physical")) p.physical = std::clamp(static_cast<int>(d["physical"]), 1, 99);
-        if (d.has("stamina")) {
-            p.starting_stamina = std::clamp(static_cast<float>(d["stamina"]), 1.0f, 99.0f);
-            p.stamina = p.starting_stamina;
+    } else {
+        away_subbed_off_records.append(off_rec);
+        if (!incoming.player_id.is_empty()) {
+            away_subbed_on_ids.append(incoming.player_id);
         }
     }
+
+    String out_name = outgoing.name;
+    String in_name = incoming.name;
+    String slot_role = outgoing.role; // Preserve tactical formation slot role
+
+    outgoing.name = incoming.name;
+    outgoing.player_id = incoming.player_id;
+    outgoing.role = slot_role;
+    outgoing.ovr = incoming.ovr;
+    outgoing.pace = incoming.pace;
+    outgoing.shooting = incoming.shooting;
+    outgoing.passing = incoming.passing;
+    outgoing.dribbling = incoming.dribbling;
+    outgoing.defending = incoming.defending;
+    outgoing.physical = incoming.physical;
+    outgoing.starting_stamina = std::clamp(incoming.stamina, 15.0f, 100.0f);
+    outgoing.stamina = outgoing.starting_stamina;
+    outgoing.recovery_timer = 0.0f;
+    outgoing.sprint_boost_timer = 0.0f;
+    outgoing.dribble_boost_timer = 0.0f;
+
+    incoming.used = true;
+    subs_used++;
+    if (!at_ht && !same_stoppage) {
+        windows_used++;
+    }
+    last_sub_min = current_minute;
+    last_was_ht = at_ht;
+
+    _recompute_team_ovrs_from_lineups();
+
+    String win_note = at_ht
+        ? String(" [HT]")
+        : (String(" [Window ") + String::num_int64(windows_used) + String("/") + String::num_int64(MAX_SUB_WINDOWS) + String("]"));
+    _log_event("substitution", p_is_home, in_name,
+        String("SUB (") + String::num_int64(subs_used) + String("/") + String::num_int64(MAX_MATCH_SUBS) + win_note + String("): ")
+        + in_name + String(" ON for ") + out_name);
+
+    emit_signal("substitution_applied", p_is_home, p_pitch_slot, p_bench_slot);
+    emit_signal("squad_updated");
+    return true;
 }
 
 void MatchEngine::set_home_mentality(int p_mentality) {
@@ -1791,8 +2200,9 @@ Vector2 MatchEngine::_compute_runner_tracking_offset(bool p_is_home, const SimPl
 
         if (effective_dist < best_scan_dist) {
             best_scan_dist = effective_dist;
+            float role_awareness = _get_defender_awareness_factor(p_defender);
             Vector2 goal_side_mark = opp.position - Vector2(attack_dir * 16.0f, 0.0f);
-            offset = (goal_side_mark - Vector2(p_line_x, p_base_y)) * track_weight;
+            offset = (goal_side_mark - Vector2(p_line_x, p_base_y)) * std::clamp(track_weight * role_awareness, 0.16f, 0.58f);
         }
     }
 
@@ -2470,6 +2880,18 @@ void MatchEngine::_evaluate_carrier_action(int p_carrier_idx) {
         }
     }
 
+    // 1B. DEFENSIVE BOX CLEARANCE EVALUATION (Role-coupled CB/FB/CDM safety valve)
+    if (_is_backline_role(carrier.role) || carrier.role == "CDM") {
+        float own_goal_x = is_home ? 0.0f : field_size.x;
+        float dist_own_goal = std::abs(carrier.position.x - own_goal_x);
+        if (dist_own_goal < 190.0f && nearest_opp_dist < 54.0f) {
+            float danger = std::clamp((1.0f - dist_own_goal / 190.0f) * 0.65f + (1.0f - nearest_opp_dist / 54.0f) * 0.55f, 0.0f, 1.0f);
+            if (_try_defensive_clearance(p_carrier_idx, danger)) {
+                return;
+            }
+        }
+    }
+
     // 2. PASSING EVALUATION
     int team_start = is_home ? 0 : 11;
     float prog_weight = (team_mentality >= MENTALITY_ATTACKING) ? 1.45f :
@@ -2959,7 +3381,16 @@ void MatchEngine::_update_ball_and_actions(float dt) {
     }
 
     if (closest_idx != -1) {
-        possession_team = sim_players[closest_idx].is_home ? 0 : 1;
+        const SimPlayer& winner = sim_players[closest_idx];
+        float own_goal_x = winner.is_home ? 0.0f : field_size.x;
+        float dist_own_goal = std::abs(winner.position.x - own_goal_x);
+        if ((_is_backline_role(winner.role) || winner.role == "CDM") && dist_own_goal < 175.0f) {
+            float danger = std::clamp(1.0f - (dist_own_goal / 175.0f), 0.25f, 1.0f);
+            if (_try_defensive_clearance(closest_idx, danger)) {
+                return;
+            }
+        }
+        possession_team = winner.is_home ? 0 : 1;
         ball_carrier_index = closest_idx;
         last_touch_index = closest_idx;
         ball_state = BALL_CARRIED;
@@ -3060,6 +3491,20 @@ void MatchEngine::start_match() {
     active_chance_timer = 0.0f;
 
     halftime_triggered = false;
+    home_subs_used = 0;
+    away_subs_used = 0;
+    home_sub_windows_used = 0;
+    away_sub_windows_used = 0;
+    last_home_sub_minute = -999;
+    last_away_sub_minute = -999;
+    last_home_sub_was_halftime = false;
+    last_away_sub_was_halftime = false;
+    home_subbed_off_records.clear();
+    away_subbed_off_records.clear();
+    home_subbed_on_ids.clear();
+    away_subbed_on_ids.clear();
+    for (auto& b : home_bench) b.used = false;
+    for (auto& b : away_bench) b.used = false;
 
     stats = MatchStats();
 
@@ -3247,8 +3692,18 @@ Dictionary MatchEngine::get_match_stats() const {
     d["away_interceptions"] = stats.away_interceptions;
     d["home_saves"] = stats.home_saves;
     d["away_saves"] = stats.away_saves;
+    d["home_clearances"] = stats.home_clearances;
+    d["away_clearances"] = stats.away_clearances;
     d["home_corners"] = stats.home_corners;
     d["away_corners"] = stats.away_corners;
+    d["home_subs_used"] = home_subs_used;
+    d["away_subs_used"] = away_subs_used;
+    d["home_sub_windows_used"] = home_sub_windows_used;
+    d["away_sub_windows_used"] = away_sub_windows_used;
+    d["home_subbed_off_records"] = home_subbed_off_records;
+    d["away_subbed_off_records"] = away_subbed_off_records;
+    d["home_subbed_on_ids"] = home_subbed_on_ids;
+    d["away_subbed_on_ids"] = away_subbed_on_ids;
     d["home_player_stamina"] = home_end_stamina;
     d["away_player_stamina"] = away_end_stamina;
     d["player_stamina"] = all_end_stamina;

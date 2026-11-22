@@ -2,6 +2,7 @@ class_name TacticalScreen
 extends PanelContainer
 
 signal resume_requested
+signal substitution_applied(is_home: bool, pitch_slot: int, bench_slot: int)
 
 var match_engine: MatchEngine
 
@@ -24,13 +25,15 @@ var _status_label: Label
 var _initial_snapshot: Dictionary = {}
 var _ui_built: bool = false
 
-# Interactive Pitch, OVR & Substitution State
+# Interactive Pitch, OVR & Substitution State (2A: 5 subs, max 3 stoppage windows)
 var _starter_card_rects: Array[Rect2] = []
 var _starter_ovrs: Array[int] = []
 var _selected_starter_idx: int = -1
 var _selected_bench_idx: int = -1
 var _subs_used: int = 0
+var _windows_used: int = 0
 const MAX_SUBS: int = 5
+const MAX_WINDOWS: int = 3
 
 var _bench_squad: Array[Dictionary] = []
 var _subbed_off_names: PackedStringArray = PackedStringArray()
@@ -69,6 +72,37 @@ func _resolve_match_engine() -> MatchEngine:
 func bind_match_engine(p_engine: MatchEngine) -> void:
 	match_engine = p_engine
 	_ensure_ui_built()
+	sync_squad_from_engine(match_engine)
+
+## Public API to sync live starters, OVRs, bench, and 5-sub / 3-window counters from MatchEngine
+func sync_squad_from_engine(p_engine: MatchEngine = null) -> void:
+	if is_instance_valid(p_engine):
+		match_engine = p_engine
+	if not is_instance_valid(match_engine):
+		return
+
+	if match_engine.has_method("get_home_squad_snapshot"):
+		var squad_snap: Array = match_engine.call("get_home_squad_snapshot")
+		if squad_snap.size() >= 11:
+			_starter_ovrs.clear()
+			for i in range(11):
+				var item: Dictionary = squad_snap[i] if squad_snap[i] is Dictionary else {}
+				_starter_ovrs.append(clampi(int(item.get("ovr", match_engine.get_home_team_ovr())), 40, 99))
+
+	if match_engine.has_method("get_home_bench_snapshot"):
+		var bench_snap: Array = match_engine.call("get_home_bench_snapshot")
+		if not bench_snap.is_empty():
+			_bench_squad.clear()
+			for entry in bench_snap:
+				if entry is Dictionary:
+					_bench_squad.append((entry as Dictionary).duplicate(true))
+
+	if match_engine.has_method("get_home_subs_used"):
+		_subs_used = int(match_engine.call("get_home_subs_used"))
+	if match_engine.has_method("get_home_sub_windows_used"):
+		_windows_used = int(match_engine.call("get_home_sub_windows_used"))
+
+	_refresh_all_views()
 
 ## Public API for Phase 3 Main Game UI & Team Management UI to inject managed squad OVRs
 func set_managed_lineup_ovrs(ovrs: Array) -> void:
@@ -83,22 +117,27 @@ func set_managed_lineup_ovrs(ovrs: Array) -> void:
 
 func reset_match_substitutions() -> void:
 	_subs_used = 0
+	_windows_used = 0
 	_subbed_off_names.clear()
 	_selected_starter_idx = -1
 	_selected_bench_idx = -1
 	_starter_ovrs.clear()
-	_initialize_default_bench()
+	if is_instance_valid(match_engine) and match_engine.has_method("get_home_bench_snapshot"):
+		sync_squad_from_engine(match_engine)
+	else:
+		_initialize_default_bench()
 
 func _ensure_starter_ovrs() -> void:
 	if _starter_ovrs.size() == 11:
 		return
 
-	# Check if Phase 3 CareerState autoload exists with managed squad OVRs
-	var career_state: Node = get_node_or_null("/root/CareerState")
-	if career_state != null and career_state.has_method("get_starting_xi_ovrs"):
-		var career_ovrs: Variant = career_state.get_starting_xi_ovrs()
-		if career_ovrs is Array and (career_ovrs as Array).size() >= 11:
-			set_managed_lineup_ovrs(career_ovrs as Array)
+	if is_instance_valid(match_engine) and match_engine.has_method("get_home_squad_snapshot"):
+		var snap: Array = match_engine.call("get_home_squad_snapshot")
+		if snap.size() >= 11:
+			_starter_ovrs.clear()
+			for i in range(11):
+				var d: Dictionary = snap[i] if snap[i] is Dictionary else {}
+				_starter_ovrs.append(clampi(int(d.get("ovr", match_engine.get_home_team_ovr())), 40, 99))
 			return
 
 	var base_ovr: int = match_engine.get_home_team_ovr() if is_instance_valid(match_engine) else 75
@@ -135,6 +174,7 @@ func open_tactics() -> void:
 		push_error("TacticalScreen: Cannot open tactics — MatchEngine not found.")
 		return
 
+	sync_squad_from_engine(match_engine)
 	_ensure_starter_ovrs()
 	if _bench_squad.is_empty():
 		_initialize_default_bench()
@@ -156,7 +196,10 @@ func open_tactics() -> void:
 	_sync_controls_from_snapshot(_initial_snapshot)
 	_refresh_all_views()
 	if _status_label:
-		_status_label.text = "Paused at %02d' · Temporary In-Match Instructions" % match_engine.get_current_minute()
+		var ht_note: String = " · Half-Time Window (Free)" if (match_engine.has_method("is_halftime_break") and bool(match_engine.call("is_halftime_break"))) else ""
+		_status_label.text = "Paused at %02d' · Subs %d/%d (Windows %d/%d)%s" % [
+			match_engine.get_current_minute(), _subs_used, MAX_SUBS, _windows_used, MAX_WINDOWS, ht_note
+		]
 	visible = true
 
 func _build_layout() -> void:
@@ -276,7 +319,7 @@ func _build_layout() -> void:
 	subs_hdr.add_child(subs_title)
 
 	_subs_count_label = Label.new()
-	_subs_count_label.text = "0 / 5"
+	_subs_count_label.text = "0/5 (0/3 W)"
 	_subs_count_label.add_theme_color_override("font_color", Color(0.15, 0.90, 0.55))
 	_subs_count_label.add_theme_font_size_override("font_size", 13)
 	subs_hdr.add_child(_subs_count_label)
@@ -488,8 +531,13 @@ func _on_resume_pressed() -> void:
 	emit_signal("resume_requested")
 
 # =========================================================================
-# SUBSTITUTIONS & STARTER SWAPS
+# SUBSTITUTIONS & STARTER SWAPS (2A: 5 SUBS / MAX 3 WINDOWS)
 # =========================================================================
+
+func _can_substitute_now() -> bool:
+	if is_instance_valid(match_engine) and match_engine.has_method("can_make_home_substitution"):
+		return bool(match_engine.call("can_make_home_substitution"))
+	return _subs_used < MAX_SUBS and _windows_used < MAX_WINDOWS
 
 func _rebuild_bench_ui() -> void:
 	if not _subs_list_vbox:
@@ -497,8 +545,10 @@ func _rebuild_bench_ui() -> void:
 	for child in _subs_list_vbox.get_children():
 		child.queue_free()
 
+	var can_sub: bool = _can_substitute_now()
 	if _subs_count_label:
-		_subs_count_label.text = "%d / %d" % [_subs_used, MAX_SUBS]
+		_subs_count_label.text = "%d/%d (%d/%d W)" % [_subs_used, MAX_SUBS, _windows_used, MAX_WINDOWS]
+		_subs_count_label.add_theme_color_override("font_color", Color(0.15, 0.90, 0.55) if can_sub else Color(0.95, 0.42, 0.36))
 
 	for b_idx in range(_bench_squad.size()):
 		var sub: Dictionary = _bench_squad[b_idx]
@@ -508,7 +558,7 @@ func _rebuild_bench_ui() -> void:
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(0, 48)
 		btn.focus_mode = Control.FOCUS_NONE
-		btn.disabled = is_used or (_subs_used >= MAX_SUBS)
+		btn.disabled = is_used or not can_sub
 
 		var card_st := StyleBoxFlat.new()
 		if is_used:
@@ -540,7 +590,9 @@ func _rebuild_bench_ui() -> void:
 func _on_bench_player_clicked(b_idx: int) -> void:
 	if b_idx < 0 or b_idx >= _bench_squad.size():
 		return
-	if bool(_bench_squad[b_idx].get("used", false)) or _subs_used >= MAX_SUBS:
+	if bool(_bench_squad[b_idx].get("used", false)) or not _can_substitute_now():
+		if _status_label and not _can_substitute_now():
+			_status_label.text = "No substitution windows remaining (%d/%d subs, %d/%d windows)." % [_subs_used, MAX_SUBS, _windows_used, MAX_WINDOWS]
 		return
 
 	if _selected_bench_idx == b_idx:
@@ -595,7 +647,7 @@ func _on_starter_card_clicked(starter_idx: int) -> void:
 		_pitch_preview.queue_redraw()
 
 func _execute_substitution(starter_idx: int, bench_idx: int) -> void:
-	if not is_instance_valid(match_engine) or _subs_used >= MAX_SUBS:
+	if not is_instance_valid(match_engine) or not _can_substitute_now():
 		return
 	if starter_idx < 0 or starter_idx >= 11 or bench_idx < 0 or bench_idx >= _bench_squad.size():
 		return
@@ -604,12 +656,31 @@ func _execute_substitution(starter_idx: int, bench_idx: int) -> void:
 	if bool(sub.get("used", false)):
 		return
 
-	_ensure_starter_ovrs()
 	var names: PackedStringArray = match_engine.get_player_names()
-	var roles: PackedStringArray = match_engine.get_player_roles()
 	var outgoing_name: String = names[starter_idx] if starter_idx < names.size() else ("Home #" + str(starter_idx + 1))
-	var slot_role: String = roles[starter_idx] if starter_idx < roles.size() else "CM"
 	var incoming_name: String = str(sub.get("name", "Sub"))
+
+	if match_engine.has_method("apply_substitution"):
+		var ok: bool = bool(match_engine.call("apply_substitution", true, starter_idx, bench_idx))
+		if not ok:
+			if _status_label:
+				_status_label.text = "Substitution blocked (5 subs / 3 windows limit reached)."
+			return
+		_subbed_off_names.append(outgoing_name)
+		_selected_starter_idx = -1
+		_selected_bench_idx = -1
+		sync_squad_from_engine(match_engine)
+		if _status_label:
+			_status_label.text = "SUB (%d/%d · Win %d/%d): %s ON for %s" % [
+				_subs_used, MAX_SUBS, _windows_used, MAX_WINDOWS, incoming_name, outgoing_name
+			]
+		emit_signal("substitution_applied", true, starter_idx, bench_idx)
+		return
+
+	# Fallback if running against older binary without apply_substitution
+	_ensure_starter_ovrs()
+	var roles: PackedStringArray = match_engine.get_player_roles()
+	var slot_role: String = roles[starter_idx] if starter_idx < roles.size() else "CM"
 	var sub_ovr: int = int(sub.get("ovr", match_engine.get_home_team_ovr()))
 
 	var lineup_arr: Array = []
@@ -620,19 +691,20 @@ func _execute_substitution(starter_idx: int, bench_idx: int) -> void:
 			lineup_arr.append({
 				"name": incoming_name,
 				"position": slot_role,
-				"pace": sub_ovr,
-				"shooting": sub_ovr,
-				"passing": sub_ovr,
-				"dribbling": sub_ovr,
-				"defending": sub_ovr,
-				"physical": sub_ovr
+				"ovr": sub_ovr,
+				"pace": int(sub.get("pace", sub_ovr)),
+				"shooting": int(sub.get("shooting", sub_ovr)),
+				"passing": int(sub.get("passing", sub_ovr)),
+				"dribbling": int(sub.get("dribbling", sub_ovr)),
+				"defending": int(sub.get("defending", sub_ovr)),
+				"physical": int(sub.get("physical", sub_ovr)),
+				"stamina": float(sub.get("stamina", 100.0))
 			})
 		else:
 			lineup_arr.append({"name": p_name, "position": p_role})
 
 	match_engine.set_home_lineup(lineup_arr)
 	_starter_ovrs[starter_idx] = sub_ovr
-
 	sub["used"] = true
 	_bench_squad[bench_idx] = sub
 	_subbed_off_names.append(outgoing_name)
@@ -644,6 +716,7 @@ func _execute_substitution(starter_idx: int, bench_idx: int) -> void:
 		_status_label.text = "SUB (%d/%d): %s ON for %s" % [_subs_used, MAX_SUBS, incoming_name, outgoing_name]
 
 	_refresh_all_views()
+	emit_signal("substitution_applied", true, starter_idx, bench_idx)
 
 func _swap_starters(idx_a: int, idx_b: int) -> void:
 	if not is_instance_valid(match_engine):
@@ -654,13 +727,13 @@ func _swap_starters(idx_a: int, idx_b: int) -> void:
 	if idx_a >= names.size() or idx_b >= names.size():
 		return
 
+	var snap: Array = match_engine.call("get_home_squad_snapshot") if match_engine.has_method("get_home_squad_snapshot") else []
 	var lineup_arr: Array = []
 	for i in range(11):
 		var src_idx: int = idx_b if i == idx_a else (idx_a if i == idx_b else i)
-		lineup_arr.append({
-			"name": names[src_idx],
-			"position": roles[i] if i < roles.size() else "CM"
-		})
+		var d: Dictionary = (snap[src_idx] as Dictionary).duplicate(true) if (src_idx < snap.size() and snap[src_idx] is Dictionary) else {"name": names[src_idx]}
+		d["position"] = roles[i] if i < roles.size() else "CM"
+		lineup_arr.append(d)
 	match_engine.set_home_lineup(lineup_arr)
 
 	var tmp_ovr: int = _starter_ovrs[idx_a]
