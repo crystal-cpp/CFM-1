@@ -718,6 +718,8 @@ func refresh_all() -> void:
 	if not is_instance_valid(match_engine):
 		return
 
+	_home_club_name = match_engine.get_home_club_name() if match_engine.has_method("get_home_club_name") else _home_club_name
+	_away_club_name = match_engine.get_away_club_name() if match_engine.has_method("get_away_club_name") else _away_club_name
 	_home_info_label.text = "%s  %s · OVR %d" % [_home_club_name, match_engine.get_home_formation(), match_engine.get_home_team_ovr()]
 	_away_info_label.text = "%s · OVR %d  %s" % [match_engine.get_away_formation(), match_engine.get_away_team_ovr(), _away_club_name]
 	_score_label.text = "%d  :  %d" % [match_engine.get_home_score(), match_engine.get_away_score()]
