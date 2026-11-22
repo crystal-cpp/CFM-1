@@ -159,17 +159,17 @@
 3. Manually verify New Career League -> Club selection, displayed club metadata, player-to-club assignment, league-only standings/fixtures, odd-team byes, pre-season pairings and Save/Load persistence.
 4. Complete the historical 15 July 2006 data audit. Dataset coverage is complete at the club level, but historical correctness is not yet certified.
 
-### Phase 5E — `MatchEngine` Simulation Realism, Attribute-Coupled Defense, Stamina, Movement & Match Identity `[~50% SOURCE IMPLEMENTED; CURRENT BUILD BLOCKED / QA PENDING]`
+### Phase 5E — MatchEngine Simulation Realism, Attribute-Coupled Defense, Stamina, Movement & Match Identity [~50% SOURCE IMPLEMENTED; BUILD / COMPARATIVE REGRESSION / GODOT QA PENDING]
 
-**Implementation snapshot (reviewed through `52729a`)**:
+**Implementation snapshot (reviewed through f27f5fbe plus MatchPitch cleanup 885768d6):**
 
 * Stamina drain is scaled using each simulation player's imported `starting_stamina`; end-match home/away/combined stamina arrays are exported, and `MatchScene` passes the user's team array into `stamina_report`.
 * Attacking chance trigger probability and wide-chance xG use player attributes and team OVR.
 * Individual defensive attributes already participate in several paths: `Defending` + `Physical` + fatigue for tackles/duels; `Defending` + fatigue + pressing for interceptions; and `Defending` + fatigue for shot blocks. Team OVR also scales defensive tracking/coverage.
 * Steering now includes acceleration/deceleration/turn response. Goalkeeper near-ball handling is restricted to the goal corridor.
-* `PreMatchView` extracts the configured Starting XI and reads `condition` as fitness. `MatchHUD` listens for squad updates and substitution events to refresh its display.
-* `MatchPitch.gd` now stores home/away club display names, extracts surnames from the 22 lineup dictionaries, redraws role-plus-surname labels, and uses the correct club name in the goal banner. `MatchScene.gd` passes the active context's club names and both lineup arrays before kickoff. This closes the match-pitch lineup-name/goal-banner presentation task only; it does not synchronise the TacticalScreen bench, player IDs, or live substitution payloads.
-* This still justifies only an estimated **~50% implementation progress**, not a verification score. The tactical screen's bench remains generated placeholder data (`Home #12`–`Home #18`) and `TacticalScreen.gd` has no `sync_squad_from_engine()` implementation; actual CareerState bench/player identity and substitution data are not yet wired end-to-end.
+* PreMatchView now splits the CareerState roster into the configured Starting XI and actual bench, displays fitness/OVR, and supports player swaps through CareerState.swap_squad_players(). CareerState::prepare_match_context() includes home/away bench and squad data. This improves pre-match squad identity and lineup management, but does not implement live in-match substitutions.
+* MatchPitch.gd stores home/away club display names, extracts surnames from the 22 lineup dictionaries, draws role-plus-surname labels, and uses the correct club name in the goal banner. MatchScene.gd passes the active context's club names and both lineup arrays before kickoff. Duplicate MatchPitch identity declarations/methods were consolidated in 885768d6; script parse and visual behavior still require Godot runtime verification.
+* This still justifies only an estimated ~50% implementation progress, not a verification score. The pre-match bench now comes from CareerState, but TacticalScreen.gd still creates placeholder Home #12–Home #18 entries, has no sync_squad_from_engine() implementation or substitution_applied signal, and MatchEngine currently exposes no confirmed bench/substitution application API. The end-match stamina data is also now written back to career player condition by commit_match_result(), providing a foundation for Phase 5F recovery work.
 * The visible Skip button still exists; only a duplicate hidden Skip control was removed. The skip signal and backend token logic remain intact. `KEY_R` is the post-match Next Match shortcut, not an Advanced Dribbling binding.
 * **Header integrity check:** current src/CareerState.h correctly declares CareerState : public Node, while src/match_engine.h owns the MatchEngine declaration. The previously reported header regression is resolved in source. A clean current-source SCons build has not yet been recorded.
 
