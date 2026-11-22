@@ -506,9 +506,9 @@ func _build_fallback_match_context(fixture: Dictionary) -> Dictionary:
 		},
 		"kits": {
 			"home_primary": home_color,
-			"away_primary": away_alt_col,
+			"away_primary": away_alt_color,
 			"away_default_primary": away_color,
-			"active_away_primary": away_alt_col if clash else away_color,
+			"active_away_primary": away_alt_color if clash else away_color,
 			"clash_detected": clash,
 		},
 	}
