@@ -141,7 +141,7 @@
 - Current source-level audit of demo/data/clubs.csv: **156 data rows**, **13 columns** including Stadium, **28 distinct league labels**, 156 unique ClubIDs, no duplicate club names and **12 single-club leagues**.
 - Current source-level audit of demo/data/players_2006_with_price.csv: **1,716 player rows**; every non-empty player Club value matches a registry club, and all **156 clubs have at least one imported player row**. No club currently relies on a missing-roster fallback according to this CSV membership check.
 - The 13-column club schema includes ClubID, Club, League, ShortCode, Country, Reputation, TotalBalance, TransferBudget, WageBudget, DefaultFormation, PrimaryColor, SecondaryColor and Stadium. Player data retains Stamina and Playstyle metadata; do not duplicate the Stamina column.
-- Historical correctness of all clubs, league labels, memberships, finances, formations and kit colours as of **15 July 2006** is not yet independently verified. NHHA72528 reward mapping also remains subject to QA.
+- Historical correctness of all clubs, league labels, memberships, finances, formations and kit colours as of **15 July 2006** is not yet independently verified. NHHA72528 reward mapping also remains subject to QA. The legacy Tuesday League / 11A7 membership gate is superseded for domestic competition participation by the planned 5D-3 migration described below.
 
 **5D-2 — Structured Bootstrap & League-Scoped Fixture Generation [IMPLEMENTED IN SOURCE; ACCEPTANCE QA PENDING]**
 - **New Career league registry follow-up:** hardened `find_col()` to normalize spaces/underscores/hyphens in CSV headers and made `load_clubs_from_csv()` fail when it loads zero valid club rows. `NewCareerView.gd` now prints the playable league count/names at startup. This is a source-level fix/diagnostic; rebuild the MinGW GDExtension and confirm the real leagues appear before marking runtime QA complete.
@@ -149,15 +149,25 @@
 - **Stable identity and metadata:** CSV ClubIDs are preserved through CareerState and New Career UI; club metadata is propagated into Team and career save data. NewCareerView accepts canonical club / club_name fields and does not fabricate sequential IDs.
 - **Finance accessor correction:** CareerState uses Team::GetBudget() rather than directly accessing the private TransferBudget member.
 - **League isolation and scheduling:** fixture and standings participants are selected from the managed club's league only. Single-club leagues do not borrow other leagues' clubs. Odd-sized round-robin scheduling uses a bye sentinel, and pre-season pairings avoid scheduling a club twice in the same round.
+
+**5D-3 — Tuesday League -> Premier League Consolidation & New Career League Filter [NEWLY SCOPED; NOT IMPLEMENTED]**
+- **11A7 competition migration:** merge the former Tuesday League into Premier League so 11A7 (ClubID 1098) becomes a normal Premier League club, appears in New Career's Premier League club list and participates in Premier League fixtures, standings, results and season progression.
+- **Canonical league identity:** update the canonical club registry or implement a single explicit migration so Premier League is the only active competition identity. Remove the obsolete active Tuesday League entry after migrating its club(s); normalize league names consistently across CareerState, New Career, CompetitionView, fixtures, standings, schedules and saves.
+- **Conflict/data integrity checks:** preserve every ClubID and player ID; ensure no duplicate club/player membership, fixtures, match IDs or standings rows; ensure each club belongs to exactly one domestic league; preserve 11A7 roster links and club metadata (kits, finances, formation, stadium). Rebuild affected fixtures and standings from the merged league participant set rather than appending duplicate rows or retaining stale Tuesday League fixtures. Do not discard other Tuesday League clubs or player records during migration.
+- **New Career eligibility threshold:** hide any league with fewer than 8 valid registered clubs from the main New Career league selector. Count distinct valid clubs after the league merge and normalization; hide the league at 7 or fewer, show it at 8 or more. This is a selector-visibility rule only: do not delete small leagues or their clubs from the underlying registry or other systems.
+- **Unlock-rule separation:** 11A7 must not be hidden from New Career or blocked from Premier League competition by the legacy Tuesday League / NHHA72528 gate. If NHHA72528 is still required for custom-player or Transfer Market access, keep that separate from club league membership and competition eligibility.
+- **Regression/acceptance:** test 11A7 appears exactly once in Premier League, no active Tuesday League competition remains, all merged clubs retain unique IDs and player links, Premier League fixtures/standings/results include 11A7, and New Career filters leagues with 7, 8 and 9 clubs correctly (7 hidden; 8 and 9 visible). Also test save/load migration and no duplicate/orphaned fixtures or standings after starting a fresh career and loading a legacy save.
 - **CareerState parser cleanup:** removed the orphaned duplicate career-start block and duplicate get_header_summary() / get_club_info() definitions that had caused global-scope parser errors and redefinitions.
 - **Regression coverage:** CareerRegressionTest.gd includes Phase 5D checks for the 156-club / 28-league registry, 11A7 ClubID 1098, 21-team La Liga, no double-booking in the tested odd-sized league, and single-club Allsvenskan isolation. The older duplicate declarations of _test_career_initialization() and _test_subsystem_queries_and_bridges() were removed in commit c5cd7b6c44eda90581ad91b8c44363c6dd62fab6. The test suite has not yet been rerun after that parser fix.
 - **Relevant source-fix commits:** 0c25cc8, 97bd023, 40fb353, 760aeaf, f363c28, 5504b33, 2204a80 and c5cd7b6. These commits establish source changes only; they do not establish a successful local build or runtime test.
 
-**Remaining 5D-2 acceptance steps**
+**Remaining 5D acceptance steps**
 1. Run the Windows MinGW/UCRT64 SCons build: scons platform=windows target=template_debug api_version=4.7.
 2. Open the Godot 4.7 project, confirm scripts parse, run CareerRegressionTest.gd with F10, and fix any runtime or assertion failures.
 3. Manually verify New Career League -> Club selection, displayed club metadata, player-to-club assignment, league-only standings/fixtures, odd-team byes, pre-season pairings and Save/Load persistence.
-4. Complete the historical 15 July 2006 data audit. Dataset coverage is complete at the club level, but historical correctness is not yet certified.
+4. Implement and test 5D-3: merge Tuesday League into Premier League, include 11A7 once, resolve all registry/fixture/standings conflicts, and validate legacy-save migration.
+5. Test New Career league filtering with 7-, 8- and 9-club leagues.
+6. Complete the historical 15 July 2006 data audit. Dataset coverage is complete at the club level, but historical correctness is not yet certified.
 
 ### Phase 5E User-Side Identity & HOME/AWAY UI Integration Follow-Up [SOURCE IMPLEMENTED; QA PENDING]
 
