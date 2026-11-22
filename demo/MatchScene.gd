@@ -27,9 +27,10 @@ func _ready() -> void:
 	if not is_instance_valid(match_pitch):
 		match_pitch = get_node_or_null("2DOverviewLayer/MatchPitch")
 
-	hud = get_node_or_null("2DOverviewLayer/MatchHUD") as Control
+	# The scene node is named "HUD"; MatchHUD is its attached script/class.
+	hud = get_node_or_null("2DOverviewLayer/HUD") as Control
 	if not is_instance_valid(hud):
-		hud = find_child("MatchHUD", true, false) as Control
+		hud = find_child("HUD", true, false) as Control
 
 	if not is_instance_valid(match_engine) or not is_instance_valid(overview_2d):
 		push_error("MatchScene: Missing MatchEngine or 2DOverviewLayer child nodes!")
@@ -217,17 +218,61 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	elif career_state.has_method("apply_context_to_match_engine"):
 		career_state.call("apply_context_to_match_engine", match_engine, active_match_context)
 
-	if active_match_context.has("user_is_home") and match_engine.has_method("set_user_is_home"):
-		match_engine.set_user_is_home(bool(active_match_context["user_is_home"]))
+	# Never trust a cached HOME/AWAY boolean from a view. The managed club ID
+	# and the actual fixture IDs are authoritative for user-side control.
+	if not career_state.has_method("get_managed_club_id") or not match_engine.has_method("get_home_club_id") or not match_engine.has_method("get_away_club_id"):
+		push_error("MatchScene: Cannot resolve managed club side for this fixture.")
+		return
+	var managed_club_id: int = int(career_state.get_managed_club_id())
+	var fixture_home_id: int = int(match_engine.get_home_club_id())
+	var fixture_away_id: int = int(match_engine.get_away_club_id())
+	if managed_club_id != fixture_home_id and managed_club_id != fixture_away_id:
+		push_error("MatchScene: Managed club %d is not part of fixture %d vs %d." % [managed_club_id, fixture_home_id, fixture_away_id])
+		return
+	var authoritative_user_is_home: bool = managed_club_id == fixture_home_id
+	match_engine.set_user_is_home(authoritative_user_is_home)
+	active_match_context["user_is_home"] = authoritative_user_is_home
 
-	# The payload rebuilds from CareerState; reapply the user's unsaved Pre-Match XI edits afterwards.
-	if active_match_context.has("home_lineup") and active_match_context["home_lineup"] is Array and match_engine.has_method("set_home_lineup"):
-		match_engine.call("set_home_lineup", active_match_context["home_lineup"])
-	if active_match_context.has("away_lineup") and active_match_context["away_lineup"] is Array and match_engine.has_method("set_away_lineup"):
-		match_engine.call("set_away_lineup", active_match_context["away_lineup"])
+	# Re-map the menu's user/opponent lineups into fixture HOME/AWAY slots using
+	# the authoritative side. This prevents the managed XI appearing on the
+	# wrong team when the club is the away side.
+	var user_lineup: Array = active_match_context.get("user_lineup", [])
+	var opponent_lineup: Array = active_match_context.get("opponent_lineup", [])
+	var home_lineup: Array = active_match_context.get("home_lineup", [])
+	var away_lineup: Array = active_match_context.get("away_lineup", [])
+	if user_lineup.size() > 0:
+		if authoritative_user_is_home:
+			home_lineup = user_lineup
+		else:
+			away_lineup = user_lineup
+	if opponent_lineup.size() > 0:
+		if authoritative_user_is_home:
+			away_lineup = opponent_lineup
+		else:
+			home_lineup = opponent_lineup
+	active_match_context["home_lineup"] = home_lineup
+	active_match_context["away_lineup"] = away_lineup
+	if match_engine.has_method("set_home_lineup"):
+		match_engine.call("set_home_lineup", home_lineup)
+	if match_engine.has_method("set_away_lineup"):
+		match_engine.call("set_away_lineup", away_lineup)
 
+	var user_bench: Array = active_match_context.get("user_bench", [])
+	var opponent_bench: Array = active_match_context.get("opponent_bench", [])
 	var home_bench: Array = active_match_context.get("home_bench", [])
 	var away_bench: Array = active_match_context.get("away_bench", [])
+	if user_bench.size() > 0:
+		if authoritative_user_is_home:
+			home_bench = user_bench
+		else:
+			away_bench = user_bench
+	if opponent_bench.size() > 0:
+		if authoritative_user_is_home:
+			away_bench = opponent_bench
+		else:
+			home_bench = opponent_bench
+	active_match_context["home_bench"] = home_bench
+	active_match_context["away_bench"] = away_bench
 	if match_engine.has_method("set_home_bench"):
 		match_engine.call("set_home_bench", home_bench)
 	if match_engine.has_method("set_away_bench"):
