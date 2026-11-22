@@ -2583,6 +2583,8 @@ bool CareerState::prepare_next_match_payload(MatchEngine *p_engine) const {
 	p_engine->set_away_lineup(build_lineup(away_team));
 	p_engine->set_home_bench(build_bench(home_team));
 	p_engine->set_away_bench(build_bench(away_team));
+	// Reassert managed-side identity after both fixture squads are populated.
+	p_engine->set_user_is_home(is_user_home);
 
 	p_engine->set_home_mentality(home_team->Mentality);
 	p_engine->set_away_mentality(away_team->Mentality);
