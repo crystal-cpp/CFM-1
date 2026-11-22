@@ -178,7 +178,8 @@ void MatchEngine::_bind_methods() {
     ADD_SIGNAL(MethodInfo("interactive_event_triggered",
         PropertyInfo(Variant::INT, "scenario_type"),
         PropertyInfo(Variant::BOOL, "is_home_team"),
-        PropertyInfo(Variant::VECTOR3, "ball_spawn_3d")));
+        PropertyInfo(Variant::VECTOR3, "ball_spawn_3d"),
+        PropertyInfo(Variant::DICTIONARY, "active_player_stats")));
 
     ADD_SIGNAL(MethodInfo("chance_state_changed",
         PropertyInfo(Variant::INT, "chance_state"),
@@ -3087,7 +3088,17 @@ void MatchEngine::_trigger_key_chance(int p_scenario_type, bool p_is_home_attack
     _log_event(p_is_home_attacking ? "attack_chance" : "defend_chance", p_is_home_attacking, attacker_name, desc);
 
     emit_signal("chance_state_changed", chance_state, user_controlled_index);
-    emit_signal("interactive_event_triggered", p_scenario_type, p_is_home_attacking, last_scenario_3d.ball_pos_3d);
+    const SimPlayer& active_player = sim_players[p_attacker_idx];
+    Dictionary active_stats;
+    active_stats["pace"] = active_player.pace;
+    active_stats["shooting"] = active_player.shooting;
+    active_stats["passing"] = active_player.passing;
+    active_stats["dribbling"] = active_player.dribbling;
+    active_stats["defending"] = active_player.defending;
+    active_stats["physical"] = active_player.physical;
+    active_stats["player_name"] = active_player.name;
+    active_stats["player_id"] = active_player.player_id;
+    emit_signal("interactive_event_triggered", p_scenario_type, p_is_home_attacking, last_scenario_3d.ball_pos_3d, active_stats);
 }
 
 void MatchEngine::_evaluate_carrier_action(int p_carrier_idx) {
