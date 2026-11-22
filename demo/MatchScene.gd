@@ -40,9 +40,8 @@ func _ready() -> void:
 		overview_2d.hide()
 	else:
 		overview_2d.show()
-		if not match_engine.is_match_active():
-			match_engine.reset_standalone_match_setup()
-			match_engine.start_match()
+	# Do not auto-start here: AppRoot instantiates MatchScene before CareerShell
+	# exists. Career fixtures and the standalone Next Match action own kickoff.
 
 	post_match_modal = PostMatchModal.new()
 	post_match_modal.name = "PostMatchModal"
