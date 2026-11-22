@@ -65,9 +65,13 @@ func _is_user_home() -> bool:
 	return match_engine.is_user_home() if (is_instance_valid(match_engine) and match_engine.has_method("is_user_home")) else true
 
 func _user_attack_chance() -> int:
+	if is_instance_valid(match_engine) and match_engine.has_method("get_user_attack_chance_state"):
+		return int(match_engine.get_user_attack_chance_state())
 	return 1 if _is_user_home() else 2
 
 func _user_defend_chance() -> int:
+	if is_instance_valid(match_engine) and match_engine.has_method("get_user_defend_chance_state"):
+		return int(match_engine.get_user_defend_chance_state())
 	return 2 if _is_user_home() else 1
 
 func set_team_names(home_name: String, away_name: String) -> void:
