@@ -397,6 +397,7 @@ private:
     bool manual_control_active = false;
     int user_controlled_index = -1;
     bool pending_chance_signal = false;
+    bool pending_chance_end_signal = false;
     int pending_chance_state_val = 0;
     int pending_chance_ctrl_val = -1;
     bool pending_interactive_signal = false;
