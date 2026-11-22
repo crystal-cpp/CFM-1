@@ -116,6 +116,8 @@ func _opp_end_idx() -> int:
 	return 22 if _is_user_home() else 11
 
 func _is_user_idx(idx: int) -> bool:
+	if is_instance_valid(match_engine) and match_engine.has_method("is_user_player_index"):
+		return bool(match_engine.is_user_player_index(idx))
 	return idx >= _user_start_idx() and idx < _user_end_idx()
 
 func _is_user_outfield_idx(idx: int) -> bool:
