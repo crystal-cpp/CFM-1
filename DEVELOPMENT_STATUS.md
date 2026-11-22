@@ -8,6 +8,16 @@
 
 **Current Milestone**: **Phase 5E source implementation is complete, including user-side identity and HOME/AWAY UI integration.** The previously remaining feature areas have now been implemented: live CareerState-backed bench synchronization and authoritative substitutions (five substitutions across three stoppage windows, with halftime allowance), role-aware defensive clearances, and broader attribute/role-driven defensive AI and movement behavior. Commit c31f700 reworks defensive positioning, pressing, runner tracking, recovery runs, tackle cooldowns and probabilistic defensive contests. This status marks the agreed 5E development scope complete; it does not claim a successful build, comparative simulation regression or Godot runtime QA. Phase 5D source implementation is also complete, while its acceptance and historical-data audit remain outstanding.
 
+## Latest Match Runtime Corrective Follow-up — 2026-11-22
+
+Source-only corrective changes have been committed after the Phase 5E implementation baseline:
+
+- MatchEngine now seeds the controlled player from the managed fixture side (HOME slot 9 / AWAY slot 20), exposes user-side index/chance helpers to GDScript, and rejects HOME/AWAY-local index remapping in direct selection and pass targets. Player indexes passed across the GDScript/C++ boundary are now expected to be absolute simulation indexes.
+- Chance-start, interactive-event and chance-end notifications are queued during native simulation and flushed after the simulation step. Full-time waits for an active chance to finish; halftime flushes pending chance notifications after its transition.
+- CareerState and MatchScene reassert the managed side after loading fixture lineups/benches. MatchPitch no longer overwrites preloaded club formations with demo defaults, resets its cached chance state between matches, guards stale pointer/chance callbacks, deduplicates GUI/unhandled input processing, and disconnects MatchEngine signals on tree exit.
+- MatchHUD now guards duplicate engine signal connections and disconnects them on tree exit. TacticalScreen was inspected and already consumes the engine's user-side squad/bench snapshots, so no additional ownership branch was added there. PreMatchView already writes the managed XI and formation to the fixture side selected by managed club ID.
+- **Verification status: source inspection only.** These commits have not yet been built with the Windows UCRT64 toolchain or exercised in the Godot runtime. In particular, verify away-side input, chance callbacks, full-time during an active chance, and repeated match entry/exit before marking the bugs resolved.
+
 ## 1. Milestone & Subsystem Status Matrix
 
 | Subsystem / Milestone | Layer | Implementation Status | Verification Status | Notes | 
