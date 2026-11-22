@@ -2,7 +2,7 @@
 
 **Last Updated**: 2026-11-22
 
-**Reviewed Source Baseline**: bead855151a4b92928906cca48de7ecff3b741a7 *(TacticalScreen pitch, tactics and substitutions follow the user's side)*; includes c2fed675 *(selected clash-resolved kit color handoff)*, 6a01300 *(remaining defensive chance-state checks converted to user-relative logic)*, c53eeed *(user-relative defensive challenge/chance handling)*, cf007db *(user-relative chance creation, shooting, scoring, pass reception and telemetry)*, 2217579 *(CareerState club identity, kit color and user/opponent context handoff)*, f6d6877 *(PreMatch HOME/AWAY banner and user-squad/opponent-scouting layout)*, and b6078a9 / c31f700 *(substitution and defensive implementation foundation)*.
+**Reviewed Source Baseline**: aa8a3d939232c17daca1cd6e458ae5ad8364c668 *(MatchScene resets identity on standalone next-match; see prior integration commits below)*; includes bead855 *(TacticalScreen pitch, tactics and substitutions follow the user's side)*; includes c2fed675 *(selected clash-resolved kit color handoff)*, 6a01300 *(remaining defensive chance-state checks converted to user-relative logic)*, c53eeed *(user-relative defensive challenge/chance handling)*, cf007db *(user-relative chance creation, shooting, scoring, pass reception and telemetry)*, 2217579 *(CareerState club identity, kit color and user/opponent context handoff)*, f6d6877 *(PreMatch HOME/AWAY banner and user-squad/opponent-scouting layout)*, and b6078a9 / c31f700 *(substitution and defensive implementation foundation)*.
 
 **Current Phase**: Phase 5
 
@@ -167,6 +167,7 @@
 * PreMatchView keeps the fixture banner in strict fixture order: left = `home_club` with `HOME`, right = `away_club` with `AWAY`. Its left panel is always the managed user's squad and tactics; its right panel is opponent scouting with expected XI, formation and OVR.
 * TacticalScreen uses `get_user_squad_snapshot()`, `get_user_bench_snapshot()`, `can_make_user_substitution()`, `is_user_home()` and `apply_substitution(is_user_home(), ...)`. Its pitch preview and tactical controls also follow the user's side when the managed club is away.
 * MatchHUD and MatchPitch read club display names from MatchEngine rather than placeholder team labels.
+* The standalone non-career Next Match route explicitly resets MatchEngine's user side and club names before kickoff, preventing a prior away-user career match from leaking into the default HOME/AWAY fixture.
 
 **QA status:** source changes only. SCons compilation, Godot parser/runtime checks and both user-as-HOME and user-as-AWAY match flows remain pending.
 
