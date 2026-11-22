@@ -487,6 +487,18 @@ Dictionary CareerState::prepare_match_context(const Dictionary &p_fixture, const
 	ctx["home_bench"] = home_bench_arr;
 	ctx["away_bench"] = away_bench_arr;
 	ctx["user_is_home"] = is_user_home;
+	ctx["user_club_id"] = is_user_home ? home_id : away_id;
+	ctx["opponent_club_id"] = is_user_home ? away_id : home_id;
+	ctx["user_club"] = is_user_home ? home_name : away_name;
+	ctx["opponent_club"] = is_user_home ? away_name : home_name;
+	ctx["user_ovr"] = is_user_home ? ctx["home_ovr"] : ctx["away_ovr"];
+	ctx["opponent_ovr"] = is_user_home ? ctx["away_ovr"] : ctx["home_ovr"];
+	ctx["user_formation"] = is_user_home ? home_fmt : away_fmt;
+	ctx["opponent_formation"] = is_user_home ? away_fmt : home_fmt;
+	ctx["user_lineup"] = is_user_home ? home_xi : away_xi;
+	ctx["opponent_lineup"] = is_user_home ? away_xi : home_xi;
+	ctx["user_bench"] = is_user_home ? home_bench_arr : away_bench_arr;
+	ctx["opponent_bench"] = is_user_home ? away_bench_arr : home_bench_arr;
 	String stad_name = String(fix.get("stadium", ""));
 	if (stad_name.is_empty()) {
 		stad_name = String(home_info.get("stadium", home_name + " Stadium"));
@@ -2476,6 +2488,20 @@ bool CareerState::prepare_next_match_payload(MatchEngine *p_engine) const {
 
 	Team *home_team = h_it->second.get();
 	Team *away_team = a_it->second.get();
+
+	// Preserve fixture HOME/AWAY order while separately recording the managed club's side.
+	const bool is_user_home = (home_id == _managed_club_id);
+	p_engine->set_user_is_home(is_user_home);
+	p_engine->set_home_club_id(home_id);
+	p_engine->set_away_club_id(away_id);
+	p_engine->set_home_club_name(String(home_team->GetName().c_str()));
+	p_engine->set_away_club_name(String(away_team->GetName().c_str()));
+
+	Color home_col = Color::html(String(home_team->KitColor.c_str()));
+	Color away_col = Color::html(String(away_team->KitColor.c_str()));
+	Color away_alt_col = Color::html(String(away_team->SecondaryColor.c_str()));
+	p_engine->set_home_kit_color(home_col);
+	p_engine->set_away_kit_color(home_col.is_equal_approx(away_col) ? away_alt_col : away_col);
 
 	p_engine->set_home_formation(String(home_team->Formation.c_str()));
 	p_engine->set_away_formation(String(away_team->Formation.c_str()));
