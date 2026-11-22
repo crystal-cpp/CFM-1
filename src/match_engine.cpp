@@ -251,6 +251,7 @@ void MatchEngine::set_user_is_home(bool p_is_home) {
     // the managed side; never retain a HOME slot when the user is AWAY.
     if (side_changed || !_is_user_player_idx(user_controlled_index)) {
         user_controlled_index = user_is_home ? 9 : 20;
+        manual_control_active = false;
         has_user_move_target = false;
         user_move_target = Vector2(-1.0f, -1.0f);
         if (match_active) {
@@ -1062,6 +1063,7 @@ bool MatchEngine::skip_match() {
     manual_control_active = false;
     user_controlled_index = user_is_home ? 9 : 20;
     pending_chance_signal = false;
+    pending_chance_end_signal = false;
     pending_interactive_signal = false;
     pending_match_ended_signal = false;
     pending_chance_state_val = CHANCE_NONE;
@@ -2296,9 +2298,15 @@ void MatchEngine::_end_active_chance(bool p_goal_scored) {
     shot_hits_crossbar = false;
     event_cooldown = p_goal_scored ? 12.0f : 9.0f;
 
-    pending_chance_signal = true;
-    pending_chance_state_val = chance_state;
-    pending_chance_ctrl_val = -1;
+    if (pending_chance_signal && pending_chance_state_val != CHANCE_NONE) {
+        // A chance may begin and end inside one native simulation step. Keep
+        // both transitions so the scene never misses the active state.
+        pending_chance_end_signal = true;
+    } else {
+        pending_chance_signal = true;
+        pending_chance_state_val = CHANCE_NONE;
+        pending_chance_ctrl_val = -1;
+    }
 }
 
 // =========================================================================
@@ -3885,6 +3893,10 @@ void MatchEngine::_flush_deferred_signals() {
         pending_chance_signal = false;
         emit_signal("chance_state_changed", pending_chance_state_val, pending_chance_ctrl_val);
     }
+    if (pending_chance_end_signal) {
+        pending_chance_end_signal = false;
+        emit_signal("chance_state_changed", CHANCE_NONE, -1);
+    }
     if (pending_interactive_signal) {
         pending_interactive_signal = false;
         emit_signal("interactive_event_triggered", pending_interactive_type, pending_interactive_home_atk, pending_interactive_ball_3d);
@@ -3965,6 +3977,11 @@ void MatchEngine::reset_standalone_match_setup() {
     waiting_for_kickoff_resume = false;
     kickoff_team = -1;
     chance_state = CHANCE_NONE;
+    pending_chance_signal = false;
+    pending_chance_end_signal = false;
+    pending_interactive_signal = false;
+    pending_match_ended_signal = false;
+    user_controlled_index = 9;
     user_is_home = true;
     home_club_id = -1;
     away_club_id = -1;
