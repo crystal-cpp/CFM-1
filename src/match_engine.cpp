@@ -3126,7 +3126,7 @@ void MatchEngine::_evaluate_carrier_action(int p_carrier_idx) {
             float carrier_threat = ((carrier.dribbling * 0.40f + carrier.passing * 0.30f + carrier.shooting * 0.30f) - 65.0f) * 0.004f;
             float trigger_prob = std::clamp((0.45f + ovr_edge + carrier_threat) * chance_creation_mult, 0.20f, 0.92f);
 
-            if (is_home || UtilityFunctions::randf() < trigger_prob) {
+            if ((is_home == user_is_home) || UtilityFunctions::randf() < trigger_prob) {
                 _spawn_wide_range_chance(is_home);
                 return;
             }
@@ -3134,13 +3134,13 @@ void MatchEngine::_evaluate_carrier_action(int p_carrier_idx) {
     }
 
     // 1. SHOOTING EVALUATION
-    if ((!is_home || home_auto_shoot_enabled) && carrier.role != "GK" && dist_to_goal < 320.0f && lateral_offset < 235.0f) {
+    if (((is_home != user_is_home) || home_auto_shoot_enabled) && carrier.role != "GK" && dist_to_goal < 320.0f && lateral_offset < 235.0f) {
         float dist_factor = std::clamp(1.0f - (dist_to_goal / 340.0f), 0.06f, 0.90f);
         float angle_factor = std::clamp(1.0f - (lateral_offset / 250.0f), 0.25f, 1.0f);
         float pressure_factor = std::clamp(nearest_opp_dist / 55.0f, 0.45f, 1.15f);
         float xg = std::clamp(dist_factor * angle_factor * pressure_factor * (0.45f + carrier.shooting * fatigue * 0.004f), 0.04f, 0.65f);
 
-        if (chance_state == CHANCE_AWAY_ATTACK && !is_home) {
+        if (chance_state == _user_defend_chance_state() && (is_home != user_is_home)) {
             float long_shot_bias = (dist_to_goal > 180.0f) ? 0.22f : 0.44f;
             if (dist_to_goal < 145.0f || UtilityFunctions::randf() < (long_shot_bias + xg)) {
                 _execute_shot(p_carrier_idx, xg);
@@ -3328,7 +3328,7 @@ void MatchEngine::_update_ball_and_actions(float dt) {
         int opp_start = carrier.is_home ? 11 : 0;
         int def_pressing = carrier.is_home ? away_pressing : home_pressing;
         float press_bonus = (def_pressing == PRESSING_HIGH) ? 4.5f : ((def_pressing == PRESSING_LOW) ? -3.5f : 0.0f);
-        bool is_user_manual_dribble = (carrier.is_home && manual_control_active && ball_carrier_index == user_controlled_index);
+        bool is_user_manual_dribble = ((carrier.is_home == user_is_home) && manual_control_active && ball_carrier_index == user_controlled_index);
 
         for (int j = opp_start; j < opp_start + 11; j++) {
             SimPlayer& defender = sim_players[j];
@@ -3447,7 +3447,7 @@ void MatchEngine::_update_ball_and_actions(float dt) {
         float passer_passing = static_cast<float>(sim_players[passer_idx].passing);
         int opp_start = passer_is_home ? 11 : 0;
         int def_pressing = passer_is_home ? away_pressing : home_pressing;
-        bool is_home_attack_chance = (passer_is_home && chance_state == CHANCE_HOME_ATTACK);
+        bool is_user_attack_chance = ((passer_is_home == user_is_home) && chance_state == _user_attack_chance_state());
 
         float base_intercept_radius = (def_pressing == PRESSING_HIGH) ? 14.5f : ((def_pressing == PRESSING_LOW) ? 10.5f : 12.5f);
         float press_rate_bonus = (def_pressing == PRESSING_HIGH) ? 1.4f : ((def_pressing == PRESSING_LOW) ? -0.9f : 0.0f);
@@ -3462,7 +3462,7 @@ void MatchEngine::_update_ball_and_actions(float dt) {
             float iq = _get_defensive_positioning_iq(def);
             // Defending + Pace + Awareness expand interception read & lunge radius
             float attr_radius_scale = 0.80f + ((def.defending * 0.65f + def.pace * 0.35f) / 100.0f) * 0.42f;
-            float effective_radius = base_intercept_radius * attr_radius_scale * def_fatigue * (is_home_attack_chance ? 0.82f : 1.0f);
+            float effective_radius = base_intercept_radius * attr_radius_scale * def_fatigue * (is_user_attack_chance ? 0.82f : 1.0f);
 
             if (def.position.distance_to(ball_position) < effective_radius) {
                 float role_read = (def.role == "CDM") ? 2.2f : ((def.role == "CB") ? 1.5f : (_is_backline_role(def.role) ? 1.1f : -1.2f));
@@ -3472,7 +3472,7 @@ void MatchEngine::_update_ball_and_actions(float dt) {
                     (5.8f + skill_edge + role_read + press_rate_bonus + (iq - 1.0f) * 3.0f) * (1.0f - speed_evasion * 0.35f),
                     1.2f, 14.5f
                 );
-                if (is_home_attack_chance) {
+                if (is_user_attack_chance) {
                     hazard_rate *= 0.64f;
                 }
 
@@ -3543,12 +3543,12 @@ void MatchEngine::_update_ball_and_actions(float dt) {
                 is_through_ball_in_flight = false;
                 ball_state = BALL_CARRIED;
                 ball_velocity = Vector2(0.0f, 0.0f);
-                action_decision_timer = (chance_state == CHANCE_AWAY_ATTACK && !rec_is_home) ? 0.45f : 0.30f;
+                action_decision_timer = (chance_state == _user_defend_chance_state() && (rec_is_home != user_is_home)) ? 0.45f : 0.30f;
 
                 if (chance_state == CHANCE_NONE && event_cooldown <= 0.0f && sim_players[receiver_idx].role != "GK") {
                     bool in_atk_half = rec_is_home ? (sim_players[receiver_idx].position.x >= field_size.x * 0.48f)
                                                    : (sim_players[receiver_idx].position.x <= field_size.x * 0.52f);
-                    if (in_atk_half && (rec_is_home || UtilityFunctions::randf() < 0.45f)) {
+                    if (in_atk_half && ((rec_is_home == user_is_home) || UtilityFunctions::randf() < 0.45f)) {
                         _spawn_wide_range_chance(rec_is_home);
                     }
                 }
@@ -3583,14 +3583,14 @@ void MatchEngine::_update_ball_and_actions(float dt) {
         const SimPlayer& gk = sim_players[def_gk_idx];
 
         int opp_start = shooter_is_home ? 11 : 0;
-        bool is_home_attack_chance = (shooter_is_home && chance_state == CHANCE_HOME_ATTACK);
+        bool is_user_attack_chance = ((shooter_is_home == user_is_home) && chance_state == _user_attack_chance_state());
         for (int j = opp_start + 1; j < opp_start + 11; j++) {
             const SimPlayer& def = sim_players[j];
             if (def.recovery_timer > 0.0f) continue;
 
             float def_fatigue = _get_fatigue_multiplier(def);
             // Physical + Defending expand body-block reach
-            float block_radius = (10.5f + ((def.defending * 0.55f + def.physical * 0.45f) / 100.0f) * 4.5f) * (is_home_attack_chance ? 0.85f : 1.0f);
+            float block_radius = (10.5f + ((def.defending * 0.55f + def.physical * 0.45f) / 100.0f) * 4.5f) * (is_user_attack_chance ? 0.85f : 1.0f);
             float d_ball = def.position.distance_to(ball_position);
             float d_shooter = def.position.distance_to(shooter.position);
 
@@ -3598,7 +3598,7 @@ void MatchEngine::_update_ball_and_actions(float dt) {
                 float role_block = (def.role == "CB") ? 3.2f : ((def.role == "CDM") ? 2.2f : (_is_backline_role(def.role) ? 1.5f : -1.5f));
                 float def_block_skill = (def.defending * 0.65f + def.physical * 0.35f) * def_fatigue;
                 float hazard_rate = std::clamp(7.5f + ((def_block_skill - 65.0f) * 0.14f) + role_block, 2.0f, 18.0f);
-                if (is_home_attack_chance) {
+                if (is_user_attack_chance) {
                     hazard_rate *= 0.62f;
                 }
 
@@ -3671,8 +3671,8 @@ void MatchEngine::_update_ball_and_actions(float dt) {
             }
 
             bool can_score_now = match_active && (
-                (shooter_is_home && chance_state == CHANCE_HOME_ATTACK) ||
-                (!shooter_is_home && chance_state == CHANCE_AWAY_ATTACK)
+                ((shooter_is_home == user_is_home) && chance_state == _user_attack_chance_state()) ||
+                ((shooter_is_home != user_is_home) && chance_state == _user_defend_chance_state())
             );
 
             float gk_fatigue = _get_fatigue_multiplier(gk);
@@ -3686,7 +3686,7 @@ void MatchEngine::_update_ball_and_actions(float dt) {
                 - corner_penalty
                 - power_penalty;
 
-            float save_prob = (shooter_is_home && chance_state == CHANCE_HOME_ATTACK)
+            float save_prob = is_user_attack_chance
                 ? std::clamp(raw_save_prob * 0.82f, 0.06f, 0.42f)
                 : std::clamp(raw_save_prob, 0.08f, 0.52f);
 
@@ -3783,7 +3783,7 @@ void MatchEngine::_physics_process(double delta) {
 
     float dt = std::min(raw_dt, 0.05f);
 
-    if (chance_state == CHANCE_AWAY_ATTACK) {
+    if (chance_state == _user_defend_chance_state()) {
         dt *= defensive_chance_time_scale;
     }
 
@@ -4033,6 +4033,11 @@ Dictionary MatchEngine::get_match_stats() const {
         }
     }
 
+    d["user_is_home"] = user_is_home;
+    d["home_club_name"] = home_club_name;
+    d["away_club_name"] = away_club_name;
+    d["user_subs_used"] = user_is_home ? home_subs_used : away_subs_used;
+    d["user_sub_windows_used"] = user_is_home ? home_sub_windows_used : away_sub_windows_used;
     d["home_possession"] = home_poss_pct;
     d["away_possession"] = away_poss_pct;
     d["home_shots"] = stats.home_shots;
