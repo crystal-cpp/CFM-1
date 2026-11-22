@@ -1564,6 +1564,9 @@ bool MatchEngine::set_controlled_player(int p_player_idx) {
 }
 
 int MatchEngine::select_nearest_defender() {
+    if (sim_players.size() != 22) {
+        return -1;
+    }
     int start_idx = _user_gk_idx() + 1;
     int end_idx = _user_end_idx();
     int best_idx = start_idx;
@@ -3056,6 +3059,12 @@ Vector3 MatchEngine::_to_3d_coords(Vector2 p_pos_2d) const {
 }
 
 void MatchEngine::_trigger_key_chance(int p_scenario_type, bool p_is_home_attacking, int p_attacker_idx, float p_xg) {
+    if (sim_players.size() != 22 || p_attacker_idx < 0 || p_attacker_idx >= 22 ||
+        ((p_attacker_idx < 11) != p_is_home_attacking)) {
+        UtilityFunctions::printerr("MatchEngine: Rejected chance with an invalid attacker index or team side.");
+        return;
+    }
+
     manual_control_active = true;
     active_chance_timer = p_is_home_attacking ? 14.0f : 16.5f;
     event_cooldown = 12.0f;
@@ -3095,6 +3104,9 @@ void MatchEngine::_trigger_key_chance(int p_scenario_type, bool p_is_home_attack
 }
 
 void MatchEngine::_evaluate_carrier_action(int p_carrier_idx) {
+    if (sim_players.size() != 22 || p_carrier_idx < 0 || p_carrier_idx >= 22) {
+        return;
+    }
     if (manual_control_active && p_carrier_idx == user_controlled_index) {
         return;
     }
