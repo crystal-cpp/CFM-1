@@ -191,8 +191,8 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	if match_engine.has_method("set_away_bench"):
 		match_engine.call("set_away_bench", away_bench)
 
-	var home_name: String = String(active_match_context.get("home_club", "Home"))
-	var away_name: String = String(active_match_context.get("away_club", "Away"))
+	var home_name: String = String(match_engine.get_home_club_name()) if match_engine.has_method("get_home_club_name") else String(active_match_context.get("home_club", "Home"))
+	var away_name: String = String(match_engine.get_away_club_name()) if match_engine.has_method("get_away_club_name") else String(active_match_context.get("away_club", "Away"))
 
 	var kits: Dictionary = active_match_context.get("kits", {})
 	var home_primary: Color = kits.get("home_primary", Color(0.06, 0.78, 0.48))
@@ -210,8 +210,8 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 		if match_pitch.has_method("set_team_names"):
 			match_pitch.call(
 				"set_team_names",
-				String(active_match_context.get("home_club", "Home")),
-				String(active_match_context.get("away_club", "Away"))
+				match_engine.get_home_club_name(),
+				match_engine.get_away_club_name()
 			)
 		if match_pitch.has_method("set_match_lineups"):
 			match_pitch.call(
