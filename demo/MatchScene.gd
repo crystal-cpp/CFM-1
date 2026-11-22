@@ -272,11 +272,19 @@ func _request_next_match() -> void:
 	pending_match_ended = false
 	career_state = null
 	active_match_context.clear()
+	# The standalone next-match route has no managed-club side; reset the identity
+	# so a preceding away-user career fixture cannot leak into the next kickoff.
+	if match_engine.has_method("set_user_is_home"):
+		match_engine.set_user_is_home(true)
+	if match_engine.has_method("set_home_club_name"):
+		match_engine.set_home_club_name("HOME FC")
+	if match_engine.has_method("set_away_club_name"):
+		match_engine.set_away_club_name("AWAY FC")
 	overview_2d.show()
 	match_engine.start_match()
 	if is_instance_valid(match_pitch):
 		if match_pitch.has_method("set_team_names"):
-			match_pitch.set_team_names("HOME FC", "AWAY FC")
+			match_pitch.set_team_names(match_engine.get_home_club_name(), match_engine.get_away_club_name())
 		if match_pitch.has_method("set_match_lineups"):
 			match_pitch.set_match_lineups([], [])
 		if match_pitch.has_method("reset_for_new_match"):
