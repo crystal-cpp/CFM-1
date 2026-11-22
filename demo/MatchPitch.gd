@@ -3,6 +3,9 @@ extends Node2D
 var match_engine: MatchEngine
 var home_kit_primary_color: Color = Color(0.06, 0.78, 0.48)
 var away_kit_primary_color: Color = Color(0.92, 0.26, 0.30)
+var _home_club_display_name: String = "HOME FC"
+var _away_club_display_name: String = "AWAY FC"
+var _player_display_names: PackedStringArray = PackedStringArray()
 var _backdrop_canvas: Control
 var _viewport_clip: PanelContainer
 var _pitch_canvas: Control
@@ -117,6 +120,34 @@ func set_kit_colors(home_primary: Color, away_primary: Color) -> void:
 	away_kit_primary_color = away_primary
 	if is_instance_valid(_pitch_canvas):
 		_pitch_canvas.queue_redraw()
+
+func set_team_names(home_name: String, away_name: String) -> void:
+	_home_club_display_name = home_name if not home_name.strip_edges().is_empty() else "HOME FC"
+	_away_club_display_name = away_name if not away_name.strip_edges().is_empty() else "AWAY FC"
+
+func set_match_lineups(home_lineup: Array, away_lineup: Array) -> void:
+	_player_display_names.resize(22)
+	for i in range(22):
+		_player_display_names[i] = ""
+	for i in range(mini(11, home_lineup.size())):
+		if home_lineup[i] is Dictionary:
+			_player_display_names[i] = _extract_short_surname(String(home_lineup[i].get("name", "")))
+	for i in range(mini(11, away_lineup.size())):
+		if away_lineup[i] is Dictionary:
+			_player_display_names[11 + i] = _extract_short_surname(String(away_lineup[i].get("name", "")))
+	if is_instance_valid(_pitch_canvas):
+		_pitch_canvas.queue_redraw()
+
+func refresh_player_names() -> void:
+	if is_instance_valid(_pitch_canvas):
+		_pitch_canvas.queue_redraw()
+
+func _extract_short_surname(full_name: String) -> String:
+	var clean := full_name.strip_edges()
+	if clean.is_empty():
+		return ""
+	var parts := clean.split(" ", false)
+	return parts[parts.size() - 1] if parts.size() > 0 else clean
 
 
 func _ready() -> void:
@@ -1373,8 +1404,11 @@ func _draw_pitch_scene() -> void:
 		_pitch_canvas.draw_circle(pos, p_radius, fill_col)
 		_pitch_canvas.draw_arc(pos, p_radius, 0.0, TAU, 32, Color.WHITE if is_home else Color(0.12, 0.14, 0.18), 1.6)
 
-		var label_text: String = roles[i] if i < roles.size() else ("H" + str(i + 1) if is_home else "A" + str(i - 10))
-		_pitch_canvas.draw_string(default_font, pos + Vector2(-20.0, -(p_radius + 4.0)), label_text, HORIZONTAL_ALIGNMENT_CENTER, 40, 10, Color.WHITE)
+		var role_text: String = roles[i] if i < roles.size() else ("H" + str(i + 1) if is_home else "A" + str(i - 10))
+		var custom_name: String = _player_display_names[i] if i < _player_display_names.size() else ""
+		var label_text: String = ("%s · %s" % [role_text, custom_name]) if not custom_name.is_empty() else role_text
+		_pitch_canvas.draw_string(default_font, pos + Vector2(-47.0, -(p_radius + 3.0)), label_text, HORIZONTAL_ALIGNMENT_CENTER, 96, 10, Color(0.0, 0.0, 0.0, 0.78))
+		_pitch_canvas.draw_string(default_font, pos + Vector2(-48.0, -(p_radius + 4.0)), label_text, HORIZONTAL_ALIGNMENT_CENTER, 96, 10, Color.WHITE)
 
 	var ball_pos: Vector2 = _logical_to_canvas(match_engine.get_ball_position())
 	var ball_r: float = maxf(4.5, 5.5 * eff_scale)
@@ -1440,7 +1474,7 @@ func _on_goal_scored(home: int, away: int, is_home: bool) -> void:
 	_atk_phase = AttackPhase.INACTIVE
 	_atk_decision_paused = false
 
-	var scorer_side: String = "HOME FC" if is_home else "AWAY FC"
+	var scorer_side: String = _home_club_display_name if is_home else _away_club_display_name
 	_last_goal_banner_text = "GOAL! %s  (%d : %d)" % [scorer_side, home, away]
 
 	if not _is_regression_test_running() and is_instance_valid(match_engine) and match_engine.is_match_active():

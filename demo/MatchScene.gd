@@ -213,6 +213,20 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	pre_match_view = null
 	pending_match_ended = false
 	overview_2d.show()
+	if is_instance_valid(match_pitch):
+		if match_pitch.has_method("set_team_names"):
+			match_pitch.call(
+				"set_team_names",
+				String(active_match_context.get("home_club", "Home")),
+				String(active_match_context.get("away_club", "Away"))
+			)
+		if match_pitch.has_method("set_match_lineups"):
+			match_pitch.call(
+				"set_match_lineups",
+				active_match_context.get("home_lineup", []),
+				active_match_context.get("away_lineup", [])
+			)
+
 	match_engine.start_match()
 
 	if is_instance_valid(match_pitch):
