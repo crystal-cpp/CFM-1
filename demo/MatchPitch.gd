@@ -227,7 +227,7 @@ func _ready() -> void:
 	if match_engine.has_signal("goal_kickoff_resumed"):
 		match_engine.goal_kickoff_resumed.connect(_on_goal_kickoff_resumed)
 
-	match_engine.start_match()
+	# MatchScene owns match lifecycle; do not start the same engine twice.
 	reset_for_new_match()
 
 func _resolve_match_engine() -> MatchEngine:
