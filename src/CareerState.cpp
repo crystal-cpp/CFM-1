@@ -1463,10 +1463,16 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 			int p_pot = std::clamp(src.potential, src.overall, 99);
 			bool is_below_debut = (raw_age < debut_age);
 			bool meets_youth_req = (raw_age > 14 && raw_age < 18);
+			std::string p_club = src.club.strip_edges().utf8().get_data();
+			std::string c_key = to_lower_str(p_club);
+			auto c_it = _club_id_by_name_lower.find(c_key);
+			int32_t parent_cid = (c_it != _club_id_by_name_lower.end() && _clubs.count(c_it->second) && _clubs[c_it->second])
+				? c_it->second
+				: 0;
 
-			// Youth Academy players have maximum 70 OVR (~ -20 from their OVR in players_2006_with_price.csv)
+			// Apply the Youth Academy attribute cap only to the managed club's academy prospects.
 			PlayerAttributes effective_attrs = attrs;
-			if (is_below_debut && meets_youth_req) {
+			if (is_below_debut && meets_youth_req && parent_cid == chosen_id) {
 				int target_ovr = std::clamp(src.overall - 20, 45, 70);
 				int reduction = std::max(0, src.overall - target_ovr);
 				effective_attrs.Pace = std::clamp(attrs.Pace - reduction, 40, 70);
@@ -1483,7 +1489,6 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 			p_ptr->SetId(pid);
 			p_ptr->SetStamina(std::clamp(src.stamina, 1, 99));
 
-			std::string p_club = src.club.strip_edges().utf8().get_data();
 			std::string p_league = src.league.strip_edges().utf8().get_data();
 			std::string p_nat = src.nationality.strip_edges().utf8().get_data();
 
@@ -1508,13 +1513,7 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 			p_ptr->SetWage(src.wage > 0 ? src.wage : std::max<int64_t>(1500, static_cast<int64_t>(p_ptr->GetOVR()) * 850));
 			p_ptr->SetContractYears(3);
 
-			std::string c_key = to_lower_str(p_club);
-			auto c_it = _club_id_by_name_lower.find(c_key);
-			int32_t parent_cid = (c_it != _club_id_by_name_lower.end() && _clubs.count(c_it->second) && _clubs[c_it->second])
-				? c_it->second
-				: 0;
-
-			if (is_below_debut) {
+						if (is_below_debut) {
 				if (meets_youth_req && parent_cid == chosen_id) {
 					// Only the managed club's eligible prospects enter this career's Youth Academy.
 					p_ptr->SetClubId(-1);
