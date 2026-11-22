@@ -81,7 +81,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not key_event.pressed or key_event.is_echo():
 		return
 
-	if key_event.keycode == KEY_T:
+	if not is_instance_valid(overview_2d) or not overview_2d.visible:
+		if key_event.keycode == KEY_C:
+			_toggle_career_shell()
+			get_viewport().set_input_as_handled()
+		return
+
+	if key_event.keycode == KEY_T and is_instance_valid(match_engine) and match_engine.is_match_active():
 		if hud:
 			if hud.has_method("is_tactical_screen_open") and hud.is_tactical_screen_open():
 				hud.close_tactical_screen()
@@ -186,10 +192,18 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 
 	career_state = p_career_state
 	active_match_context = context
+	if active_match_context.has("tactics") and career_state.has_method("set_club_tactics") and career_state.has_method("get_managed_club_id"):
+		career_state.set_club_tactics(career_state.get_managed_club_id(), active_match_context["tactics"])
 	if career_state.has_method("prepare_next_match_payload"):
 		career_state.prepare_next_match_payload(match_engine)
 	elif career_state.has_method("apply_context_to_match_engine"):
 		career_state.call("apply_context_to_match_engine", match_engine, active_match_context)
+
+	# The payload rebuilds from CareerState; reapply the user's unsaved Pre-Match XI edits afterwards.
+	if active_match_context.has("home_lineup") and active_match_context["home_lineup"] is Array and match_engine.has_method("set_home_lineup"):
+		match_engine.call("set_home_lineup", active_match_context["home_lineup"])
+	if active_match_context.has("away_lineup") and active_match_context["away_lineup"] is Array and match_engine.has_method("set_away_lineup"):
+		match_engine.call("set_away_lineup", active_match_context["away_lineup"])
 
 	var home_bench: Array = active_match_context.get("home_bench", [])
 	var away_bench: Array = active_match_context.get("away_bench", [])
@@ -277,17 +291,20 @@ func _request_next_match() -> void:
 	if not is_instance_valid(match_engine) or match_engine.is_match_active():
 		return
 
+	Engine.time_scale = 1.0
 	pending_match_ended = false
 	career_state = null
 	active_match_context.clear()
-	# The standalone next-match route has no managed-club side; reset the identity
-	# so a preceding away-user career fixture cannot leak into the next kickoff.
-	if match_engine.has_method("set_user_is_home"):
-		match_engine.set_user_is_home(true)
-	if match_engine.has_method("set_home_club_name"):
-		match_engine.set_home_club_name("HOME FC")
-	if match_engine.has_method("set_away_club_name"):
-		match_engine.set_away_club_name("AWAY FC")
+	if match_engine.has_method("reset_standalone_match_setup"):
+		match_engine.reset_standalone_match_setup()
+	else:
+		# Compatibility fallback for older MatchEngine binaries.
+		if match_engine.has_method("set_user_is_home"):
+			match_engine.set_user_is_home(true)
+		if match_engine.has_method("set_home_club_name"):
+			match_engine.set_home_club_name("HOME FC")
+		if match_engine.has_method("set_away_club_name"):
+			match_engine.set_away_club_name("AWAY FC")
 	overview_2d.show()
 	match_engine.start_match()
 	if is_instance_valid(match_pitch):
@@ -315,6 +332,7 @@ func _on_match_ended(final_home: int, final_away: int) -> void:
 	_process_final_whistle(final_home, final_away)
 
 func _process_final_whistle(final_home: int, final_away: int) -> void:
+	Engine.time_scale = 1.0
 	pending_match_ended = false
 
 	if is_instance_valid(match_engine) and not _match_was_skipped:
