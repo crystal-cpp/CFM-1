@@ -200,13 +200,6 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	if is_instance_valid(match_pitch):
 		if match_pitch.has_method("set_kit_colors"):
 			match_pitch.set_kit_colors(home_primary, away_primary)
-		if match_pitch.has_method("set_team_names"):
-			match_pitch.set_team_names(home_name, away_name)
-		if match_pitch.has_method("set_match_lineups"):
-			match_pitch.set_match_lineups(
-				active_match_context.get("home_lineup", []),
-				active_match_context.get("away_lineup", [])
-			)
 
 	if is_instance_valid(pre_match_view):
 		pre_match_view.queue_free()
