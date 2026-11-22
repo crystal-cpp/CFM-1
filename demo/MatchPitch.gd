@@ -54,6 +54,7 @@ var _slide_tackle_dir: Vector2 = Vector2.RIGHT
 # Unified Desktop Mouse + Android Touch Gesture State
 var _pointer_down: bool = false
 var _pointer_index: int = -1
+var _handled_gui_input_frame: int = -1
 var _drag_started_on_carrier: bool = false
 var _drag_start_screen: Vector2 = Vector2.ZERO
 var _drag_current_screen: Vector2 = Vector2.ZERO
@@ -84,18 +85,28 @@ func _is_user_home() -> bool:
 	return match_engine.is_user_home() if (is_instance_valid(match_engine) and match_engine.has_method("is_user_home")) else true
 
 func _user_attack_chance() -> int:
+	if is_instance_valid(match_engine) and match_engine.has_method("get_user_attack_chance_state"):
+		return int(match_engine.get_user_attack_chance_state())
 	return 1 if _is_user_home() else 2
 
 func _user_defend_chance() -> int:
+	if is_instance_valid(match_engine) and match_engine.has_method("get_user_defend_chance_state"):
+		return int(match_engine.get_user_defend_chance_state())
 	return 2 if _is_user_home() else 1
 
 func _user_start_idx() -> int:
+	if is_instance_valid(match_engine) and match_engine.has_method("get_user_start_index"):
+		return int(match_engine.get_user_start_index())
 	return 0 if _is_user_home() else 11
 
 func _user_end_idx() -> int:
+	if is_instance_valid(match_engine) and match_engine.has_method("get_user_end_index"):
+		return int(match_engine.get_user_end_index())
 	return 11 if _is_user_home() else 22
 
 func _user_gk_idx() -> int:
+	if is_instance_valid(match_engine) and match_engine.has_method("get_user_gk_index"):
+		return int(match_engine.get_user_gk_index())
 	return 0 if _is_user_home() else 11
 
 func _opp_start_idx() -> int:
@@ -212,23 +223,46 @@ func _ready() -> void:
 		return
 
 	var available: PackedStringArray = match_engine.get_available_formations()
-	var home_fmt: String = "4-3-3" if match_engine.has_formation("4-3-3") else (available[0] if available.size() > 0 else "4-3-3")
-	var away_fmt: String = "4-4-2" if match_engine.has_formation("4-4-2") else (available[0] if available.size() > 0 else "4-4-2")
+	# CareerState may already have loaded the fixture clubs' saved formations.
+	# Only supply defaults when the engine has no formation value.
+	if match_engine.get_home_formation().strip_edges().is_empty():
+		var home_fmt: String = "4-3-3" if match_engine.has_formation("4-3-3") else (available[0] if available.size() > 0 else "4-3-3")
+		match_engine.set_home_formation(home_fmt)
+	if match_engine.get_away_formation().strip_edges().is_empty():
+		var away_fmt: String = "4-4-2" if match_engine.has_formation("4-4-2") else (available[0] if available.size() > 0 else "4-4-2")
+		match_engine.set_away_formation(away_fmt)
 
-	match_engine.set_home_formation(home_fmt)
-	match_engine.set_away_formation(away_fmt)
-
-	match_engine.minute_changed.connect(_on_minute_changed)
-	match_engine.goal_scored.connect(_on_goal_scored)
-	match_engine.match_ended.connect(_on_match_ended)
-	match_engine.chance_state_changed.connect(_on_chance_state_changed)
-	if match_engine.has_signal("controlled_player_changed"):
+	if not match_engine.minute_changed.is_connected(_on_minute_changed):
+		match_engine.minute_changed.connect(_on_minute_changed)
+	if not match_engine.goal_scored.is_connected(_on_goal_scored):
+		match_engine.goal_scored.connect(_on_goal_scored)
+	if not match_engine.match_ended.is_connected(_on_match_ended):
+		match_engine.match_ended.connect(_on_match_ended)
+	if not match_engine.chance_state_changed.is_connected(_on_chance_state_changed):
+		match_engine.chance_state_changed.connect(_on_chance_state_changed)
+	if match_engine.has_signal("controlled_player_changed") and not match_engine.controlled_player_changed.is_connected(_on_controlled_player_changed):
 		match_engine.controlled_player_changed.connect(_on_controlled_player_changed)
-	if match_engine.has_signal("goal_kickoff_resumed"):
+	if match_engine.has_signal("goal_kickoff_resumed") and not match_engine.goal_kickoff_resumed.is_connected(_on_goal_kickoff_resumed):
 		match_engine.goal_kickoff_resumed.connect(_on_goal_kickoff_resumed)
 
 	# MatchScene owns match lifecycle; do not start the same engine twice.
 	reset_for_new_match()
+
+func _exit_tree() -> void:
+	if not is_instance_valid(match_engine):
+		return
+	if match_engine.minute_changed.is_connected(_on_minute_changed):
+		match_engine.minute_changed.disconnect(_on_minute_changed)
+	if match_engine.goal_scored.is_connected(_on_goal_scored):
+		match_engine.goal_scored.disconnect(_on_goal_scored)
+	if match_engine.match_ended.is_connected(_on_match_ended):
+		match_engine.match_ended.disconnect(_on_match_ended)
+	if match_engine.chance_state_changed.is_connected(_on_chance_state_changed):
+		match_engine.chance_state_changed.disconnect(_on_chance_state_changed)
+	if match_engine.has_signal("controlled_player_changed") and match_engine.controlled_player_changed.is_connected(_on_controlled_player_changed):
+		match_engine.controlled_player_changed.disconnect(_on_controlled_player_changed)
+	if match_engine.has_signal("goal_kickoff_resumed") and match_engine.goal_kickoff_resumed.is_connected(_on_goal_kickoff_resumed):
+		match_engine.goal_kickoff_resumed.disconnect(_on_goal_kickoff_resumed)
 
 func _resolve_match_engine() -> MatchEngine:
 	var candidate: Node = get_node_or_null("../../MatchEngine")
@@ -329,8 +363,11 @@ func reset_for_new_match() -> void:
 	_preview_through_runner = -1
 	_gk_rush_active = false
 	_atk_phase = AttackPhase.INACTIVE
+	_atk_phase_timer = 0.0
+	_atk_expected_receiver = -1
 	_atk_decision_paused = false
 	_open_play_chance_timer = 0.0
+	_last_known_chance_state = 0
 	_waiting_for_goal_resume = false
 	_restore_hidden_hud_nodes()
 	_set_tempo_factor(1.0)
@@ -475,6 +512,8 @@ func _on_controlled_player_changed(_ctrl_idx: int) -> void:
 		_pitch_canvas.queue_redraw()
 
 func _on_chance_state_changed(new_state: int, _ctrl_idx: int) -> void:
+	if not is_inside_tree() or not is_instance_valid(match_engine):
+		return
 	if new_state == _last_known_chance_state:
 		return
 	_last_known_chance_state = new_state
@@ -873,9 +912,13 @@ func _compute_smart_through_ball(carrier_idx: int, carrier_pos: Vector2, start_p
 func _on_pitch_gui_input(event: InputEvent) -> void:
 	var offset: Vector2 = _viewport_clip.position if _viewport_clip else get_base_pitch_rect().position
 	if _handle_pitch_pointer_event(event, offset):
-		_pitch_canvas.accept_event()
+		_handled_gui_input_frame = Engine.get_process_frames()
+		if is_instance_valid(_pitch_canvas):
+			_pitch_canvas.accept_event()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _handled_gui_input_frame == Engine.get_process_frames():
+		return
 	if not _pointer_down and _handle_pitch_pointer_event(event, Vector2.ZERO):
 		get_viewport().set_input_as_handled()
 
@@ -990,6 +1033,12 @@ func _on_pointer_pressed(screen_pos: Vector2, ptr_idx: int) -> bool:
 	return true
 
 func _on_pointer_moved(screen_pos: Vector2) -> void:
+	if not is_inside_tree() or not is_instance_valid(match_engine) or not match_engine.is_match_active():
+		_pointer_down = false
+		_pointer_index = -1
+		_gesture_mode = "NONE"
+		_preview_through_runner = -1
+		return
 	var now_ms: int = Time.get_ticks_msec()
 	var dt_sec: float = maxf(0.008, float(now_ms - _last_drag_sample_ms) / 1000.0)
 	var inst_speed: float = screen_pos.distance_to(_last_drag_sample_screen) / dt_sec
@@ -1028,6 +1077,12 @@ func _on_pointer_moved(screen_pos: Vector2) -> void:
 		_preview_through_runner = -1
 
 func _on_pointer_released(screen_pos: Vector2) -> void:
+	if not is_inside_tree() or not is_instance_valid(match_engine) or not match_engine.is_match_active():
+		_pointer_down = false
+		_pointer_index = -1
+		_gesture_mode = "NONE"
+		_preview_through_runner = -1
+		return
 	_on_pointer_moved(screen_pos)
 	_pointer_down = false
 	_pointer_index = -1
