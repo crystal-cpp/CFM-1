@@ -178,8 +178,7 @@ void MatchEngine::_bind_methods() {
     ADD_SIGNAL(MethodInfo("interactive_event_triggered",
         PropertyInfo(Variant::INT, "scenario_type"),
         PropertyInfo(Variant::BOOL, "is_home_team"),
-        PropertyInfo(Variant::VECTOR3, "ball_spawn_3d"),
-        PropertyInfo(Variant::DICTIONARY, "active_player_stats")));
+        PropertyInfo(Variant::VECTOR3, "ball_spawn_3d")));
 
     ADD_SIGNAL(MethodInfo("chance_state_changed",
         PropertyInfo(Variant::INT, "chance_state"),
@@ -652,6 +651,8 @@ void MatchEngine::set_home_lineup(const Array& p_players) {
         if (p_players[i].get_type() != Variant::DICTIONARY) {
             continue;
         }
+        sim_players[i].is_home = true;
+        sim_players[i].slot_index = i;
         _populate_sim_player_from_dict(sim_players[i], p_players[i], home_team_ovr);
     }
     _recompute_team_ovrs_from_lineups();
@@ -667,6 +668,8 @@ void MatchEngine::set_away_lineup(const Array& p_players) {
         if (p_players[i].get_type() != Variant::DICTIONARY) {
             continue;
         }
+        sim_players[11 + i].is_home = false;
+        sim_players[11 + i].slot_index = 11 + i;
         _populate_sim_player_from_dict(sim_players[11 + i], p_players[i], away_team_ovr);
     }
     _recompute_team_ovrs_from_lineups();
@@ -2146,14 +2149,14 @@ bool MatchEngine::is_home_auto_shoot_enabled() const {
 }
 
 void MatchEngine::trigger_wide_range_chance(bool p_is_home_attacking) {
-    if (!match_active || waiting_for_kickoff_resume || chance_state != CHANCE_NONE) {
+    if (!match_active || sim_players.size() != 22 || waiting_for_kickoff_resume || chance_state != CHANCE_NONE) {
         return;
     }
     _spawn_wide_range_chance(p_is_home_attacking);
 }
 
 void MatchEngine::_spawn_wide_range_chance(bool p_is_home_attacking) {
-    if (!match_active || waiting_for_kickoff_resume || chance_state != CHANCE_NONE) {
+    if (!match_active || sim_players.size() != 22 || waiting_for_kickoff_resume || chance_state != CHANCE_NONE) {
         return;
     }
 
@@ -3088,17 +3091,7 @@ void MatchEngine::_trigger_key_chance(int p_scenario_type, bool p_is_home_attack
     _log_event(p_is_home_attacking ? "attack_chance" : "defend_chance", p_is_home_attacking, attacker_name, desc);
 
     emit_signal("chance_state_changed", chance_state, user_controlled_index);
-    const SimPlayer& active_player = sim_players[p_attacker_idx];
-    Dictionary active_stats;
-    active_stats["pace"] = active_player.pace;
-    active_stats["shooting"] = active_player.shooting;
-    active_stats["passing"] = active_player.passing;
-    active_stats["dribbling"] = active_player.dribbling;
-    active_stats["defending"] = active_player.defending;
-    active_stats["physical"] = active_player.physical;
-    active_stats["player_name"] = active_player.name;
-    active_stats["player_id"] = active_player.player_id;
-    emit_signal("interactive_event_triggered", p_scenario_type, p_is_home_attacking, last_scenario_3d.ball_pos_3d, active_stats);
+    emit_signal("interactive_event_triggered", p_scenario_type, p_is_home_attacking, last_scenario_3d.ball_pos_3d);
 }
 
 void MatchEngine::_evaluate_carrier_action(int p_carrier_idx) {
@@ -3781,6 +3774,16 @@ void MatchEngine::_update_ball_and_actions(float dt) {
 }
 
 void MatchEngine::_step_simulation(float dt) {
+    // All simulation helpers use fixed HOME [0..10] / AWAY [11..21] slots.
+    // Stop safely rather than indexing a partially initialized squad.
+    if (sim_players.size() != 22) {
+        UtilityFunctions::printerr("MatchEngine: Simulation stopped because the player array does not contain exactly 22 players.");
+        match_active = false;
+        is_paused_for_manual = true;
+        set_physics_process(false);
+        return;
+    }
+
     if (chance_state != CHANCE_NONE) {
         active_chance_timer -= dt;
         if (active_chance_timer <= 0.0f) {
@@ -3796,8 +3799,10 @@ void MatchEngine::_step_simulation(float dt) {
     const Vector2 player_min(14.0f, 14.0f);
     const Vector2 player_max(field_size.x - 14.0f, field_size.y - 14.0f);
     for (SimPlayer& player : sim_players) {
-        player.position = player.position.clamp(player_min, player_max);
-        player.anchor = player.anchor.clamp(player_min, player_max);
+        player.position.x = std::clamp(player.position.x, player_min.x, player_max.x);
+        player.position.y = std::clamp(player.position.y, player_min.y, player_max.y);
+        player.anchor.x = std::clamp(player.anchor.x, player_min.x, player_max.x);
+        player.anchor.y = std::clamp(player.anchor.y, player_min.y, player_max.y);
     }
     ball_position.x = std::clamp(ball_position.x, 10.0f, field_size.x - 10.0f);
     ball_position.y = std::clamp(ball_position.y, 10.0f, field_size.y - 10.0f);
@@ -3883,6 +3888,12 @@ void MatchEngine::reset_standalone_match_setup() {
 }
 
 void MatchEngine::start_match() {
+    if (sim_players.size() != 22) {
+        UtilityFunctions::printerr("MatchEngine: Cannot start match; expected 22 initialized players.");
+        match_active = false;
+        set_physics_process(false);
+        return;
+    }
     if (formation_db.empty()) {
         load_default_formations();
     }
