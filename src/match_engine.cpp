@@ -12,6 +12,7 @@ using namespace godot;
 void MatchEngine::_bind_methods() {
     // Control Methods
     ClassDB::bind_method(D_METHOD("start_match"), &MatchEngine::start_match);
+    ClassDB::bind_method(D_METHOD("reset_standalone_match_setup"), &MatchEngine::reset_standalone_match_setup);
     ClassDB::bind_method(D_METHOD("pause_match", "pause"), &MatchEngine::pause_match);
     ClassDB::bind_method(D_METHOD("resolve_manual_scenario", "success", "is_home_team"), &MatchEngine::resolve_manual_scenario, DEFVAL(true));
     ClassDB::bind_method(D_METHOD("begin_chance", "is_home_attacking", "attacker_idx", "xg"), &MatchEngine::begin_chance, DEFVAL(-1), DEFVAL(0.25f));
@@ -224,7 +225,8 @@ void MatchEngine::_bind_methods() {
 
 MatchEngine::MatchEngine() {
     _initialize_default_squads();
-    _initialize_default_benches();
+    _initialize_default_home_bench();
+    _initialize_default_away_bench();
 }
 
 MatchEngine::~MatchEngine() {}
@@ -415,11 +417,10 @@ void MatchEngine::_initialize_default_squads() {
     }
 }
 
-void MatchEngine::_initialize_default_benches() {
+void MatchEngine::_initialize_default_home_bench() {
     static const char* BENCH_ROLES[7] = { "GK", "CB", "LB", "CDM", "CM", "LW", "ST" };
     static const int BENCH_OFFSETS[7] = { -2, -1, -2, 0, 1, 0, 1 };
     home_bench.clear();
-    away_bench.clear();
     for (int b = 0; b < 7; b++) {
         BenchPlayer hb;
         hb.name = String("Home #") + String::num_int64(12 + b);
@@ -435,7 +436,14 @@ void MatchEngine::_initialize_default_benches() {
         hb.stamina = 100.0f;
         hb.used = false;
         home_bench.push_back(hb);
+    }
+}
 
+void MatchEngine::_initialize_default_away_bench() {
+    static const char* BENCH_ROLES[7] = { "GK", "CB", "LB", "CDM", "CM", "LW", "ST" };
+    static const int BENCH_OFFSETS[7] = { -2, -1, -2, 0, 1, 0, 1 };
+    away_bench.clear();
+    for (int b = 0; b < 7; b++) {
         BenchPlayer ab;
         ab.name = String("Away #") + String::num_int64(12 + b);
         ab.player_id = "";
@@ -667,7 +675,8 @@ void MatchEngine::set_away_lineup(const Array& p_players) {
 void MatchEngine::set_home_bench(const Array& p_players) {
     home_bench.clear();
     if (p_players.is_empty()) {
-        _initialize_default_benches();
+        _initialize_default_home_bench();
+        emit_signal("squad_updated");
         return;
     }
     int limit = std::min(12, static_cast<int>(p_players.size()));
@@ -682,6 +691,8 @@ void MatchEngine::set_home_bench(const Array& p_players) {
 void MatchEngine::set_away_bench(const Array& p_players) {
     away_bench.clear();
     if (p_players.is_empty()) {
+        _initialize_default_away_bench();
+        emit_signal("squad_updated");
         return;
     }
     int limit = std::min(12, static_cast<int>(p_players.size()));
@@ -690,6 +701,7 @@ void MatchEngine::set_away_bench(const Array& p_players) {
         String fb_name = String("Away #") + String::num_int64(12 + i);
         away_bench.push_back(_parse_bench_player_from_dict(p_players[i], fb_name, "CM", away_team_ovr));
     }
+    emit_signal("squad_updated");
 }
 
 Array MatchEngine::get_home_squad_snapshot() const {
@@ -3819,6 +3831,34 @@ void MatchEngine::_physics_process(double delta) {
     }
 
     _step_simulation(dt);
+}
+
+void MatchEngine::reset_standalone_match_setup() {
+    if (match_active) {
+        return;
+    }
+    match_active = false;
+    is_paused_for_manual = false;
+    waiting_for_kickoff_resume = false;
+    kickoff_team = -1;
+    chance_state = CHANCE_NONE;
+    user_is_home = true;
+    home_club_id = -1;
+    away_club_id = -1;
+    home_club_name = "HOME FC";
+    away_club_name = "AWAY FC";
+    home_kit_color = Color(0.12f, 0.23f, 0.54f);
+    away_kit_color = Color(0.86f, 0.15f, 0.15f);
+    home_team_ovr = 75;
+    away_team_ovr = 72;
+    home_formation = "4-3-3";
+    away_formation = "4-4-2";
+    _initialize_default_squads();
+    _initialize_default_home_bench();
+    _initialize_default_away_bench();
+    _apply_formation_positions(true, true);
+    _sync_player_positions_array();
+    emit_signal("squad_updated");
 }
 
 void MatchEngine::start_match() {
