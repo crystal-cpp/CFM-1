@@ -207,6 +207,12 @@ public:
     // Match Identity & User Side API (Home vs Away)
     void set_user_is_home(bool p_is_home);
     bool is_user_home() const { return user_is_home; }
+    int get_user_attack_chance_state() const { return _user_attack_chance_state(); }
+    int get_user_defend_chance_state() const { return _user_defend_chance_state(); }
+    int get_user_start_index() const { return _user_start_idx(); }
+    int get_user_end_index() const { return _user_end_idx(); }
+    int get_user_gk_index() const { return _user_gk_idx(); }
+    bool is_user_player_index(int p_idx) const { return _is_user_player_idx(p_idx); }
 
     void set_home_club_id(int p_id) { home_club_id = p_id; }
     int get_home_club_id() const { return home_club_id; }
