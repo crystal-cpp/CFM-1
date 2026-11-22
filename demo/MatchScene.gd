@@ -252,10 +252,37 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 			home_lineup = opponent_lineup
 	active_match_context["home_lineup"] = home_lineup
 	active_match_context["away_lineup"] = away_lineup
+	if home_lineup.size() != 11 or away_lineup.size() != 11:
+		push_error("MatchScene: Refusing to start fixture with incomplete lineups (HOME %d/11, AWAY %d/11)." % [home_lineup.size(), away_lineup.size()])
+		return
 	if match_engine.has_method("set_home_lineup"):
 		match_engine.call("set_home_lineup", home_lineup)
 	if match_engine.has_method("set_away_lineup"):
 		match_engine.call("set_away_lineup", away_lineup)
+
+	# Verify that the engine's user-side snapshot is exactly the managed club's XI.
+	# This catches HOME/AWAY slot inversion before the match simulation starts.
+	var expected_user_lineup: Array = home_lineup if authoritative_user_is_home else away_lineup
+	var actual_user_lineup: Array = match_engine.call("get_user_squad_snapshot") if match_engine.has_method("get_user_squad_snapshot") else []
+	if actual_user_lineup.size() != 11:
+		push_error("MatchScene: MatchEngine did not expose an 11-player managed squad snapshot.")
+		return
+	for player_idx in range(11):
+		var expected_player: Dictionary = expected_user_lineup[player_idx] if expected_user_lineup[player_idx] is Dictionary else {}
+		var actual_player: Dictionary = actual_user_lineup[player_idx] if actual_user_lineup[player_idx] is Dictionary else {}
+		var expected_id: String = String(expected_player.get("id", expected_player.get("player_id", "")))
+		var actual_id: String = String(actual_player.get("id", actual_player.get("player_id", "")))
+		if not expected_id.is_empty() and not actual_id.is_empty() and expected_id != actual_id:
+			push_error("MatchScene: Managed squad identity mismatch at slot %d (expected player %s, engine has %s)." % [player_idx, expected_id, actual_id])
+			return
+
+	print("[MatchScene] Fixture %s vs %s | Managed club %d | Side: %s | User XI verified (%d players)." % [
+		String(match_engine.get_home_club_name()),
+		String(match_engine.get_away_club_name()),
+		managed_club_id,
+		"HOME" if authoritative_user_is_home else "AWAY",
+		actual_user_lineup.size()
+	])
 
 	var user_bench: Array = active_match_context.get("user_bench", [])
 	var opponent_bench: Array = active_match_context.get("opponent_bench", [])
