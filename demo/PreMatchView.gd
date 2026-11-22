@@ -739,7 +739,6 @@ func _on_toggle_away_kit() -> void:
 		use_alternate_away_kit = true
 		return
 	use_alternate_away_kit = not use_alternate_away_kit
-	var kits: Dictionary = match_context.get("kits", {})
 	var swapped: Color = kits.get("away_primary", Color.BLUE) if use_alternate_away_kit else kits.get("away_default_primary", Color.BLUE)
 	_away_kit_swatch.color = swapped
 	kits["active_away_primary"] = swapped
