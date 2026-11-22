@@ -87,6 +87,12 @@ void MatchEngine::_bind_methods() {
     // Match Identity & User Side Methods
     ClassDB::bind_method(D_METHOD("set_user_is_home", "is_home"), &MatchEngine::set_user_is_home);
     ClassDB::bind_method(D_METHOD("is_user_home"), &MatchEngine::is_user_home);
+    ClassDB::bind_method(D_METHOD("get_user_attack_chance_state"), &MatchEngine::get_user_attack_chance_state);
+    ClassDB::bind_method(D_METHOD("get_user_defend_chance_state"), &MatchEngine::get_user_defend_chance_state);
+    ClassDB::bind_method(D_METHOD("get_user_start_index"), &MatchEngine::get_user_start_index);
+    ClassDB::bind_method(D_METHOD("get_user_end_index"), &MatchEngine::get_user_end_index);
+    ClassDB::bind_method(D_METHOD("get_user_gk_index"), &MatchEngine::get_user_gk_index);
+    ClassDB::bind_method(D_METHOD("is_user_player_index", "player_idx"), &MatchEngine::is_user_player_index);
     ClassDB::bind_method(D_METHOD("set_home_club_id", "club_id"), &MatchEngine::set_home_club_id);
     ClassDB::bind_method(D_METHOD("get_home_club_id"), &MatchEngine::get_home_club_id);
     ClassDB::bind_method(D_METHOD("set_away_club_id", "club_id"), &MatchEngine::set_away_club_id);
@@ -238,21 +244,17 @@ void MatchEngine::_ready() {
 }
 
 void MatchEngine::set_user_is_home(bool p_is_home) {
-    if (user_is_home == p_is_home) {
-        return;
-    }
-
+    const bool side_changed = (user_is_home != p_is_home);
     user_is_home = p_is_home;
 
-    // Control indices are absolute simulation slots. A control selection from
-    // the previous side must never survive an HOME/AWAY handoff.
-    if (!_is_user_player_idx(user_controlled_index)) {
-        user_controlled_index = -1;
-        manual_control_active = false;
+    // Control indices are absolute simulation slots. Always seed control from
+    // the managed side; never retain a HOME slot when the user is AWAY.
+    if (side_changed || !_is_user_player_idx(user_controlled_index)) {
+        user_controlled_index = user_is_home ? 9 : 20;
         has_user_move_target = false;
         user_move_target = Vector2(-1.0f, -1.0f);
         if (match_active) {
-            emit_signal("controlled_player_changed", -1);
+            emit_signal("controlled_player_changed", user_controlled_index);
         }
     }
 }
@@ -1058,7 +1060,15 @@ bool MatchEngine::skip_match() {
 
     chance_state = CHANCE_NONE;
     manual_control_active = false;
-    user_controlled_index = -1;
+    user_controlled_index = user_is_home ? 9 : 20;
+    pending_chance_signal = false;
+    pending_interactive_signal = false;
+    pending_match_ended_signal = false;
+    pending_chance_state_val = CHANCE_NONE;
+    pending_chance_ctrl_val = user_controlled_index;
+    pending_interactive_type = 0;
+    pending_interactive_home_atk = true;
+    pending_interactive_ball_3d = Vector3();
     has_user_move_target = false;
     pass_target_index = -1;
     is_through_ball_in_flight = false;
@@ -1579,21 +1589,13 @@ bool MatchEngine::is_manual_dribble_active() const {
 
 
 bool MatchEngine::set_controlled_player(int p_player_idx) {
-    if (!match_active || sim_players.size() != 22) {
+    if (!match_active || sim_players.size() != 22 || !_is_user_player_idx(p_player_idx)) {
         return false;
     }
-    // Allow either global sim index (11..21 for away) or local 0..10 slot
-    int resolved_idx = p_player_idx;
-    if (!user_is_home && p_player_idx >= 0 && p_player_idx < 11) {
-        resolved_idx = 11 + p_player_idx;
-    }
-    if (!_is_user_player_idx(resolved_idx)) {
-        return false;
-    }
-    if (user_controlled_index == resolved_idx) {
+    if (user_controlled_index == p_player_idx) {
         return true;
     }
-    user_controlled_index = resolved_idx;
+    user_controlled_index = p_player_idx;
     has_user_move_target = false;
     emit_signal("controlled_player_changed", user_controlled_index);
     return true;
@@ -1834,10 +1836,7 @@ bool MatchEngine::command_pass(int p_target_player_idx) {
     if (!match_active || sim_players.size() != 22 || waiting_for_kickoff_resume || chance_state != _user_attack_chance_state()) {
         return false;
     }
-    int resolved_target = p_target_player_idx;
-    if (!user_is_home && p_target_player_idx >= 0 && p_target_player_idx < 11) {
-        resolved_target = 11 + p_target_player_idx;
-    }
+    const int resolved_target = p_target_player_idx;
     if (!_is_user_player_idx(resolved_target)) {
         return false;
     }
@@ -2297,7 +2296,9 @@ void MatchEngine::_end_active_chance(bool p_goal_scored) {
     shot_hits_crossbar = false;
     event_cooldown = p_goal_scored ? 12.0f : 9.0f;
 
-    emit_signal("chance_state_changed", chance_state, -1);
+    pending_chance_signal = true;
+    pending_chance_state_val = chance_state;
+    pending_chance_ctrl_val = -1;
 }
 
 // =========================================================================
@@ -3152,8 +3153,13 @@ void MatchEngine::_trigger_key_chance(int p_scenario_type, bool p_is_home_attack
         : (attacker_name + String(" threatens the box — DEFEND CHANCE!"));
     _log_event(p_is_home_attacking ? "attack_chance" : "defend_chance", p_is_home_attacking, attacker_name, desc);
 
-    emit_signal("chance_state_changed", chance_state, user_controlled_index);
-    emit_signal("interactive_event_triggered", p_scenario_type, p_is_home_attacking, last_scenario_3d.ball_pos_3d);
+    pending_chance_signal = true;
+    pending_chance_state_val = chance_state;
+    pending_chance_ctrl_val = user_controlled_index;
+    pending_interactive_signal = true;
+    pending_interactive_type = p_scenario_type;
+    pending_interactive_home_atk = p_is_home_attacking;
+    pending_interactive_ball_3d = last_scenario_3d.ball_pos_3d;
 }
 
 void MatchEngine::_evaluate_carrier_action(int p_carrier_idx) {
@@ -3874,6 +3880,21 @@ void MatchEngine::_step_simulation(float dt) {
     _sync_player_positions_array();
 }
 
+void MatchEngine::_flush_deferred_signals() {
+    if (pending_chance_signal) {
+        pending_chance_signal = false;
+        emit_signal("chance_state_changed", pending_chance_state_val, pending_chance_ctrl_val);
+    }
+    if (pending_interactive_signal) {
+        pending_interactive_signal = false;
+        emit_signal("interactive_event_triggered", pending_interactive_type, pending_interactive_home_atk, pending_interactive_ball_3d);
+    }
+    if (pending_match_ended_signal) {
+        pending_match_ended_signal = false;
+        emit_signal("match_ended", home_score, away_score);
+    }
+}
+
 void MatchEngine::_physics_process(double delta) {
     if (!match_active || is_paused_for_manual || waiting_for_kickoff_resume) {
         return;
@@ -3905,6 +3926,14 @@ void MatchEngine::_physics_process(double delta) {
 
     
 
+    if (current_minute >= 90 && chance_state != CHANCE_NONE) {
+        // Let the active 2D attacking/defending sequence reach its normal
+        // resolution path before completing the match.
+        _step_simulation(dt);
+        _flush_deferred_signals();
+        return;
+    }
+
     if (current_minute >= 90) {
         _end_active_chance(false);
         waiting_for_kickoff_resume = false;
@@ -3913,7 +3942,8 @@ void MatchEngine::_physics_process(double delta) {
         is_paused_for_manual = false;
         set_physics_process(false);
         record_manual_match_completed();
-        emit_signal("match_ended", home_score, away_score);
+        pending_match_ended_signal = true;
+        _flush_deferred_signals();
         return;
     }
 
@@ -3922,6 +3952,7 @@ void MatchEngine::_physics_process(double delta) {
     }
 
     _step_simulation(dt);
+    _flush_deferred_signals();
 }
 
 void MatchEngine::reset_standalone_match_setup() {
