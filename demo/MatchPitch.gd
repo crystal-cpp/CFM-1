@@ -619,6 +619,10 @@ func _update_attack_stop_and_go(delta: float) -> void:
 	var carrier_idx: int = match_engine.get_ball_carrier_index()
 	var ctrl_idx: int = match_engine.get_controlled_player_index()
 	var positions: Array = match_engine.get_player_positions()
+	if positions.size() != 22:
+		_atk_phase = AttackPhase.INACTIVE
+		_atk_decision_paused = false
+		return
 
 	match _atk_phase:
 		AttackPhase.SETTLING:
@@ -677,6 +681,9 @@ func _update_defend_realtime() -> void:
 	if not _gk_rush_active:
 		return
 	var positions: Array = match_engine.get_player_positions()
+	if positions.size() != 22:
+		_gk_rush_active = false
+		return
 	var carrier_idx: int = match_engine.get_ball_carrier_index()
 	var gk_idx: int = _user_gk_idx()
 	var target_pos: Vector2 = Vector2(positions[carrier_idx]) if (_is_opp_idx(carrier_idx) and carrier_idx < positions.size()) else match_engine.get_ball_position()
@@ -1036,6 +1043,10 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 	var end_pitch: Vector2 = _screen_to_pitch(_drag_current_screen)
 	var drag_vec_pitch: Vector2 = end_pitch - start_pitch
 	var positions: Array = match_engine.get_player_positions()
+	if positions.size() != 22:
+		_gesture_mode = "NONE"
+		_preview_through_runner = -1
+		return
 
 	# MODE A: ATTACK CHANCE — STOP-AND-GO DECISION GAMEPLAY
 	if chance_state == _user_attack_chance():
@@ -1139,7 +1150,7 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 			var carrier_idx: int = match_engine.get_ball_carrier_index()
 			var target_pt: Vector2 = Vector2(positions[carrier_idx]) if (_is_opp_idx(carrier_idx) and carrier_idx < positions.size()) else match_engine.get_ball_position()
 			var ctrl_def: int = match_engine.get_controlled_player_index()
-			if not _is_user_outfield_idx(ctrl_def) or Vector2(positions[ctrl_def]).distance_to(target_pt) > 70.0:
+			if not _is_user_outfield_idx(ctrl_def) or ctrl_def < 0 or ctrl_def >= positions.size() or Vector2(positions[ctrl_def]).distance_to(target_pt) > 70.0:
 				ctrl_def = match_engine.select_nearest_defender()
 			if _is_user_outfield_idx(ctrl_def) and ctrl_def < positions.size():
 				var def_pos := Vector2(positions[ctrl_def])
@@ -1171,7 +1182,7 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 			if end_pitch.distance_to(opp_pos) <= 32.0:
 				_gk_rush_active = false
 				var ctrl_d: int = match_engine.get_controlled_player_index()
-				if not _is_user_outfield_idx(ctrl_d):
+				if not _is_user_outfield_idx(ctrl_d) or ctrl_d < 0 or ctrl_d >= positions.size():
 					ctrl_d = match_engine.select_nearest_defender()
 				if _is_user_outfield_idx(ctrl_d) and ctrl_d < positions.size():
 					if Vector2(positions[ctrl_d]).distance_to(opp_pos) <= 38.0:
