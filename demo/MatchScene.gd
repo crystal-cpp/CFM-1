@@ -57,6 +57,20 @@ func _ready() -> void:
 		if hud.has_signal("next_match_requested") and not hud.next_match_requested.is_connected(_request_next_match):
 			hud.next_match_requested.connect(_request_next_match)
 
+	# Directly opened MatchScene instances still support standalone kickoff. AppRoot
+	# hides its persistent instance before this deferred check runs.
+	call_deferred("_start_standalone_match_if_visible")
+
+func _start_standalone_match_if_visible() -> void:
+	if not is_instance_valid(overview_2d) or not overview_2d.visible:
+		return
+	if is_instance_valid(_resolve_career_shell()):
+		return
+	if is_instance_valid(match_engine) and not match_engine.is_match_active():
+		match_engine.reset_standalone_match_setup()
+		match_engine.start_match()
+		match_engine.pause_match(true)
+
 func _resolve_career_shell() -> CareerShell:
 	if is_instance_valid(career_shell):
 		return career_shell
