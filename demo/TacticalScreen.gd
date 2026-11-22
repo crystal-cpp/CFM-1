@@ -182,14 +182,14 @@ func open_tactics() -> void:
 	_selected_bench_idx = -1
 
 	_initial_snapshot = {
-		"formation": match_engine.get_home_formation(),
-		"mentality": match_engine.get_home_mentality(),
-		"pressing": match_engine.get_home_pressing(),
-		"def_line": match_engine.get_home_defensive_line(),
-		"passing": match_engine.get_home_passing_style(),
-		"width": match_engine.get_home_attacking_width(),
-		"tempo": match_engine.get_home_tempo(),
-		"def_approach": match_engine.get_home_defensive_approach()
+		"formation": _get_user_team_value("get_home_formation", "get_away_formation"),
+		"mentality": _get_user_team_value("get_home_mentality", "get_away_mentality"),
+		"pressing": _get_user_team_value("get_home_pressing", "get_away_pressing"),
+		"def_line": _get_user_team_value("get_home_defensive_line", "get_away_defensive_line"),
+		"passing": _get_user_team_value("get_home_passing_style", "get_away_passing_style"),
+		"width": _get_user_team_value("get_home_attacking_width", "get_away_attacking_width"),
+		"tempo": _get_user_team_value("get_home_tempo", "get_away_tempo"),
+		"def_approach": _get_user_team_value("get_home_defensive_approach", "get_away_defensive_approach")
 	}
 
 	_sync_controls_from_snapshot(_initial_snapshot)
@@ -474,6 +474,18 @@ func _add_selector_row(parent: VBoxContainer, label_text: String, hint_text: Str
 
 	return opt
 
+func _get_user_team_value(home_method: String, away_method: String) -> Variant:
+	if not is_instance_valid(match_engine):
+		return null
+	var user_is_home: bool = bool(match_engine.call("is_user_home")) if match_engine.has_method("is_user_home") else true
+	return match_engine.call(home_method if user_is_home else away_method)
+
+func _set_user_team_value(home_method: String, away_method: String, value: Variant) -> void:
+	if not is_instance_valid(match_engine):
+		return
+	var user_is_home: bool = bool(match_engine.call("is_user_home")) if match_engine.has_method("is_user_home") else true
+	match_engine.call(home_method if user_is_home else away_method, value)
+
 func _sync_controls_from_snapshot(snap: Dictionary) -> void:
 	if not is_instance_valid(match_engine):
 		return
@@ -499,14 +511,14 @@ func _apply_selected_values() -> void:
 		return
 
 	if _formation_option.selected >= 0:
-		match_engine.set_home_formation(_formation_option.get_item_text(_formation_option.selected))
-	match_engine.set_home_mentality(_mentality_option.selected)
-	match_engine.set_home_pressing(_pressing_option.selected)
-	match_engine.set_home_defensive_line(_def_line_option.selected)
-	match_engine.set_home_passing_style(_passing_option.selected)
-	match_engine.set_home_attacking_width(_width_option.selected)
-	match_engine.set_home_tempo(_tempo_option.selected)
-	match_engine.set_home_defensive_approach(_def_approach_option.selected)
+		_set_user_team_value("set_home_formation", "set_away_formation", _formation_option.get_item_text(_formation_option.selected))
+	_set_user_team_value("set_home_mentality", "set_away_mentality", _mentality_option.selected)
+	_set_user_team_value("set_home_pressing", "set_away_pressing", _pressing_option.selected)
+	_set_user_team_value("set_home_defensive_line", "set_away_defensive_line", _def_line_option.selected)
+	_set_user_team_value("set_home_passing_style", "set_away_passing_style", _passing_option.selected)
+	_set_user_team_value("set_home_attacking_width", "set_away_attacking_width", _width_option.selected)
+	_set_user_team_value("set_home_tempo", "set_away_tempo", _tempo_option.selected)
+	_set_user_team_value("set_home_defensive_approach", "set_away_defensive_approach", _def_approach_option.selected)
 	_refresh_all_views()
 
 func _on_reset_pressed() -> void:
@@ -850,10 +862,20 @@ func _draw_vertical_pitch() -> void:
 	var small_h: float = sz.y * 0.07
 	_pitch_preview.draw_rect(Rect2(Vector2((sz.x - small_w) * 0.5, sz.y - small_h), Vector2(small_w, small_h)), line_col, false, 1.8)
 
-	var positions: Array = match_engine.get_player_positions()
-	var roles: PackedStringArray = match_engine.get_player_roles()
-	var names: PackedStringArray = match_engine.get_player_names()
-	var staminas: PackedFloat32Array = match_engine.get_player_stamina()
+	var user_is_home: bool = bool(match_engine.call("is_user_home")) if match_engine.has_method("is_user_home") else true
+	var user_start_idx: int = 0 if user_is_home else 11
+	var all_positions: Array = match_engine.get_player_positions()
+	var positions: Array = []
+	var roles: PackedStringArray = PackedStringArray()
+	var names: PackedStringArray = PackedStringArray()
+	var staminas: PackedFloat32Array = PackedFloat32Array()
+	var squad_snapshot: Array = match_engine.call("get_user_squad_snapshot") if match_engine.has_method("get_user_squad_snapshot") else []
+	for i in range(11):
+		positions.append(all_positions[user_start_idx + i] if user_start_idx + i < all_positions.size() else Vector2.ZERO)
+		var player: Dictionary = squad_snapshot[i] if i < squad_snapshot.size() and squad_snapshot[i] is Dictionary else {}
+		roles.append(str(player.get("position", "CM")))
+		names.append(str(player.get("name", "Player %d" % (i + 1))))
+		staminas.append(float(player.get("stamina", 100.0)))
 	var field_sz: Vector2 = match_engine.get_field_size()
 
 	var norm_slots: Array[Vector2] = _compute_vertical_slots(roles, positions, field_sz)
