@@ -346,8 +346,8 @@ void MatchEngine::_execute_clearance(int p_defender_idx) {
     _log_event("clearance", is_home, defender.name,
         defender.name + String(" hooks the danger clear upfield!"));
 
-    if ((chance_state == CHANCE_HOME_ATTACK && !is_home) ||
-        (chance_state == CHANCE_AWAY_ATTACK && is_home)) {
+    if (((is_home != user_is_home) && chance_state == _user_attack_chance_state()) ||
+        ((is_home == user_is_home) && chance_state == _user_defend_chance_state())) {
         _end_active_chance(false);
     }
 }
@@ -2372,10 +2372,10 @@ Vector2 MatchEngine::_compute_runner_tracking_offset(bool p_is_home, const SimPl
 
     float iq = _get_defensive_positioning_iq(p_defender);
     float pace_factor = std::clamp(0.82f + (p_defender.pace - 60.0f) * 0.005f, 0.72f, 1.12f);
-    bool is_home_attack_chance = (!p_is_home && chance_state == CHANCE_HOME_ATTACK);
+    bool is_user_attack_chance = ((p_is_home != user_is_home) && chance_state == _user_attack_chance_state());
 
-    float scan_radius = (is_home_attack_chance ? 96.0f : 112.0f) * std::clamp(iq, 0.78f, 1.25f);
-    float track_weight = std::clamp((is_home_attack_chance ? 0.46f : 0.58f) * iq * pace_factor, 0.32f, 0.84f);
+    float scan_radius = (is_user_attack_chance ? 96.0f : 112.0f) * std::clamp(iq, 0.78f, 1.25f);
+    float track_weight = std::clamp((is_user_attack_chance ? 0.46f : 0.58f) * iq * pace_factor, 0.32f, 0.84f);
 
     int best_target = -1;
     float best_threat_score = -1e9f;
@@ -2931,7 +2931,7 @@ void MatchEngine::_execute_pass(int p_passer_idx, int p_receiver_idx, bool p_is_
     float dist = std::max(1.0f, delta.length());
     float pass_speed = std::clamp((260.0f + effective_passing * 1.38f + dist * 0.25f), 260.0f, 450.0f);
 
-    if (chance_state == CHANCE_AWAY_ATTACK && !passer.is_home) {
+    if (chance_state == _user_defend_chance_state() && (passer.is_home != user_is_home)) {
         pass_speed *= 0.86f;
     }
 
@@ -3269,8 +3269,8 @@ void MatchEngine::_evaluate_carrier_action(int p_carrier_idx) {
             _log_event("tackle", defender.is_home, defender.name,
                 defender.name + String(" wins the ball with a crisp tackle!"));
 
-            if ((chance_state == CHANCE_HOME_ATTACK && !defender.is_home) ||
-                (chance_state == CHANCE_AWAY_ATTACK && defender.is_home)) {
+            if (((defender.is_home != user_is_home) && chance_state == _user_attack_chance_state()) ||
+                ((defender.is_home == user_is_home) && chance_state == _user_defend_chance_state())) {
                 _end_active_chance(false);
             }
 
@@ -3320,8 +3320,8 @@ void MatchEngine::_update_ball_and_actions(float dt) {
         ball_position.x = std::clamp(ball_position.x, 10.0f, field_size.x - 10.0f);
         ball_position.y = std::clamp(ball_position.y, 10.0f, field_size.y - 10.0f);
 
-        if ((chance_state == CHANCE_HOME_ATTACK && !carrier.is_home) ||
-            (chance_state == CHANCE_AWAY_ATTACK && carrier.is_home)) {
+        if (((carrier.is_home != user_is_home) && chance_state == _user_attack_chance_state()) ||
+            ((carrier.is_home == user_is_home) && chance_state == _user_defend_chance_state())) {
             _end_active_chance(false);
         }
 
@@ -3429,7 +3429,7 @@ void MatchEngine::_update_ball_and_actions(float dt) {
         if (action_decision_timer <= 0.0f) {
             float fatigue = _get_fatigue_multiplier(carrier);
             float base_timer = std::clamp(0.68f - (carrier.passing * fatigue * 0.003f), 0.28f, 0.72f);
-            if (chance_state == CHANCE_AWAY_ATTACK && !carrier.is_home) {
+            if (chance_state == _user_defend_chance_state() && (carrier.is_home != user_is_home)) {
                 base_timer *= 1.28f;
             }
             action_decision_timer = base_timer;
@@ -3494,8 +3494,8 @@ void MatchEngine::_update_ball_and_actions(float dt) {
                     _log_event("interception", def.is_home, def.name,
                         def.name + String(" intercepts the pass!"));
 
-                    if ((chance_state == CHANCE_HOME_ATTACK && !def.is_home) ||
-                        (chance_state == CHANCE_AWAY_ATTACK && def.is_home)) {
+                    if (((def.is_home != user_is_home) && chance_state == _user_attack_chance_state()) ||
+                        ((def.is_home == user_is_home) && chance_state == _user_defend_chance_state())) {
                         _end_active_chance(false);
                     }
 
@@ -3761,7 +3761,7 @@ void MatchEngine::_step_simulation(float dt) {
     if (chance_state != CHANCE_NONE) {
         active_chance_timer -= dt;
         if (active_chance_timer <= 0.0f) {
-            _log_event("chance_expired", chance_state == CHANCE_HOME_ATTACK, "Referee", "The attacking opportunity fizzles out.");
+            _log_event("chance_expired", chance_state == _user_attack_chance_state() ? user_is_home : !user_is_home, "Referee", "The attacking opportunity fizzles out.");
             _end_active_chance(false);
         }
     }
@@ -3890,8 +3890,8 @@ void MatchEngine::resolve_manual_scenario(bool p_success, bool p_is_home_team) {
         return;
     }
 
-    bool valid_attack_chance = (p_is_home_team && chance_state == CHANCE_HOME_ATTACK) ||
-                               (!p_is_home_team && chance_state == CHANCE_AWAY_ATTACK);
+    bool valid_attack_chance = ((p_is_home_team == user_is_home) && chance_state == _user_attack_chance_state()) ||
+                               ((p_is_home_team != user_is_home) && chance_state == _user_defend_chance_state());
 
     if (!valid_attack_chance && !is_paused_for_manual) {
         UtilityFunctions::printerr("MatchEngine: Blocked resolve_manual_scenario() outside active ATTACK CHANCE.");
