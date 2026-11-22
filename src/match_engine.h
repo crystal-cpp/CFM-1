@@ -396,6 +396,15 @@ private:
     int chance_state = CHANCE_NONE;
     bool manual_control_active = false;
     int user_controlled_index = -1;
+    bool pending_chance_signal = false;
+    int pending_chance_state_val = 0;
+    int pending_chance_ctrl_val = -1;
+    bool pending_interactive_signal = false;
+    int pending_interactive_type = 0;
+    bool pending_interactive_home_atk = true;
+    Vector3 pending_interactive_ball_3d;
+    bool pending_match_ended_signal = false;
+    void _flush_deferred_signals();
     bool has_user_move_target = false;
     Vector2 user_move_target = Vector2(-1.0f, -1.0f);
     float active_chance_timer = 0.0f;
