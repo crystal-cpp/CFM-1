@@ -465,12 +465,13 @@ Dictionary CareerState::prepare_match_context(const Dictionary &p_fixture, const
 	imp["text_color"] = Color(0.11, 0.82, 0.63);
 	imp["description"] = home_name + " vs " + away_name + " • " + String(fix.get("stadium", "Stadium"));
 
+	const bool clash = home_col.is_equal_approx(away_col);
 	Dictionary kits;
 	kits["home_primary"] = home_col;
 	kits["away_primary"] = away_alt_col;
 	kits["away_default_primary"] = away_col;
-	kits["active_away_primary"] = away_col;
-	kits["clash_detected"] = (home_col.is_equal_approx(away_col));
+	kits["active_away_primary"] = clash ? away_alt_col : away_col;
+	kits["clash_detected"] = clash;
 
 	Dictionary ctx;
 	ctx["fixture"] = fix;
@@ -1404,6 +1405,34 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 		}
 	}
 
+	// Resolve the managed club before importing CSV youth so only its prospects enter this academy.
+	int32_t chosen_id = p_club_id;
+	auto chosen_it = _clubs.find(chosen_id);
+	if (chosen_it == _clubs.end() || !chosen_it->second) {
+		chosen_id = -1;
+		std::vector<int32_t> sorted_cids;
+		for (const auto &kv : _clubs) {
+			if (kv.second) sorted_cids.push_back(kv.first);
+		}
+		std::sort(sorted_cids.begin(), sorted_cids.end());
+		for (int32_t cid : sorted_cids) {
+			if (!_is_club_or_league_locked(_clubs[cid]->GetName(), _clubs[cid]->League)) {
+				chosen_id = cid;
+				break;
+			}
+		}
+		if (chosen_id < 0 && !sorted_cids.empty()) chosen_id = sorted_cids.front();
+	}
+	if (chosen_id < 0 || _clubs.find(chosen_id) == _clubs.end() || !_clubs[chosen_id]) {
+		UtilityFunctions::printerr("CareerState: No valid club available to start career.");
+		return false;
+	}
+	if (_is_club_or_league_locked(_clubs[chosen_id]->GetName(), _clubs[chosen_id]->League)) {
+		UtilityFunctions::printerr("CareerState: Attempted to start career with locked club/league without redeeming NHHA72528.");
+		return false;
+	}
+	_managed_club_id = chosen_id;
+
 	// Route CSV players into their matching Club by Club name (unmatched -> Free Agent club_id = 0)
 	if (db_loaded) {
 		for (const auto &src : _player_db->get_raw_players()) {
@@ -1486,14 +1515,14 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 				: 0;
 
 			if (is_below_debut) {
-				if (meets_youth_req) {
-					// Eligible for Youth Academy (14 < age < 18, capped at 70 OVR)
+				if (meets_youth_req && parent_cid == chosen_id) {
+					// Only the managed club's eligible prospects enter this career's Youth Academy.
 					p_ptr->SetClubId(-1);
 					p_ptr->SetWage(500);
 					_players_by_id[pid] = p_ptr;
 					_youth_academy->AddYouthPlayer(p_ptr);
 				} else {
-					// Below debut age & outside 14 < age < 18: hide from first team and youth academy until eligible
+					// Rival-club prospects remain hidden until their own debut age.
 					p_ptr->SetClubId(-2);
 					_players_by_id[pid] = p_ptr;
 					_hidden_youth_prospects.push_back(p_ptr);
@@ -1543,37 +1572,6 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 		_captain_by_club[team->GetId()] = default_captain;
 	}
 
-	// Validate requested club_id safely without assuming ID 1 exists
-	int32_t chosen_id = p_club_id;
-	auto chosen_it = _clubs.find(chosen_id);
-	if (chosen_it == _clubs.end() || !chosen_it->second) {
-		chosen_id = -1;
-		std::vector<int32_t> sorted_cids;
-		for (const auto &kv : _clubs) {
-			if (kv.second) sorted_cids.push_back(kv.first);
-		}
-		std::sort(sorted_cids.begin(), sorted_cids.end());
-		for (int32_t cid : sorted_cids) {
-			if (!_is_club_or_league_locked(_clubs[cid]->GetName(), _clubs[cid]->League)) {
-				chosen_id = cid;
-				break;
-			}
-		}
-		if (chosen_id < 0 && !sorted_cids.empty()) {
-			chosen_id = sorted_cids.front();
-		}
-	}
-
-	if (chosen_id < 0 || _clubs.find(chosen_id) == _clubs.end() || !_clubs[chosen_id]) {
-		UtilityFunctions::printerr("CareerState: No valid club available to start career.");
-		return false;
-	}
-
-	if (_is_club_or_league_locked(_clubs[chosen_id]->GetName(), _clubs[chosen_id]->League)) {
-		UtilityFunctions::printerr("CareerState: Attempted to start career with locked club/league without redeeming NHHA72528.");
-		return false;
-	}
-	_managed_club_id = chosen_id;
 	_manager.preferred_formation = _clubs[_managed_club_id]->Formation;
 
 	// Build strictly league-isolated standings for the selected club's league
@@ -1820,7 +1818,13 @@ void CareerState::_evaluate_hidden_youth_prospects() {
 				p->SetClubId(0);
 			}
 		} else if (age > 14 && age < 18 && _youth_academy) {
-			// Meets Youth Academy minimum age requirement (14 < age < 18), capped at 70 OVR (~ -20 from CSV OVR)
+			// Only prospects belonging to the managed club may enter this Youth Academy.
+			std::string parent_key = to_lower_str(p->GetClubName());
+			auto parent_it = _club_id_by_name_lower.find(parent_key);
+			if (parent_it == _club_id_by_name_lower.end() || parent_it->second != _managed_club_id) {
+				still_hidden.push_back(p);
+				continue;
+			}
 			int target_ovr = std::clamp(p->GetOVR() - 20, 45, 70);
 			int reduction = std::max(0, p->GetOVR() - target_ovr);
 			PlayerAttributes a = p->GetAttributes();
@@ -2401,12 +2405,47 @@ Dictionary CareerState::scout_youth_prospect() {
 	Dictionary empty;
 	if (!_youth_academy || _youth_academy->GetYouthRoster().size() >= 12) return empty;
 
-	static const char *FIRST_NAMES[] = { "Bui", "Hoang", "Vo", "Dang", "Ngo", "Duong", "Phan", "Vu" };
-	static const char *LAST_NAMES[] = { "Gia Bao", "Minh Tri", "Anh Khoa", "Quoc Huy", "Thanh Tung", "Hoai Nam", "Tuan Kiet", "Nhat Minh" };
+	static const char *GENERIC_FIRST[] = { "Alex", "Jordan", "Taylor", "Morgan", "Casey", "Jamie", "Riley", "Cameron" };
+	static const char *GENERIC_LAST[] = { "Miller", "Wilson", "Martin", "Clark", "Walker", "Young", "Hall", "Allen" };
+	static const char *EN_FIRST[] = { "Oliver", "Jack", "Harry", "George", "Charlie", "Thomas", "Jacob", "Oscar" };
+	static const char *EN_LAST[] = { "Smith", "Jones", "Taylor", "Brown", "Davies", "Wilson", "Evans", "Thomas" };
+	static const char *ES_FIRST[] = { "Hugo", "Mateo", "Leo", "Daniel", "Pablo", "Alvaro", "Adrian", "Diego" };
+	static const char *ES_LAST[] = { "Garcia", "Rodriguez", "Lopez", "Martinez", "Sanchez", "Perez", "Gomez", "Martin" };
+	static const char *IT_FIRST[] = { "Lorenzo", "Matteo", "Leonardo", "Francesco", "Alessandro", "Riccardo", "Andrea", "Gabriele" };
+	static const char *IT_LAST[] = { "Rossi", "Russo", "Ferrari", "Esposito", "Bianchi", "Romano", "Colombo", "Ricci" };
+	static const char *DE_FIRST[] = { "Lukas", "Leon", "Finn", "Paul", "Jonas", "Ben", "Elias", "Noah" };
+	static const char *DE_LAST[] = { "Muller", "Schmidt", "Schneider", "Fischer", "Weber", "Meyer", "Wagner", "Becker" };
+	static const char *FR_FIRST[] = { "Louis", "Gabriel", "Raphael", "Jules", "Arthur", "Adam", "Hugo", "Lucas" };
+	static const char *FR_LAST[] = { "Martin", "Bernard", "Dubois", "Thomas", "Robert", "Richard", "Petit", "Durand" };
+	static const char *BR_FIRST[] = { "Gabriel", "Lucas", "Matheus", "Pedro", "Rafael", "Guilherme", "Enzo", "Joao" };
+	static const char *BR_LAST[] = { "Silva", "Santos", "Oliveira", "Souza", "Costa", "Pereira", "Rodrigues", "Almeida" };
+	static const char *VN_FIRST[] = { "Minh", "Quang", "Duc", "Anh", "Tuan", "Bao", "Khanh", "Huy" };
+	static const char *VN_LAST[] = { "Nguyen", "Tran", "Le", "Pham", "Hoang", "Vo", "Dang", "Bui" };
 	static const Position POSITIONS[] = { Position::GK, Position::CB, Position::LB, Position::CM, Position::CAM, Position::ST };
 
+	const char **first_names = GENERIC_FIRST;
+	const char **last_names = GENERIC_LAST;
+	auto managed_it = _clubs.find(_managed_club_id);
+	if (managed_it != _clubs.end() && managed_it->second) {
+		std::string country = to_lower_str(managed_it->second->Country);
+		if (country.find("england") != std::string::npos || country.find("united kingdom") != std::string::npos) {
+			first_names = EN_FIRST; last_names = EN_LAST;
+		} else if (country.find("spain") != std::string::npos) {
+			first_names = ES_FIRST; last_names = ES_LAST;
+		} else if (country.find("italy") != std::string::npos) {
+			first_names = IT_FIRST; last_names = IT_LAST;
+		} else if (country.find("germany") != std::string::npos) {
+			first_names = DE_FIRST; last_names = DE_LAST;
+		} else if (country.find("france") != std::string::npos) {
+			first_names = FR_FIRST; last_names = FR_LAST;
+		} else if (country.find("brazil") != std::string::npos || country.find("portugal") != std::string::npos) {
+			first_names = BR_FIRST; last_names = BR_LAST;
+		} else if (country.find("vietnam") != std::string::npos) {
+			first_names = VN_FIRST; last_names = VN_LAST;
+		}
+	}
 	int seed = _next_player_id + (_day * 17) + (_month * 31);
-	std::string full_name = std::string(FIRST_NAMES[seed % 8]) + " " + LAST_NAMES[(seed / 3) % 8];
+	std::string full_name = std::string(first_names[seed % 8]) + " " + last_names[(seed / 3) % 8];
 	Position pos = POSITIONS[seed % 6];
 
 	int base_ovr = std::clamp(56 + (_youth_academy->FacilityLevel * 2) + (seed % 5), 52, 70);
