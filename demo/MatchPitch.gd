@@ -10,10 +10,6 @@ var _backdrop_canvas: Control
 var _viewport_clip: PanelContainer
 var _pitch_canvas: Control
 
-var _home_club_display_name: String = "HOME FC"
-var _away_club_display_name: String = "AWAY FC"
-var _player_display_names: PackedStringArray = PackedStringArray()
-
 var _ball_trail: PackedVector2Array = PackedVector2Array()
 const MAX_TRAIL_POINTS: int = 12
 
@@ -120,34 +116,6 @@ func set_kit_colors(home_primary: Color, away_primary: Color) -> void:
 	away_kit_primary_color = away_primary
 	if is_instance_valid(_pitch_canvas):
 		_pitch_canvas.queue_redraw()
-
-func set_team_names(home_name: String, away_name: String) -> void:
-	_home_club_display_name = home_name if not home_name.strip_edges().is_empty() else "HOME FC"
-	_away_club_display_name = away_name if not away_name.strip_edges().is_empty() else "AWAY FC"
-
-func set_match_lineups(home_lineup: Array, away_lineup: Array) -> void:
-	_player_display_names.resize(22)
-	for i in range(22):
-		_player_display_names[i] = ""
-	for i in range(mini(11, home_lineup.size())):
-		if home_lineup[i] is Dictionary:
-			_player_display_names[i] = _extract_short_surname(String(home_lineup[i].get("name", "")))
-	for i in range(mini(11, away_lineup.size())):
-		if away_lineup[i] is Dictionary:
-			_player_display_names[11 + i] = _extract_short_surname(String(away_lineup[i].get("name", "")))
-	if is_instance_valid(_pitch_canvas):
-		_pitch_canvas.queue_redraw()
-
-func refresh_player_names() -> void:
-	if is_instance_valid(_pitch_canvas):
-		_pitch_canvas.queue_redraw()
-
-func _extract_short_surname(full_name: String) -> String:
-	var clean := full_name.strip_edges()
-	if clean.is_empty():
-		return ""
-	var parts := clean.split(" ", false)
-	return parts[parts.size() - 1] if parts.size() > 0 else clean
 
 
 func _ready() -> void:
