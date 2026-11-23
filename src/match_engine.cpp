@@ -44,6 +44,10 @@ void MatchEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("command_shot", "aim_target", "power_ratio"), &MatchEngine::command_shot, DEFVAL(0.75f));
     ClassDB::bind_method(D_METHOD("command_tackle"), &MatchEngine::command_tackle);
 
+    ClassDB::bind_method(D_METHOD("command_gk_rush"), &MatchEngine::command_gk_rush);
+    ClassDB::bind_method(D_METHOD("cancel_gk_rush"), &MatchEngine::cancel_gk_rush);
+    ClassDB::bind_method(D_METHOD("is_gk_rush_active"), &MatchEngine::is_gk_rush_active);
+
     // Skip Match API Methods
     ClassDB::bind_method(D_METHOD("can_skip_match"), &MatchEngine::can_skip_match);
     ClassDB::bind_method(D_METHOD("skip_match"), &MatchEngine::skip_match);
@@ -191,7 +195,9 @@ void MatchEngine::_bind_methods() {
         PropertyInfo(Variant::INT, "controlled_player_index")));
     ADD_SIGNAL(MethodInfo("controlled_player_changed",
         PropertyInfo(Variant::INT, "controlled_player_index")));
-
+    ADD_SIGNAL(MethodInfo("gk_rush_changed",
+        PropertyInfo(Variant::BOOL, "active"),
+        PropertyInfo(Variant::INT, "gk_index")));
     ADD_SIGNAL(MethodInfo("squad_updated"));
     ADD_SIGNAL(MethodInfo("substitution_applied",
         PropertyInfo(Variant::BOOL, "is_home"),

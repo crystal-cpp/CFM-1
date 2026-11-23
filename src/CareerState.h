@@ -111,8 +111,9 @@ class CareerState : public Node {
 	GDCLASS(CareerState, Node)
 
 public:
-	static constexpr uint32_t SAVE_SCHEMA_VERSION = 1;
+	static constexpr uint32_t SAVE_SCHEMA_VERSION = 2;
 	Dictionary prepare_match_context(const Dictionary &p_fixture = Dictionary(), const Ref<PlayerDatabase> &p_db = Ref<PlayerDatabase>()) const;
+	static constexpr double DEFAULT_STAMINA_RECOVERY_PER_DAY = 0.30; // Tunable 0.25..0.30
 
 private:
 	bool _career_active = false;
@@ -155,6 +156,11 @@ private:
 	bool _is_club_or_league_locked(const std::string &club_name, const std::string &league_name) const;
 	static std::string _normalize_club_key(const String &p_club_name);
 
+	double _stamina_recovery_rate_per_day = DEFAULT_STAMINA_RECOVERY_PER_DAY;
+
+	void _process_daily_recovery_and_injuries();
+	bool _ensure_club_valid_matchday_xi(int32_t p_club_id);
+
 	// Internal Helpers
 	std::string _format_date_iso() const;
 	std::string _format_season_label() const;
@@ -189,6 +195,17 @@ public:
 	bool is_career_active() const { return _career_active; }
 	void advance_day(int32_t p_days = 1);
 	int32_t advance_to_next_matchday();
+
+	// --- Phase 5F: Stamina Persistence, Daily Recovery & Injury System ---
+
+	void set_stamina_recovery_rate_per_day(double p_rate);
+	double get_stamina_recovery_rate_per_day() const { return _stamina_recovery_rate_per_day; }
+	int32_t project_player_stamina_on_date(int32_t p_player_id, const String &p_target_date_iso) const;
+
+	Dictionary apply_player_injury(int32_t p_player_id, int32_t p_severity_tier, int32_t p_days = -1);
+	bool clear_player_injury(int32_t p_player_id);
+	TypedArray<Dictionary> get_injured_players(int32_t p_club_id = -1) const;
+	bool ensure_club_valid_matchday_xi(int32_t p_club_id);
 
 	// --- Top Header & Manager Career Queries ---
 	int32_t get_managed_club_id() const { return _managed_club_id; }

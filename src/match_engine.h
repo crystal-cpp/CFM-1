@@ -50,6 +50,10 @@ struct SimPlayer {
     float sprint_boost_timer = 0.0f;
     float dribble_boost_timer = 0.0f;
     float tackle_cooldown = 0.0f;
+    float dribble_carry_distance = 0.0f;
+    bool is_sliding = false;
+    float slide_timer = 0.0f;
+    Vector2 slide_dir = Vector2(0.0f, 0.0f);
 
     Vector2 anchor;
     Vector2 position;
@@ -94,6 +98,8 @@ struct MatchStats {
     int away_saves = 0;
     int home_corners = 0;
     int away_corners = 0;
+    int home_fouls = 0;
+    int away_fouls = 0;
 };
 
 class MatchEngine : public Node2D {
@@ -174,6 +180,10 @@ public:
     bool command_through_ball(Vector2 p_direction_or_target);
     bool command_shot(Vector2 p_aim_target, float p_power_ratio = 0.75f);
     bool command_tackle();
+
+    bool command_gk_rush();
+    void cancel_gk_rush();
+    bool is_gk_rush_active() const { return gk_rush_active; }
 
     // Skip Match & Token API
     bool can_skip_match() const;
@@ -344,6 +354,16 @@ private:
     // Dedicated Defensive Clearance Helper (1A)
     bool _try_defensive_clearance(int p_defender_idx, float p_danger_score);
     void _execute_clearance(int p_defender_idx);
+
+    // Slide Tackle, Foul & Goalkeeper Rush Helpers (Phase 5F)
+    void _resolve_slide_tackle_contact(int p_defender_idx);
+    void _award_defensive_free_kick(bool p_to_home, Vector2 p_spot, const String& p_fouler_name);
+    bool _try_gk_rush_intercept();
+    void _execute_gk_rush_clearance(int p_gk_idx);
+
+    bool gk_rush_active = false;
+    float gk_rush_timer = 0.0f;
+    Vector2 gk_rush_target = Vector2(-1.0f, -1.0f);
 
     // Organized Defensive & Attacking Run Coordination Helpers
     int _select_smart_presser(bool p_is_home, int p_exclude_idx = -1) const;

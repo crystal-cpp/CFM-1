@@ -3,6 +3,9 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <cmath>
+#include <utility>
+#include <cctype>
 
 enum class Position { 
     GK, CB, LB, RB, LWB, RWB, 
@@ -56,6 +59,59 @@ enum class PlayerStatus {
     Professional,   
     Retired         
 };
+
+enum class InjurySeverity : int32_t {
+    None = 0,
+    Minor = 1,      // 3-5 days
+    Moderate = 2,   // 7-14 days
+    Major = 3,      // 30-60 days
+    Serious = 4     // 120-180 days + one-time 5-10% market value drop
+};
+
+inline std::string injury_severity_to_string(InjurySeverity tier) {
+    switch (tier) {
+        case InjurySeverity::Minor:    return "Minor Injury";
+        case InjurySeverity::Moderate: return "Moderate Injury";
+        case InjurySeverity::Major:    return "Major Injury";
+        case InjurySeverity::Serious:  return "Serious Injury";
+        default:                       return "";
+    }
+}
+
+inline std::pair<int, int> injury_tier_day_bounds(InjurySeverity tier) {
+    switch (tier) {
+        case InjurySeverity::Minor:    return { 3, 5 };
+        case InjurySeverity::Moderate: return { 7, 14 };
+        case InjurySeverity::Major:    return { 30, 60 };
+        case InjurySeverity::Serious:  return { 120, 180 };
+        default:                       return { 0, 0 };
+    }
+}
+
+inline InjurySeverity injury_severity_from_int(int32_t value) {
+    switch (value) {
+        case 1:  return InjurySeverity::Minor;
+        case 2:  return InjurySeverity::Moderate;
+        case 3:  return InjurySeverity::Major;
+        case 4:  return InjurySeverity::Serious;
+        default: return InjurySeverity::None;
+    }
+}
+
+inline InjurySeverity injury_severity_from_string(const std::string& raw) {
+    std::string s;
+    s.reserve(raw.size());
+    for (unsigned char c : raw) {
+        if (!std::isspace(c)) {
+            s.push_back(static_cast<char>(std::tolower(c)));
+        }
+    }
+    if (s == "minor" || s == "minorinjury")       return InjurySeverity::Minor;
+    if (s == "moderate" || s == "moderateinjury") return InjurySeverity::Moderate;
+    if (s == "major" || s == "majorinjury")       return InjurySeverity::Major;
+    if (s == "serious" || s == "seriousinjury")   return InjurySeverity::Serious;
+    return InjurySeverity::None;
+}
 
 struct PlayerAttributes {
     int Pace = 60;
@@ -215,6 +271,86 @@ public:
     void AdvanceAge() {
         SimulateYearlyGrowth();
     }
+    // --- Post-Match Stamina Persistence & Daily Calendar Recovery ---
+    double GetCurrentStamina() const { return CurrentStamina; }
+    void SetCurrentStamina(double p_stamina) {
+        CurrentStamina = std::clamp(p_stamina, 0.0, 100.0);
+        Condition = std::clamp(static_cast<int>(std::round(CurrentStamina)), 0, 100);
+    }
+
+    int GetCondition() const { return Condition; }
+    void SetCondition(int p_cond) {
+        Condition = std::clamp(p_cond, 0, 100);
+        CurrentStamina = static_cast<double>(Condition);
+    }
+
+    void RecoverDailyStamina(double recovery_rate_per_day) {
+        const double rate = std::clamp(recovery_rate_per_day, 0.0, 1.0);
+        SetCurrentStamina(CurrentStamina + (100.0 * rate));
+    }
+
+    // --- Injury Lifecycle & One-Time Serious Value Reduction ---
+    bool IsInjured() const {
+        return InjuryTier != InjurySeverity::None && InjuryDaysRemaining > 0;
+    }
+    bool IsAvailableForMatch() const {
+        return !Retired && !IsInjured();
+    }
+    InjurySeverity GetInjurySeverity() const { return InjuryTier; }
+    std::string GetInjurySeverityLabel() const { return injury_severity_to_string(InjuryTier); }
+    int GetInjuryDaysRemaining() const { return InjuryDaysRemaining; }
+    bool IsSeriousValuePenaltyApplied() const { return SeriousValuePenaltyApplied; }
+    void SetSeriousValuePenaltyApplied(bool applied) { SeriousValuePenaltyApplied = applied; }
+
+    void ApplyInjury(InjurySeverity tier, int days = -1, double serious_drop_fraction = 0.075) {
+        if (tier == InjurySeverity::None) {
+            ClearInjury();
+            return;
+        }
+        const auto bounds = injury_tier_day_bounds(tier);
+        int resolved_days = (days > 0)
+            ? std::clamp(days, bounds.first, bounds.second)
+            : bounds.first;
+
+        InjuryTier = tier;
+        InjuryDaysRemaining = resolved_days;
+
+        // One-time 5-10% market value drop on Serious Injury (never compounds)
+        if (tier == InjurySeverity::Serious && !SeriousValuePenaltyApplied) {
+            const double current_val = GetMarketValue();
+            const double drop = std::clamp(serious_drop_fraction, 0.05, 0.10);
+            CustomMarketValue = std::max(10000.0, std::round(current_val * (1.0 - drop)));
+            SeriousValuePenaltyApplied = true;
+        }
+    }
+
+    // Restores persisted injury state directly during save/load without re-triggering value drops
+    void RestoreInjuryState(InjurySeverity tier, int days_remaining, bool serious_penalty_applied) {
+        SeriousValuePenaltyApplied = serious_penalty_applied;
+        if (tier == InjurySeverity::None || days_remaining <= 0) {
+            InjuryTier = InjurySeverity::None;
+            InjuryDaysRemaining = 0;
+        } else {
+            InjuryTier = tier;
+            InjuryDaysRemaining = days_remaining;
+        }
+    }
+
+    // Returns true on the exact day the player completes recovery
+    bool RecoverOneInjuryDay() {
+        if (!IsInjured()) return false;
+        InjuryDaysRemaining = std::max(0, InjuryDaysRemaining - 1);
+        if (InjuryDaysRemaining == 0) {
+            InjuryTier = InjurySeverity::None;
+            return true;
+        }
+        return false;
+    }
+
+    void ClearInjury() {
+        InjuryTier = InjurySeverity::None;
+        InjuryDaysRemaining = 0;
+    }
 private:
     std::string Name;
     Position Pos;
@@ -226,6 +362,12 @@ private:
     std::string Nationality = "Unknown";
     std::vector<std::string> Playstyles;
     int Stamina = 75;
+
+    double CurrentStamina = 100.0;
+    int Condition = 100;
+    InjurySeverity InjuryTier = InjurySeverity::None;
+    int InjuryDaysRemaining = 0;
+    bool SeriousValuePenaltyApplied = false;
 
     int Id = 0;
     int ClubId = -1;

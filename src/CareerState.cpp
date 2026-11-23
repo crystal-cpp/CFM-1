@@ -402,6 +402,18 @@ void CareerState::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("delete_save_slot", "slot_name"), &CareerState::delete_save_slot);
 	ClassDB::bind_method(D_METHOD("prepare_match_context", "fixture", "db"), &CareerState::prepare_match_context, DEFVAL(Ref<PlayerDatabase>()));
 
+	// Phase 5F: Stamina Persistence, Calendar Recovery & Injury Lifecycle
+	ClassDB::bind_method(D_METHOD("set_stamina_recovery_rate_per_day", "rate"), &CareerState::set_stamina_recovery_rate_per_day);
+	ClassDB::bind_method(D_METHOD("get_stamina_recovery_rate_per_day"), &CareerState::get_stamina_recovery_rate_per_day);
+	ClassDB::bind_method(D_METHOD("project_player_stamina_on_date", "player_id", "target_date_iso"), &CareerState::project_player_stamina_on_date);
+	ClassDB::bind_method(D_METHOD("apply_player_injury", "player_id", "severity_tier", "days"), &CareerState::apply_player_injury, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("clear_player_injury", "player_id"), &CareerState::clear_player_injury);
+	ClassDB::bind_method(D_METHOD("get_injured_players", "club_id"), &CareerState::get_injured_players, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("ensure_club_valid_matchday_xi", "club_id"), &CareerState::ensure_club_valid_matchday_xi);
+
+	ADD_SIGNAL(MethodInfo("player_injured", PropertyInfo(Variant::INT, "player_id"), PropertyInfo(Variant::INT, "club_id"), PropertyInfo(Variant::STRING, "severity_label"), PropertyInfo(Variant::INT, "days_remaining")));
+	ADD_SIGNAL(MethodInfo("player_recovered", PropertyInfo(Variant::INT, "player_id"), PropertyInfo(Variant::INT, "club_id")));
+
 	// Signals
 	ADD_SIGNAL(MethodInfo("date_changed", PropertyInfo(Variant::STRING, "new_date_iso")));
 	ADD_SIGNAL(MethodInfo("balance_changed", PropertyInfo(Variant::INT, "total_balance"), PropertyInfo(Variant::INT, "transfer_budget"), PropertyInfo(Variant::INT, "wage_budget")));
@@ -1259,6 +1271,15 @@ Dictionary CareerState::_player_to_dict(const std::shared_ptr<Player> &p) const 
 	d["is_available_transfer"] = p->IsAvailableForTransfer();
 	d["status"] = static_cast<int>(p->GetStatus());
 
+	d["current_stamina"] = p->GetCurrentStamina();
+	d["condition"] = p->GetCondition();
+	d["is_injured"] = p->IsInjured();
+	d["is_available_match"] = p->IsAvailableForMatch();
+	d["injury_severity"] = static_cast<int32_t>(p->GetInjurySeverity());
+	d["injury_label"] = String(p->GetInjurySeverityLabel().c_str());
+	d["injury_days_remaining"] = p->GetInjuryDaysRemaining();
+	d["serious_value_penalty_applied"] = p->IsSeriousValuePenaltyApplied();
+
 	auto cap_it = _captain_by_club.find(cid);
 	d["is_captain"] = (cap_it != _captain_by_club.end() && cap_it->second == pid);
 
@@ -1721,14 +1742,6 @@ void CareerState::_process_weekly_progression() {
 	_finances.total_balance -= (_finances.weekly_wage_bill + coach_salaries);
 	if (_finances.total_balance < 0) {
 		_finances.transfer_budget = std::max<int64_t>(0, _finances.transfer_budget + _finances.total_balance);
-	}
-
-	for (auto &pair : _players_by_id) {
-		if (!pair.second) continue;
-		int cond = pair.second->GetCondition();
-		if (cond < 100) {
-			pair.second->SetCondition(std::min(100, cond + 12));
-		}
 	}
 
 	if (_youth_academy) {
@@ -2207,6 +2220,22 @@ bool CareerState::set_starting_xi(int32_t p_club_id, const PackedInt32Array &p_x
 		}
 	}
 
+	// Inside set_starting_xi(): reject injured players or invalid GK Slot 0
+	for (int i = 0; i < 11; i++) {
+		int32_t pid = p_xi_ids[i];
+		if (seen.count(pid)) return false;
+		seen.insert(pid);
+
+		auto pit = _players_by_id.find(pid);
+		if (pit == _players_by_id.end() || !pit->second || pit->second->GetClubId() != p_club_id) {
+			return false;
+		}
+		if (pit->second->IsInjured()) return false;
+		if (i == 0 && pit->second->GetPosition() != Position::GK) return false;
+		if (i > 0 && pit->second->GetPosition() == Position::GK) return false;
+		new_xi.push_back(pit->second);
+	}
+
 	roster = std::move(reordered);
 	team->SetStartingXI(new_xi);
 
@@ -2243,6 +2272,11 @@ bool CareerState::swap_squad_players(int32_t p_club_id, int32_t p_player_a_id, i
 			new_xi.push_back(roster[i]);
 		}
 	}
+
+	if ((idx_a < 11 && roster[idx_b]->IsInjured()) || (idx_b < 11 && roster[idx_a]->IsInjured())) {
+		return false;
+	}
+
 	team->SetStartingXI(new_xi);
 
 	emit_signal("squad_updated", p_club_id);
@@ -2706,6 +2740,23 @@ bool CareerState::commit_match_result(MatchEngine *p_engine) {
 						xi[i]->SetCondition(std::max(40, xi[i]->GetCondition() - (fix.is_friendly ? 8 : 14)));
 					}
 				}
+				Array match_injuries = Array(m_stats.get("match_injuries", Array()));
+				for (int k = 0; k < match_injuries.size(); ++k) {
+					if (match_injuries[k].get_type() != Variant::DICTIONARY) continue;
+					Dictionary inj = match_injuries[k];
+					int32_t inj_pid = String(inj.get("player_id", inj.get("id", "0"))).to_int();
+					if (inj_pid <= 0) continue;
+
+					int32_t sev_int = static_cast<int32_t>(inj.get("severity", 0));
+					if (sev_int == 0 && inj.has("severity_label")) {
+						sev_int = static_cast<int32_t>(injury_severity_from_string(String(inj["severity_label"]).utf8().get_data()));
+					}
+					int32_t days_out = static_cast<int32_t>(inj.get("days", -1));
+					if (sev_int > 0) {
+						apply_player_injury(inj_pid, sev_int, days_out);
+					}
+				}
+
 			}
 
 			std::string result_str = is_user_home ?
@@ -2796,6 +2847,132 @@ int32_t CareerState::get_unread_inbox_count() const {
 		if (!msg.is_read) count++;
 	}
 	return count;
+}
+
+Dictionary CareerState::apply_player_injury(int32_t p_player_id, int32_t p_severity_tier, int32_t p_days) {
+	Dictionary result;
+	result["applied"] = false;
+
+	auto it = _players_by_id.find(p_player_id);
+	if (it == _players_by_id.end() || !it->second) return result;
+
+	InjurySeverity tier = injury_severity_from_int(p_severity_tier);
+	if (tier == InjurySeverity::None) return result;
+
+	std::shared_ptr<Player> p = it->second;
+	const auto bounds = injury_tier_day_bounds(tier);
+	int resolved_days = p_days;
+	if (resolved_days <= 0) {
+		const int span = std::max(1, bounds.second - bounds.first + 1);
+		const int seed = std::abs((p_player_id * 37) + (_day * 13) + (_month * 7) + _current_matchday);
+		resolved_days = bounds.first + (seed % span);
+	}
+
+	// Deterministic 5-10% value drop for Serious Injury (applied once per career)
+	const int drop_pct_int = 5 + (std::abs(p_player_id * 19 + _day) % 6); // 5..10%
+	const double drop_fraction = static_cast<double>(drop_pct_int) / 100.0;
+	const double prev_value = p->GetMarketValue();
+
+	p->ApplyInjury(tier, resolved_days, drop_fraction);
+
+	const int32_t cid = p->GetClubId();
+	if (cid > 0) {
+		_ensure_club_valid_matchday_xi(cid);
+	}
+
+	const String label = String(p->GetInjurySeverityLabel().c_str());
+	if (cid == _managed_club_id) {
+		String body = String(p->GetName().c_str()) + " sustained a " + label +
+			" (" + String::num_int64(p->GetInjuryDaysRemaining()) + " days out) and is unavailable for selection.";
+		if (tier == InjurySeverity::Serious && p->GetMarketValue() < prev_value) {
+			body += " Market valuation decreased due to long-term injury recovery.";
+		}
+		push_inbox_message("INJURY", label + String(": ") + String(p->GetName().c_str()), body, "squad", p_player_id);
+		emit_signal("squad_updated", cid);
+	}
+
+	emit_signal("player_injured", p_player_id, cid, label, p->GetInjuryDaysRemaining());
+
+	result["applied"] = true;
+	result["player_id"] = p_player_id;
+	result["club_id"] = cid;
+	result["severity"] = static_cast<int32_t>(tier);
+	result["severity_label"] = label;
+	result["days_remaining"] = p->GetInjuryDaysRemaining();
+	result["market_value"] = p->GetMarketValue();
+	return result;
+}
+
+bool CareerState::clear_player_injury(int32_t p_player_id) {
+	auto it = _players_by_id.find(p_player_id);
+	if (it == _players_by_id.end() || !it->second || !it->second->IsInjured()) return false;
+	const int32_t cid = it->second->GetClubId();
+	it->second->ClearInjury();
+	emit_signal("player_recovered", p_player_id, cid);
+	if (cid > 0) emit_signal("squad_updated", cid);
+	return true;
+}
+
+TypedArray<Dictionary> CareerState::get_injured_players(int32_t p_club_id) const {
+	TypedArray<Dictionary> list;
+	for (const auto &pair : _players_by_id) {
+		const auto &p = pair.second;
+		if (!p || !p->IsInjured()) continue;
+		if (p_club_id >= 0 && p->GetClubId() != p_club_id) continue;
+		list.append(_player_to_dict(p));
+	}
+	return list;
+}
+
+bool CareerState::_ensure_club_valid_matchday_xi(int32_t p_club_id) {
+	auto club_it = _clubs.find(p_club_id);
+	if (club_it == _clubs.end() || !club_it->second) return false;
+
+	Team *team = club_it->second.get();
+	auto &roster = team->GetRoster();
+	bool changed = false;
+
+	// Replace any injured player in Starting XI (slots 0..10) with a healthy replacement (preserving GK in slot 0)
+	for (size_t slot = 0; slot < std::min<size_t>(11, roster.size()); ++slot) {
+		if (!roster[slot] || !roster[slot]->IsInjured()) continue;
+
+		const bool needs_gk = (slot == 0);
+		int best_idx = -1;
+		int best_ovr = -1;
+
+		for (size_t cand = 11; cand < roster.size(); ++cand) {
+			if (!roster[cand] || roster[cand]->IsInjured()) continue;
+			const bool cand_is_gk = (roster[cand]->GetPosition() == Position::GK);
+			if (needs_gk != cand_is_gk) continue;
+			if (roster[cand]->GetOVR() > best_ovr) {
+				best_ovr = roster[cand]->GetOVR();
+				best_idx = static_cast<int>(cand);
+			}
+		}
+
+		if (best_idx >= 0) {
+			std::swap(roster[slot], roster[best_idx]);
+			changed = true;
+		}
+	}
+
+	if (changed) {
+		std::vector<std::shared_ptr<Player>> new_xi;
+		for (size_t i = 0; i < roster.size(); ++i) {
+			if (!roster[i]) continue;
+			const bool in_xi = (i < 11);
+			roster[i]->SetIsStartingXI(in_xi);
+			if (in_xi) new_xi.push_back(roster[i]);
+		}
+		team->SetStartingXI(new_xi);
+	}
+	return changed;
+}
+
+bool CareerState::ensure_club_valid_matchday_xi(int32_t p_club_id) {
+	const bool changed = _ensure_club_valid_matchday_xi(p_club_id);
+	if (changed) emit_signal("squad_updated", p_club_id);
+	return changed;
 }
 
 bool CareerState::save_career(const String &p_slot_name) {
@@ -3024,6 +3201,8 @@ bool CareerState::save_career(const String &p_slot_name) {
 	yd["coaches"] = coaches_arr;
 	root["youth_academy"] = yd;
 
+	root["stamina_recovery_rate_per_day"] = _stamina_recovery_rate_per_day;
+
 	Array players_arr;
 	for (const auto &pair : _players_by_id) {
 		const auto &p = pair.second;
@@ -3063,6 +3242,12 @@ bool CareerState::save_career(const String &p_slot_name) {
 		pd["market_value"] = p->GetMarketValue();
 		pd["is_starting_xi"] = p->GetIsStartingXI();
 		pd["is_retired"] = p->IsRetired();
+
+		pd["current_stamina"] = p->GetCurrentStamina();
+		pd["condition"] = p->GetCondition();
+		pd["injury_severity"] = static_cast<int32_t>(p->GetInjurySeverity());
+		pd["injury_days_remaining"] = p->GetInjuryDaysRemaining();
+		pd["serious_value_penalty_applied"] = p->IsSeriousValuePenaltyApplied();
 
 		players_arr.append(pd);
 	}
@@ -3143,6 +3328,11 @@ bool CareerState::load_career(const String &p_slot_name) {
 	if (!_youth_academy) _youth_academy = std::make_unique<YouthAcademy>();
 	_youth_academy->Clear();
 	_hidden_youth_prospects.clear();
+
+	_stamina_recovery_rate_per_day = std::clamp(
+		static_cast<double>(root.get("stamina_recovery_rate_per_day", DEFAULT_STAMINA_RECOVERY_PER_DAY)),
+		0.25, 0.30
+	);
 
 	if (root.has("clock")) {
 		Dictionary clock = root["clock"];
@@ -3249,6 +3439,16 @@ bool CareerState::load_career(const String &p_slot_name) {
 			player_ptr->SetRetired(pd.get("is_retired", false) || age >= ret_age);
 
 			_players_by_id[pid] = player_ptr;
+
+			if (pd.has("current_stamina")) {
+		player_ptr->SetCurrentStamina(static_cast<double>(pd["current_stamina"]));
+		} else {
+			player_ptr->SetCondition(pd.get("condition", 100));
+		}
+		InjurySeverity saved_inj = injury_severity_from_int(static_cast<int32_t>(pd.get("injury_severity", 0)));
+		int saved_inj_days = static_cast<int>(pd.get("injury_days_remaining", 0));
+		bool saved_penalty = bool(pd.get("serious_value_penalty_applied", false));
+		player_ptr->RestoreInjuryState(saved_inj, saved_inj_days, saved_penalty);
 		}
 	}
 	_next_player_id = max_pid + 1;
@@ -3509,6 +3709,66 @@ TypedArray<Dictionary> CareerState::list_save_slots() const {
 
 	return slots;
 }
+
+void CareerState::set_stamina_recovery_rate_per_day(double p_rate) {
+	_stamina_recovery_rate_per_day = std::clamp(p_rate, 0.25, 0.30);
+}
+
+int32_t CareerState::project_player_stamina_on_date(int32_t p_player_id, const String &p_target_date_iso) const {
+	auto it = _players_by_id.find(p_player_id);
+	if (it == _players_by_id.end() || !it->second) return 0;
+
+	int ty = _year, tm = _month, td = _day;
+	PackedStringArray parts = p_target_date_iso.split("-");
+	if (parts.size() == 3) {
+		ty = parts[0].to_int();
+		tm = parts[1].to_int();
+		td = parts[2].to_int();
+	}
+	int64_t delta_days = std::max<int64_t>(0, civil_to_days(ty, tm, td) - civil_to_days(_year, _month, _day));
+	double projected = std::min(100.0, it->second->GetCurrentStamina() + (100.0 * _stamina_recovery_rate_per_day * static_cast<double>(delta_days)));
+	return static_cast<int32_t>(std::round(projected));
+}
+
+void CareerState::_process_daily_recovery_and_injuries() {
+	bool managed_squad_changed = false;
+
+	for (auto &pair : _players_by_id) {
+		auto &p = pair.second;
+		if (!p || p->IsRetired()) continue;
+
+		// 1. Daily stamina recovery (+30% of max stamina per calendar day by default, capped at 100%)
+		if (p->GetCurrentStamina() < 100.0) {
+			p->RecoverDailyStamina(_stamina_recovery_rate_per_day);
+		}
+
+		// 2. Daily injury countdown
+		if (p->IsInjured()) {
+			const bool cleared = p->RecoverOneInjuryDay();
+			if (cleared) {
+				const int32_t pid = p->GetId();
+				const int32_t cid = p->GetClubId();
+				emit_signal("player_recovered", pid, cid);
+
+				if (cid == _managed_club_id) {
+					managed_squad_changed = true;
+					push_inbox_message(
+						"INJURY",
+						"Medical Clearance: " + String(p->GetName().c_str()),
+						String(p->GetName().c_str()) + " has completed injury rehabilitation and is available for selection.",
+						"squad",
+						pid
+					);
+				}
+			}
+		}
+	}
+
+	if (managed_squad_changed) {
+		emit_signal("squad_updated", _managed_club_id);
+	}
+}
+
 
 bool CareerState::delete_save_slot(const String &p_slot_name) {
 	String slot_clean = p_slot_name.strip_edges().replace("/", "_").replace("\\", "_");
