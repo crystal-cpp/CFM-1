@@ -370,8 +370,13 @@ func refresh_squad() -> void:
 	_team_ovr_pill.text = "XI OVR: %d" % int(club_info.get("team_rating", 75))
 
 	var total_cond: int = 0
-	for p in squad:
-		total_cond += int(p.get("condition", 100))
+	var injured_active_names: PackedStringArray = PackedStringArray()
+	for idx in range(squad.size()):
+		var p: Dictionary = squad[idx]
+		total_cond += int(p.get("condition", p.get("stamina", 100)))
+		var p_inj: bool = bool(p.get("is_injured", false)) or int(p.get("injury_days_remaining", 0)) > 0
+		if p_inj and idx < 18:
+			injured_active_names.append("%s (%dd)" % [String(p.get("name", "Player")), int(p.get("injury_days_remaining", 1))])
 	var avg_cond: int = int(total_cond / max(1, squad.size()))
 	_avg_cond_pill.text = "Avg Fitness: %d%%" % avg_cond
 
@@ -382,13 +387,18 @@ func refresh_squad() -> void:
 	_clear_sel_btn.disabled = not has_sel
 	if has_sel:
 		var sel_prof: Dictionary = career_state.get_player_profile(_selected_player_id)
+		_selection_banner.add_theme_color_override("font_color", Color(0.75, 0.84, 0.95))
 		_selection_banner.text = "Selected: %s (%s · OVR %d) — Click another player to SWAP positions." % [
 			String(sel_prof.get("name", "Player")),
 			String(sel_prof.get("position", "CM")),
 			int(sel_prof.get("ovr", 70))
 		]
+	elif not injured_active_names.is_empty():
+		_selection_banner.add_theme_color_override("font_color", Color(1.0, 0.42, 0.45))
+		_selection_banner.text = "Injured in XI/Bench: %s — Swap to Reserves before matchday." % ", ".join(injured_active_names)
 	else:
-		_selection_banner.text = "Click any player on the pitch, bench, or reserves to swap positions or assign captain."
+		_selection_banner.add_theme_color_override("font_color", Color(0.75, 0.84, 0.95))
+		_selection_banner.text = ""
 
 	# Clear old children
 	for c in _pitch_slots_layer.get_children():
