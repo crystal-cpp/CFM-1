@@ -454,7 +454,7 @@ func _create_pitch_player_node(p: Dictionary, slot_role: String) -> Button:
 	var cap_prefix: String = "© " if pid == _captain_id else ""
 	var is_injured: bool = bool(p.get("is_injured", false)) or int(p.get("injury_days_remaining", 0)) > 0
 	var inj_days: int = int(p.get("injury_days_remaining", 0))
-	var inj_tier: String = _format_injury_tier(inj_days, String(p.get("injury_severity", "")))
+	var inj_tier: String = _format_injury_tier(inj_days, String(p.get("injury_label", "")))
 
 	var btn := Button.new()
 	btn.custom_minimum_size = Vector2(106, 52)
@@ -482,7 +482,7 @@ func _create_list_player_row(p: Dictionary, tag: String) -> Button:
 	var cap_str: String = " [C]" if pid == _captain_id else ""
 	var is_injured: bool = bool(p.get("is_injured", false)) or int(p.get("injury_days_remaining", 0)) > 0
 	var inj_days: int = int(p.get("injury_days_remaining", 0))
-	var inj_tier: String = _format_injury_tier(inj_days, String(p.get("injury_severity", "")))
+	var inj_tier: String = _format_injury_tier(inj_days, String(p.get("injury_label", "")))
 	var status_str: String = ("INJ %s (%dd)" % [inj_tier, inj_days]) if is_injured else ("Fit %d%%" % cond)
 	var btn := Button.new()
 	btn.custom_minimum_size = Vector2(0, 34)
