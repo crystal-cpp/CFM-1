@@ -545,7 +545,7 @@ func _on_player_clicked(player_id: int) -> void:
 			_selected_player_id = -1
 			refresh_squad()
 			_selection_banner.add_theme_color_override("font_color", Color(1.0, 0.42, 0.45))
-			_selection_banner.text = "Blocked: %s is injured (%s · %dd left) and cannot enter XI or Bench." % [String(blocked_p.get("name", "Player")), _format_injury_tier(rem_d, String(blocked_p.get("injury_severity", ""))), rem_d]
+			_selection_banner.text = "Blocked: %s is injured (%s · %dd left) and cannot enter XI or Bench." % [String(blocked_p.get("name", "Player")), _format_injury_tier(rem_d, String(blocked_p.get("injury_label", ""))), rem_d]
 			return
 	career_state.swap_squad_players(club_id, _selected_player_id, player_id)
 	_selected_player_id = -1
