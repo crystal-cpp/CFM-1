@@ -209,7 +209,7 @@ This milestone's startup shell, routing, save-slot entry points and scene owners
     * Eliminates instant point-to-point snapping or unrealistic instant full-speed dashes toward clicked/tapped destinations.
     * Implements continuous 2D steering kinematics: top sprint speed scales with player `Pace` and remaining `CurrentStamina`, paired with realistic acceleration ramp-up, braking deceleration, and angular turn-rate inertia so players take believable time to change direction and reach targets across both mouse-click and Android touchscreen inputs.
   * **7. Match Input Mapping Audit (`demo/MatchScene.gd` / `demo/MatchHUD.gd` / `src/match_engine.cpp`)**:
-    * Current source maps `KEY_R` to `_request_next_match()` after full time; it is not an Advanced Dribbling action. Preserve this Next Match shortcut and verify it does not interfere with live-match movement or standard controls. Do not remove internal dribble timers/boost logic merely because the old roadmap called them an `R` ability; they are backend movement mechanics and require a separate design decision before changing.
+    * Current source maps `KEY_R` to `_request_next_match()` after full time; it is not an Advanced Dribbling action. Phase 5J removes this post-match shortcut and replaces it with the MatchConclusion -> CareerShell return flow. Do not remove unrelated internal dribble timers. Do not remove internal dribble timers/boost logic merely because the old roadmap called them an `R` ability; they are backend movement mechanics and require a separate design decision before changing.
 
 * **5F. Stamina Persistence, Calendar Recovery, Injury System & Match-Control Refinements**:
   * **1. Post-Match Stamina Persistence & Configurable Daily Recovery (`CareerState.h` / `.cpp`)**:
@@ -220,10 +220,10 @@ This milestone's startup shell, routing, save-slot entry points and scene owners
   * **2. World Soccer Champs-Inspired Player Injury System (`CareerState` & `MatchEngine`)**:
     * **Match Injury Generation**: During `MatchEngine` execution, physical challenges and high-fatigue sprints evaluate injury risk (higher risk when `CurrentStamina < 35%` or after heavy tackles).
     * **Simple, Readable Severity Tiers & Recovery Timers**:
-      * `Minor Knock`: `2–5` in-game days out.
-      * `Muscle Strain`: `7–14` in-game days out.
-      * `Ligament Sprain`: `21–35` in-game days out.
-      * `Severe Injury`: `45–90` in-game days out.
+      * `Minor Injury`: `3–5` in-game days out.
+      * `Medium Injury`: `7–14` in-game days out (approximately 1–2 weeks).
+      * `Injury`: `30–60` in-game days out (approximately 1–2 months).
+      * `Serious Injury`: `120–180` in-game days out (approximately 4–6 months); apply a one-time `5–10%` reduction to current market value when registered, without repeated compounding.
     * **Calendar Recovery & Availability Enforcement**: `CareerState::advance_day()` decrements `injury_days_remaining` by `1` per day until `0` (automatically clearing `is_injured = false` and posting a clearance note). While `is_injured == true`, the player cannot be selected in Starting XI/Bench for matches (`SquadView` & `PreMatchView` enforce replacement) and does not gain active training XP.
     * **UI, Value & Save/Load Integration**: Displays injury severity + remaining days badge in `SquadView`, `DashboardView`, `PreMatchView`, and `PlayerProfileModal`; dispatches `"INJURY"` Inbox alerts; persists all injury fields in `<slot>.json`.
    * **3. User-Controlled Dribbling Pace & Defensive Recovery Balance (`MatchEngine`)**:
