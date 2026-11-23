@@ -1842,7 +1842,9 @@ bool MatchEngine::command_move_player(Vector2 p_target_pos) {
     is_paused_for_manual = false;
 
     if (chance_state == user_atk_state && ball_state == BALL_CARRIED && ball_carrier_index == user_controlled_index) {
-        player.dribble_boost_timer = 0.45f;
+        if (player.dribble_carry_distance < 65.0f) {
+            player.dribble_boost_timer = 0.24f;
+        }
     }
 
     return true;
@@ -2052,85 +2054,159 @@ bool MatchEngine::command_tackle() {
     if (!_is_user_outfield_idx(user_controlled_index)) {
         select_nearest_defender();
     }
-    if (!_is_user_outfield_idx(user_controlled_index) || user_controlled_index < 0 || user_controlled_index >= static_cast<int>(sim_players.size())) {
+    if (!_is_user_outfield_idx(user_controlled_index)) {
         return false;
     }
 
     SimPlayer& defender = sim_players[user_controlled_index];
-    if (defender.recovery_timer > 0.0f || defender.tackle_cooldown > 0.0f) {
+    if (defender.recovery_timer > 0.0f || defender.tackle_cooldown > 0.0f || defender.is_sliding) {
         return false;
     }
 
-    float max_reach = 38.0f + ((defender.defending + defender.physical) * 0.04f);
-    float dist_to_ball = defender.position.distance_to(ball_position);
-    if (dist_to_ball > max_reach) {
-        defender.sprint_boost_timer = 0.65f;
-        command_move_player(ball_position);
+    Vector2 intercept_point = ball_position + (ball_velocity * 0.14f);
+    if (ball_state == BALL_CARRIED && ball_carrier_index >= 0 && ball_carrier_index < 22) {
+        intercept_point = sim_players[ball_carrier_index].position + (sim_players[ball_carrier_index].velocity * 0.14f);
+    }
+
+    float dist_to_point = defender.position.distance_to(intercept_point);
+    if (dist_to_point > 84.0f) {
+        defender.sprint_boost_timer = 0.60f;
+        command_move_player(intercept_point);
         return false;
     }
 
-    defender.stamina = std::max(10.0f, defender.stamina - 0.85f);
-    defender.tackle_cooldown = 0.42f;
+    Vector2 delta = intercept_point - defender.position;
+    defender.slide_dir = (delta.length() > 1.0f)
+        ? delta.normalized()
+        : Vector2(user_is_home ? -1.0f : 1.0f, 0.0f);
+    defender.is_sliding = true;
+    defender.slide_timer = 0.34f;
+    defender.tackle_cooldown = 0.95f;
+    defender.stamina = std::max(10.0f, defender.stamina - 0.95f);
+    has_user_move_target = false;
+    is_paused_for_manual = false;
+
+    if (defender.position.distance_to(ball_position) <= 19.0f) {
+        _resolve_slide_tackle_contact(user_controlled_index);
+    }
+    return true;
+}
+
+void MatchEngine::_award_defensive_free_kick(bool p_to_home, Vector2 p_spot, const String& p_fouler_name) {
+    if (p_to_home) stats.away_fouls++;
+    else stats.home_fouls++;
+
+    int team_start = p_to_home ? 1 : 12;
+    int taker_idx = team_start;
+    float best_d = 1e9f;
+    for (int i = team_start; i < team_start + 10; i++) {
+        float d = sim_players[i].position.distance_to(p_spot);
+        if (d < best_d) {
+            best_d = d;
+            taker_idx = i;
+        }
+    }
+
+    sim_players[taker_idx].position = p_spot;
+    sim_players[taker_idx].velocity = Vector2(0.0f, 0.0f);
+    possession_team = p_to_home ? 0 : 1;
+    ball_carrier_index = taker_idx;
+    last_touch_index = taker_idx;
+    pass_target_index = -1;
+    is_through_ball_in_flight = false;
+    ball_state = BALL_CARRIED;
+    ball_position = p_spot;
+    ball_velocity = Vector2(0.0f, 0.0f);
+    action_decision_timer = 0.55f;
+
+    _log_event("foul", !p_to_home, p_fouler_name,
+        p_fouler_name + String(" commits a late sliding foul — free kick awarded!"));
+    if (chance_state != CHANCE_NONE) {
+        _end_active_chance(false);
+    }
+}
+
+void MatchEngine::_resolve_slide_tackle_contact(int p_defender_idx) {
+    if (p_defender_idx < 0 || p_defender_idx >= 22) return;
+    SimPlayer& defender = sim_players[p_defender_idx];
+    defender.is_sliding = false;
+    defender.slide_timer = 0.0f;
+
     float def_fatigue = _get_fatigue_multiplier(defender);
     int user_approach = user_is_home ? home_defensive_approach : away_defensive_approach;
     float approach_bonus = (user_approach == TIER_HIGH) ? 5.5f : ((user_approach == TIER_LOW) ? -3.5f : 0.0f);
-    float own_goal_x = user_is_home ? 0.0f : field_size.x;
+    float own_goal_x = defender.is_home ? 0.0f : field_size.x;
 
-    if (ball_state == BALL_CARRIED && ball_carrier_index >= 0 && ball_carrier_index < 22 && !_is_user_player_idx(ball_carrier_index)) {
+    if (ball_state == BALL_CARRIED && ball_carrier_index >= 0 && ball_carrier_index < 22 && sim_players[ball_carrier_index].is_home != defender.is_home) {
         SimPlayer& attacker = sim_players[ball_carrier_index];
         float atk_fatigue = _get_fatigue_multiplier(attacker);
         bool in_box = std::abs(defender.position.x - own_goal_x) < 140.0f && std::abs(defender.position.y - field_size.y * 0.5f) < 168.0f;
-        bool body_duel = (dist_to_ball <= 16.5f);
 
-        float def_core = body_duel
-            ? (defender.defending * 0.50f + defender.physical * 0.50f)
-            : (defender.defending * 0.72f + defender.physical * 0.16f + defender.pace * 0.12f);
-        float atk_core = body_duel
-            ? (attacker.dribbling * 0.52f + attacker.physical * 0.48f)
-            : (attacker.dribbling * 0.68f + attacker.pace * 0.32f);
+        Vector2 atk_facing = (attacker.velocity.length() > 8.0f)
+            ? attacker.velocity.normalized()
+            : Vector2(attacker.is_home ? 1.0f : -1.0f, 0.0f);
+        float from_behind = defender.slide_dir.dot(atk_facing); // > 0.45 means tackling from behind
 
-        float skill_diff = (def_core * def_fatigue) - (atk_core * atk_fatigue)
-                         + approach_bonus + _get_role_defensive_bonus(defender, in_box, false);
-        float win_prob = std::clamp(0.52f + 0.34f * std::tanh(skill_diff / 26.0f), 0.16f, 0.86f);
+        float foul_risk = std::clamp(
+            0.09f + std::max(0.0f, from_behind - 0.30f) * 0.36f - ((defender.defending * def_fatigue - 65.0f) * 0.0022f),
+            0.04f, 0.46f
+        );
+        if (UtilityFunctions::randf() < foul_risk) {
+            defender.recovery_timer = 0.45f;
+            _award_defensive_free_kick(attacker.is_home, attacker.position, defender.name);
+            return;
+        }
+
+        float def_core = (defender.defending * 0.64f + defender.physical * 0.24f + defender.pace * 0.12f) * def_fatigue;
+        float atk_core = (attacker.dribbling * 0.62f + attacker.physical * 0.22f + attacker.pace * 0.16f) * atk_fatigue;
+        float skill_diff = def_core - atk_core + approach_bonus + _get_role_defensive_bonus(defender, in_box, false);
+        float win_prob = std::clamp(0.50f + 0.34f * std::tanh(skill_diff / 26.0f), 0.16f, 0.85f);
 
         if (UtilityFunctions::randf() < win_prob) {
-            if (user_is_home) stats.home_tackles++;
+            if (defender.is_home) stats.home_tackles++;
             else stats.away_tackles++;
-            attacker.recovery_timer = std::clamp(0.22f + (defender.physical / 100.0f) * 0.18f, 0.22f, 0.40f);
-            _log_event("tackle", user_is_home, defender.name,
-                defender.name + String(" wins the ball with a decisive tackle!"));
-            possession_team = user_is_home ? 0 : 1;
-            ball_carrier_index = user_controlled_index;
-            last_touch_index = user_controlled_index;
+
+            attacker.recovery_timer = std::clamp(0.24f + (defender.physical / 100.0f) * 0.18f, 0.24f, 0.42f);
+            defender.recovery_timer = 0.26f;
+
+            // Knock ball loose along slide + perpendicular deflection angle (can reach either team)
+            Vector2 perp(-defender.slide_dir.y, defender.slide_dir.x);
+            float lateral_jitter = static_cast<float>(UtilityFunctions::randf_range(-0.65, 0.65));
+            Vector2 deflect_dir = (defender.slide_dir * 0.72f + perp * lateral_jitter).normalized();
+            float knock_speed = std::clamp(145.0f + (defender.physical * 0.85f), 145.0f, 235.0f);
+
+            possession_team = -1;
+            ball_carrier_index = -1;
             pass_target_index = -1;
             is_through_ball_in_flight = false;
-            ball_state = BALL_CARRIED;
-            ball_velocity = Vector2(0.0f, 0.0f);
-            action_decision_timer = 0.35f;
-            _end_active_chance(false);
-            return true;
-        } else {
-            float phy_resilience = std::clamp(1.15f - (defender.physical / 100.0f) * 0.30f, 0.85f, 1.08f);
-            defender.recovery_timer = 0.52f * phy_resilience;
-            _log_event("tackle_missed", user_is_home, defender.name,
-                defender.name + String(" misses the challenge — attacker breaks free!"));
-            return false;
+            ball_state = BALL_LOOSE;
+            ball_position = attacker.position + deflect_dir * 12.0f;
+            ball_velocity = deflect_dir * knock_speed;
+            last_touch_index = p_defender_idx;
+
+            _log_event("tackle", defender.is_home, defender.name,
+                defender.name + String(" slides in and knocks the ball loose!"));
+            return;
         }
-    } else if (ball_state == BALL_LOOSE && dist_to_ball <= 26.0f) {
-        if (user_is_home) stats.home_tackles++;
+    } else if (ball_state == BALL_LOOSE && defender.position.distance_to(ball_position) <= 22.0f) {
+        if (defender.is_home) stats.home_tackles++;
         else stats.away_tackles++;
-        possession_team = user_is_home ? 0 : 1;
-        ball_carrier_index = user_controlled_index;
-        last_touch_index = user_controlled_index;
-        pass_target_index = -1;
-        is_through_ball_in_flight = false;
-        ball_state = BALL_CARRIED;
-        ball_velocity = Vector2(0.0f, 0.0f);
-        _end_active_chance(false);
-        return true;
+
+        Vector2 clear_dir = defender.slide_dir;
+        possession_team = -1;
+        ball_carrier_index = -1;
+        ball_state = BALL_LOOSE;
+        ball_velocity = clear_dir * 185.0f;
+        last_touch_index = p_defender_idx;
+        defender.recovery_timer = 0.30f;
+        return;
     }
 
-    return false;
+    // Missed slide tackle
+    float phy_resilience = std::clamp(1.16f - (defender.physical / 100.0f) * 0.28f, 0.86f, 1.08f);
+    defender.recovery_timer = 0.62f * phy_resilience;
+    _log_event("tackle_missed", defender.is_home, defender.name,
+        defender.name + String(" misses the slide tackle!"));
 }
 
 bool MatchEngine::begin_chance(bool p_is_home_attacking, int p_attacker_idx, float p_xg) {
@@ -2655,6 +2731,15 @@ Vector2 MatchEngine::_compute_tactical_target(
         if (ball_carrier_index == p_index) {
             return p_player.position;
         }
+        if (gk_rush_active && p_index == _user_gk_idx()) {
+            Vector2 intercept = ball_position + (ball_velocity * 0.16f);
+            float max_rush_x = is_home ? std::min(field_size.x * 0.34f, 260.0f)
+                                       : std::max(field_size.x * 0.66f, field_size.x - 260.0f);
+            float clamped_x = is_home ? std::clamp(intercept.x, 14.0f, max_rush_x)
+                                      : std::clamp(intercept.x, max_rush_x, field_size.x - 14.0f);
+            float clamped_y = std::clamp(intercept.y, field_size.y * 0.22f, field_size.y * 0.78f);
+            return Vector2(clamped_x, clamped_y);
+        }
         float gk_depth = 18.0f + (ball_prog * 14.0f);
         float target_x = own_goal_x + (attack_dir * gk_depth);
         float target_y = center_y + (ball_center_offset_y * 0.14f);
@@ -2863,6 +2948,18 @@ void MatchEngine::_update_player_movement(float dt) {
 
     for (int i = 0; i < 22; i++) {
         SimPlayer& p = sim_players[i];
+        if (p.slide_timer > 0.0f) {
+            p.slide_timer = std::max(0.0f, p.slide_timer - dt);
+            if (p.slide_timer <= 0.0f && p.is_sliding) {
+                p.is_sliding = false;
+                p.recovery_timer = std::max(p.recovery_timer, 0.56f);
+            }
+        }
+        if (ball_state == BALL_CARRIED && ball_carrier_index == i) {
+            p.dribble_carry_distance += p.velocity.length() * dt;
+        } else {
+            p.dribble_carry_distance = 0.0f;
+        }
         if (p.recovery_timer > 0.0f) {
             p.recovery_timer = std::max(0.0f, p.recovery_timer - dt);
         }
@@ -2895,30 +2992,33 @@ void MatchEngine::_update_player_movement(float dt) {
         float team_line_x = p.is_home ? home_backline_x : away_backline_x;
         bool is_recovering = _is_player_recovering_position(p, team_line_x) && (dist > 28.0f);
 
-        float max_speed = (95.0f + p.pace * 0.85f) * fatigue_mult * tempo_speed_mult;
+        float max_speed = (95.0f + p.pace * 0.88f) * fatigue_mult * tempo_speed_mult;
         if (p.role == "GK") {
-            max_speed *= 0.68f;
-        } else if ((p.is_home != user_is_home) && chance_state == _user_attack_chance_state()) {
-            max_speed *= (0.91f + def_quality * 0.09f);
+            bool is_rushing_user_gk = (gk_rush_active && i == _user_gk_idx());
+            max_speed = is_rushing_user_gk
+                ? ((98.0f + p.pace * 0.92f) * fatigue_mult)
+                : (max_speed * 0.68f);
         } else if ((p.is_home == user_is_home) && chance_state == _user_attack_chance_state() && i != user_controlled_index && p.role != "CB") {
-            max_speed *= 1.10f;
+            max_speed *= 1.07f;
         }
 
-        if (p.recovery_timer > 0.0f) {
+        if (p.is_sliding) {
+            max_speed = (155.0f + p.pace * 0.65f + p.physical * 0.35f) * fatigue_mult;
+        } else if (p.recovery_timer > 0.0f) {
             max_speed *= 0.35f;
         } else if (is_user_ball_carrier) {
-            max_speed = (114.0f + p.pace * 0.72f + p.dribbling * 0.42f) * fatigue_mult * tempo_speed_mult;
+            float carry_fatigue_drag = 1.0f - std::clamp((p.dribble_carry_distance - 85.0f) / 260.0f, 0.0f, 0.13f);
+            max_speed = (93.0f + p.pace * 0.84f + p.dribbling * 0.14f) * fatigue_mult * tempo_speed_mult * carry_fatigue_drag;
             if (p.dribble_boost_timer > 0.0f) {
-                max_speed *= 1.18f;
+                max_speed *= 1.07f;
             }
         } else if (p.sprint_boost_timer > 0.0f) {
-            max_speed *= 1.18f;
+            max_speed *= 1.15f;
         } else if (is_recovering) {
-            // Pace-coupled defensive recovery sprint when caught high or tracking runners behind
-            float pace_recovery_boost = 1.04f + (std::clamp(p.pace / 100.0f, 0.30f, 1.0f) * 0.12f);
+            float pace_recovery_boost = 1.05f + (std::clamp(p.pace / 100.0f, 0.30f, 1.0f) * 0.13f);
             max_speed *= pace_recovery_boost;
         } else if (ball_carrier_index == i && ball_state == BALL_CARRIED) {
-            max_speed *= 0.92f;
+            max_speed *= 0.93f;
         }
 
         Vector2 desired_vel(0.0f, 0.0f);
@@ -2951,9 +3051,6 @@ void MatchEngine::_update_player_movement(float dt) {
         if (desired_vel.length() > max_speed * 1.12f) {
             desired_vel = desired_vel.normalized() * (max_speed * 1.12f);
         }
-
-        float smooth_factor = is_user_ball_carrier ? dribble_smooth_factor : default_smooth_factor;
-        p.velocity = p.velocity.lerp(desired_vel, smooth_factor);
 
         int team_pressing = p.is_home ? home_pressing : away_pressing;
         int team_mentality = p.is_home ? home_mentality : away_mentality;
@@ -2989,6 +3086,10 @@ void MatchEngine::_update_player_movement(float dt) {
         p.velocity = p.velocity.lerp(desired_vel, steer_alpha);
         if (des_speed < 1.0f && p.velocity.length() < 3.5f) {
             p.velocity = Vector2(0.0f, 0.0f);
+        }
+        if (p.is_sliding) {
+            float slide_decay = std::clamp(p.slide_timer / 0.34f, 0.35f, 1.0f);
+            desired_vel = p.slide_dir * (max_speed * slide_decay);
         }
         p.position += p.velocity * dt;
         p.position.x = std::clamp(p.position.x, margin, field_size.x - margin);
@@ -3427,6 +3528,26 @@ void MatchEngine::_update_ball_and_actions(float dt) {
         stats.away_possession_time += dt;
     }
 
+    if (gk_rush_active) {
+        gk_rush_timer -= dt;
+        int user_team = user_is_home ? 0 : 1;
+        bool ball_in_opp_half = user_is_home ? (ball_position.x > field_size.x * 0.56f)
+                                             : (ball_position.x < field_size.x * 0.44f);
+        if (gk_rush_timer <= 0.0f || possession_team == user_team || ball_in_opp_half) {
+            cancel_gk_rush();
+        } else if (ball_state != BALL_IN_SHOT && _try_gk_rush_intercept()) {
+            return;
+        }
+    }
+
+    if (manual_control_active && _is_user_outfield_idx(user_controlled_index)) {
+        SimPlayer& ctrl_def = sim_players[user_controlled_index];
+        if (ctrl_def.is_sliding && ctrl_def.position.distance_to(ball_position) <= 19.5f) {
+            _resolve_slide_tackle_contact(user_controlled_index);
+            return;
+        }
+    }
+
     // STATE 1: Ball Carried at Player's Feet
     if (ball_state == BALL_CARRIED && ball_carrier_index >= 0 && ball_carrier_index < 22) {
         const SimPlayer& carrier = sim_players[ball_carrier_index];
@@ -3800,14 +3921,23 @@ void MatchEngine::_update_ball_and_actions(float dt) {
             float corner_penalty = std::clamp(gk_reach_offset / 44.0f, 0.0f, 1.0f) * 0.22f;
             float power_penalty = std::clamp((last_shot_power_ratio - 0.65f) * 0.16f, 0.0f, 0.11f);
 
+            Vector2 def_goal_center(shooter_is_home ? field_size.x : 0.0f, field_size.y * 0.5f);
+            float gk_off_line_dist = std::max(0.0f, gk.position.distance_to(def_goal_center) - 36.0f);
+            float exposed_goal_penalty = std::clamp(gk_off_line_dist / 150.0f, 0.0f, 0.32f);
+
             float raw_save_prob = 0.34f
                 + (((gk.defending * gk_fatigue) - (shooter.shooting * shooter_fatigue)) * 0.0032f)
                 - corner_penalty
-                - power_penalty;
+                - power_penalty
+                - exposed_goal_penalty;
 
             float save_prob = is_user_attack_chance
                 ? std::clamp(raw_save_prob * 0.82f, 0.06f, 0.42f)
-                : std::clamp(raw_save_prob, 0.08f, 0.52f);
+                : std::clamp(raw_save_prob, 0.04f, 0.52f);
+            
+            if (gk_rush_active && !shooter_is_home == user_is_home) {
+                cancel_gk_rush();
+            }
 
             if (!can_score_now || UtilityFunctions::randf() < save_prob) {
                 shot_hits_crossbar = false;
@@ -3874,6 +4004,137 @@ void MatchEngine::_update_ball_and_actions(float dt) {
         ball_velocity = Vector2(0.0f, 0.0f);
         action_decision_timer = 0.30f;
     }
+}
+
+bool MatchEngine::command_gk_rush() {
+    if (!match_active || sim_players.size() != 22 || waiting_for_kickoff_resume) {
+        return false;
+    }
+    int user_team = user_is_home ? 0 : 1;
+    if (possession_team == user_team && ball_state == BALL_CARRIED) {
+        return false;
+    }
+
+    int gk_idx = _user_gk_idx();
+    if (gk_idx < 0 || gk_idx >= 22) {
+        return false;
+    }
+
+    gk_rush_active = true;
+    gk_rush_timer = 3.2f;
+    gk_rush_target = ball_position + (ball_velocity * 0.16f);
+    is_paused_for_manual = false;
+
+    _log_event("gk_rush", user_is_home, sim_players[gk_idx].name,
+        sim_players[gk_idx].name + String(" rushes off the line!"));
+    emit_signal("gk_rush_changed", true, gk_idx);
+    return true;
+}
+
+void MatchEngine::cancel_gk_rush() {
+    if (!gk_rush_active) return;
+    gk_rush_active = false;
+    gk_rush_timer = 0.0f;
+    emit_signal("gk_rush_changed", false, _user_gk_idx());
+}
+
+void MatchEngine::_execute_gk_rush_clearance(int p_gk_idx) {
+    SimPlayer& gk = sim_players[p_gk_idx];
+    float clear_dir = gk.is_home ? 1.0f : -1.0f;
+    float center_y = field_size.y * 0.5f;
+    float flank_sign = (gk.position.y >= center_y) ? 1.0f : -1.0f;
+    float kick_power = std::clamp(290.0f + gk.defending * 1.65f, 280.0f, 460.0f);
+
+    Vector2 target(
+        std::clamp(gk.position.x + clear_dir * 260.0f, 32.0f, field_size.x - 32.0f),
+        std::clamp(gk.position.y + flank_sign * 165.0f, 22.0f, field_size.y - 22.0f)
+    );
+    Vector2 dir = (target - ball_position).normalized();
+
+    ball_position = gk.position + Vector2(clear_dir * 10.0f, 0.0f);
+    ball_target = target;
+    ball_velocity = dir * kick_power;
+    ball_state = BALL_LOOSE;
+    possession_team = -1;
+    ball_carrier_index = -1;
+    pass_target_index = -1;
+    is_through_ball_in_flight = false;
+    last_touch_index = p_gk_idx;
+
+    cancel_gk_rush();
+    _log_event("gk_rush_clear", gk.is_home, gk.name,
+        gk.name + String(" sweeps outside the area and clears into touch!"));
+    if (chance_state == _user_defend_chance_state()) {
+        _end_active_chance(false);
+    }
+}
+
+bool MatchEngine::_try_gk_rush_intercept() {
+    if (!gk_rush_active) return false;
+    int gk_idx = _user_gk_idx();
+    if (gk_idx < 0 || gk_idx >= 22) return false;
+
+    SimPlayer& gk = sim_players[gk_idx];
+    float dist_to_ball = gk.position.distance_to(ball_position);
+    if (dist_to_ball > 19.5f) {
+        return false;
+    }
+
+    float own_goal_x = gk.is_home ? 0.0f : field_size.x;
+    float dist_from_goal = std::abs(gk.position.x - own_goal_x);
+    bool inside_box = (dist_from_goal <= 145.0f && std::abs(gk.position.y - field_size.y * 0.5f) <= 168.0f);
+
+    int opp_start = gk.is_home ? 11 : 0;
+    float nearest_opp_dist = 1e9f;
+    int nearest_opp_idx = -1;
+    for (int j = opp_start; j < opp_start + 11; j++) {
+        float d = sim_players[j].position.distance_to(ball_position);
+        if (d < nearest_opp_dist) {
+            nearest_opp_dist = d;
+            nearest_opp_idx = j;
+        }
+    }
+
+    float gk_fatigue = _get_fatigue_multiplier(gk);
+    float gk_sweep_score = (gk.defending * 0.45f + gk.physical * 0.30f + gk.pace * 0.25f) * gk_fatigue;
+    float opp_race_score = (nearest_opp_idx != -1)
+        ? ((sim_players[nearest_opp_idx].dribbling * 0.50f + sim_players[nearest_opp_idx].pace * 0.50f) * _get_fatigue_multiplier(sim_players[nearest_opp_idx]))
+        : 55.0f;
+
+    // If an opponent attacker is right on the ball and wins the 1v1 race, GK is beaten
+    if (nearest_opp_dist < dist_to_ball + 2.0f) {
+        float win_race_prob = std::clamp(0.48f + (gk_sweep_score - opp_race_score) * 0.008f, 0.18f, 0.82f);
+        if (UtilityFunctions::randf() >= win_race_prob) {
+            gk.recovery_timer = 0.65f;
+            cancel_gk_rush();
+            _log_event("gk_rush_beaten", gk.is_home, gk.name,
+                gk.name + String(" rushes out late and is rounded — goal exposed!"));
+            return false;
+        }
+    }
+
+    bool can_safely_catch = inside_box && (nearest_opp_dist > 24.0f) && (ball_state != BALL_IN_SHOT);
+    if (can_safely_catch) {
+        possession_team = gk.is_home ? 0 : 1;
+        ball_carrier_index = gk_idx;
+        last_touch_index = gk_idx;
+        pass_target_index = -1;
+        is_through_ball_in_flight = false;
+        ball_state = BALL_CARRIED;
+        ball_position = gk.position + Vector2(gk.is_home ? 8.0f : -8.0f, 0.0f);
+        ball_velocity = Vector2(0.0f, 0.0f);
+        action_decision_timer = 0.60f;
+        cancel_gk_rush();
+        _log_event("gk_rush_catch", gk.is_home, gk.name,
+            gk.name + String(" charges out and smothers the ball!"));
+        if (chance_state == _user_defend_chance_state()) {
+            _end_active_chance(false);
+        }
+        return true;
+    }
+
+    _execute_gk_rush_clearance(gk_idx);
+    return true;
 }
 
 void MatchEngine::_step_simulation(float dt) {

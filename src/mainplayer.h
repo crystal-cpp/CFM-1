@@ -228,8 +228,6 @@ public:
     int GetClubId() const { return ClubId; }
     void SetClubId(int p_club_id) { ClubId = p_club_id; }
 
-    int GetCondition() const { return Condition; }
-    void SetCondition(int p_cond) { Condition = std::clamp(p_cond, 0, 100); }
 
     int GetMorale() const { return Morale; }
     void SetMorale(int p_mor) { Morale = std::clamp(p_mor, 0, 100); }
@@ -371,8 +369,7 @@ private:
 
     int Id = 0;
     int ClubId = -1;
-    int Condition = 100;
-    int Morale = 80;
+    int Morale = 100;
     int64_t Wage = 5000;
     int ContractYears = 3;
     int Appearances = 0;
