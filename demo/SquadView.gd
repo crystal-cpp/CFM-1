@@ -263,7 +263,7 @@ func _ensure_ui_built() -> void:
 	var pitch_card := PanelContainer.new()
 	pitch_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pitch_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	pitch_card.size_flags_stretch_ratio = 0.88
+	pitch_card.size_flags_stretch_ratio = 1.65
 	var pc_style := StyleBoxFlat.new()
 	pc_style.bg_color = Color(0.035, 0.085, 0.065, 0.98)
 	pc_style.border_color = Color(0.11, 0.82, 0.63, 0.70)
@@ -290,7 +290,7 @@ func _ensure_ui_built() -> void:
 	var right_card := PanelContainer.new()
 	right_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	right_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	right_card.size_flags_stretch_ratio = 1.12
+	right_card.size_flags_stretch_ratio = 0.85
 	var rc_style := StyleBoxFlat.new()
 	rc_style.bg_color = Color(0.043, 0.063, 0.106, 0.95)
 	rc_style.border_color = Color(0.12, 0.20, 0.32, 0.85)
@@ -419,9 +419,12 @@ func refresh_squad() -> void:
 		if i < 11 and i < slots_def.size():
 			var slot_meta: Dictionary = slots_def[i]
 			var card: Button = _create_pitch_player_node(p, String(slot_meta["role"]))
-			var px: float = float(slot_meta["x"]) * pw - 52.0
-			var py: float = float(slot_meta["y"]) * ph - 26.0
-			card.position = Vector2(clampf(px, 8.0, pw - 112.0), clampf(py, 8.0, ph - 58.0))
+			var card_w: float = 122.0
+			var card_h: float = 54.0
+			var px: float = float(slot_meta["x"]) * pw - card_w * 0.5
+			var py: float = float(slot_meta["y"]) * ph - card_h * 0.5
+			card.custom_minimum_size = Vector2(card_w, card_h)
+			card.position = Vector2(clampf(px, 8.0, maxf(8.0, pw - card_w - 8.0)), clampf(py, 8.0, maxf(8.0, ph - card_h - 8.0)))
 			_pitch_slots_layer.add_child(card)
 		elif i < 18:
 			_bench_vbox.add_child(_create_list_player_row(p, "SUB %d" % (i - 10)))
@@ -459,7 +462,7 @@ func _create_pitch_player_node(p: Dictionary, slot_role: String) -> Button:
 	var inj_tier: String = _format_injury_tier(inj_days, String(p.get("injury_label", "")))
 
 	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(106, 52)
+	btn.custom_minimum_size = Vector2(122, 54)
 	btn.focus_mode = Control.FOCUS_NONE
 	if is_injured:
 		btn.text = "%s%s\n%s · INJ %dd" % [cap_prefix, short_name, slot_role, inj_days]
