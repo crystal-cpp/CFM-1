@@ -452,15 +452,22 @@ func _create_pitch_player_node(p: Dictionary, slot_role: String) -> Button:
 	var fit_col: Color = _get_position_fit_color(p_pos, slot_role)
 	var is_selected: bool = (pid == _selected_player_id)
 	var cap_prefix: String = "© " if pid == _captain_id else ""
+	var is_injured: bool = bool(p.get("is_injured", false)) or int(p.get("injury_days_remaining", 0)) > 0
+	var inj_days: int = int(p.get("injury_days_remaining", 0))
+	var inj_tier: String = _format_injury_tier(inj_days, String(p.get("injury_severity", "")))
 
 	var btn := Button.new()
 	btn.custom_minimum_size = Vector2(106, 52)
 	btn.focus_mode = Control.FOCUS_NONE
-	btn.text = "%s%s\n%s/%s · %d (%d%%)" % [cap_prefix, short_name, slot_role, p_pos, ovr, cond]
+	if is_injured:
+		btn.text = "%s%s\n%s · INJ %dd" % [cap_prefix, short_name, slot_role, inj_days]
+		btn.tooltip_text = "%s Injury (%d days left) — Must be replaced before kickoff" % [inj_tier, inj_days]
+	else:
+		btn.text = "%s%s\n%s/%s · %d (%d%%)" % [cap_prefix, short_name, slot_role, p_pos, ovr, cond]
 	btn.add_theme_font_size_override("font_size", 10)
 
-	var bg := Color(0.12, 0.38, 0.26, 0.98) if is_selected else Color(0.043, 0.063, 0.106, 0.95)
-	var border := Color(1.0, 0.90, 0.30, 1.0) if is_selected else fit_col
+	var bg := Color(0.12, 0.38, 0.26, 0.98) if is_selected else (Color(0.24, 0.06, 0.08, 0.96) if is_injured else Color(0.043, 0.063, 0.106, 0.95))
+	var border := Color(1.0, 0.90, 0.30, 1.0) if is_selected else (Color(0.95, 0.24, 0.28, 1.0) if is_injured else fit_col)
 	_style_btn(btn, bg, border, Color.WHITE)
 	btn.pressed.connect(func() -> void: _on_player_clicked(pid))
 	return btn
@@ -505,6 +512,18 @@ func _on_player_clicked(player_id: int) -> void:
 	career_state.swap_squad_players(club_id, _selected_player_id, player_id)
 	_selected_player_id = -1
 	refresh_squad()
+
+func _format_injury_tier(days_left: int, raw_severity: String) -> String:
+	var severity: String = raw_severity.strip_edges()
+	if not severity.is_empty():
+		return severity
+	if days_left <= 5:
+		return "Minor"
+	if days_left <= 14:
+		return "Moderate"
+	if days_left <= 60:
+		return "Major"
+	return "Severe"
 
 func _on_make_captain_pressed() -> void:
 	if _selected_player_id == -1 or not is_instance_valid(career_state):
