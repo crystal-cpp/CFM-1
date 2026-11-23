@@ -321,7 +321,7 @@ Source-only corrective changes have been committed after the Phase 5E implementa
 
 ### Phase 6D & Phase 7E/7F — Player-Facing Playstyle Display, Gated Gameplay & Retirement
 
-* **Phase 6D (Player-Facing Display)**: Exposes the three existing `Playstyle 1..3` metadata fields in player attribute/profile views. This does not grant gameplay effects or alter eligibility.\n\n* **Phase 7E (`PlaystylesDescription.txt`)**: Unlocks the 22 Playstyles exclusively for senior players with `BaseOVR > 96 && !IsAcademyProduct`, wiring `Playstyle 1..3` metadata into `MatchEngine` behaviors and the relevant player UI.
+* **Phase 6D (Match-Control Polish & Player-Facing Display)**: Completes any remaining input/UI integration checks for goalkeeper behaviors specified in Phase 5F/5H, without duplicating their gameplay implementation, and exposes the three existing `Playstyle 1..3` metadata fields in player attribute/profile views. This does not grant gameplay effects or alter eligibility.\n\n* **Phase 7E (`PlaystylesDescription.txt`)**: Unlocks the 22 Playstyles exclusively for senior players with `BaseOVR > 96 && !IsAcademyProduct`, wiring `Playstyle 1..3` metadata into `MatchEngine` behaviors and the relevant player UI.
 
 * **Phase 7F (Mandatory Age-37 Retirement)**: Builds on the committed `RetirementAge = 37` data/save normalization to add contract length clamping ($\min(5, \max(1, 37 - \text{Age}))$), `"Retiring at End of Season"` status badges at `Age == 36`, July 1 rollover removal of `Age >= 37` players from active squads/market/match payloads, automatic Best-XI rebalance (preserving `GK` in Slot `0`), and a `"BOARD"` Inbox retirement report.
 
@@ -367,7 +367,7 @@ Source-only corrective changes have been committed after the Phase 5E implementa
 
 * **C++23 GDExtension Core (`src/`)**:
 
-  * `src/match_engine.h` / `src/match_engine.cpp` (Phase 1–2C simulation engine; Phase 5E partial stamina/attribute/AI/movement implementation in `30e281a`, HUD/MatchScene follow-ups in `9a1e9a5` and `0822a95`; stray-token compile blocker in `_compute_tactical_target` was removed in `52729a`; remaining clearance/defender coupling and balance verification; planned Phase 5K `GOAL_CELEBRATION` 3–5s state & event hooks; planned Phase 7E Playstyle hooks)
+  * `src/match_engine.h` / `src/match_engine.cpp` (Phase 1–2C simulation engine; Phase 5E user-verified stamina/attribute/AI/movement implementation in `30e281a`, HUD/MatchScene follow-ups in `9a1e9a5` and `0822a95`; stray-token compile blocker in `_compute_tactical_target` was removed in `52729a`; remaining clearance/defender coupling and balance verification; planned Phase 5K `GOAL_CELEBRATION` 3–5s state & event hooks; planned Phase 7E Playstyle hooks)
 
   * `src/CareerState.h` / `src/CareerState.cpp` (Phase 3A & Phase 4A central career state, GK-only Slot `0` guard, GK 6-stat export, player metadata & Age-37 save normalization; planned Phase 5D `clubs.csv` & Codes; planned Phase 5F/5G/6B/7E/7F systems)
 
