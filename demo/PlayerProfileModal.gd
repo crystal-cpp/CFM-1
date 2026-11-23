@@ -30,6 +30,8 @@ var _contract_key_lbl: Label
 var _contract_val_lbl: Label
 var _value_val_lbl: Label
 var _stats_val_lbl: Label
+var _injury_key_lbl: Label
+var _injury_val_lbl: Label
 
 # Context Actions Container
 var _actions_hbox: HBoxContainer
@@ -257,6 +259,9 @@ func _ensure_ui_built() -> void:
 
 	_value_val_lbl = _add_stat_row_pair(status_vbox, "Market Value:", "$24.5M")[1]
 	_stats_val_lbl = _add_stat_row_pair(status_vbox, "Season Stats:", "0 Apps · 0 Goals · 0 Ast")[1]
+	var inj_row: Array[Label] = _add_stat_row_pair(status_vbox, "Medical Status:", "Fit & Available")
+	_injury_key_lbl = inj_row[0]
+	_injury_val_lbl = inj_row[1]
 
 	root_vbox.add_child(HSeparator.new())
 
@@ -388,7 +393,8 @@ func open_player(player_id: int, context_mode: String = "SQUAD") -> void:
 
 	var cond: int = int(profile.get("condition", 100))
 	_cond_bar.value = cond
-	_cond_val_lbl.text = "%d%%" % cond
+	var days_to_full: int = int(ceili(maxf(0.0, 100.0 - float(cond)) / 30.0))
+	_cond_val_lbl.text = ("%d%% (~%dd to 100%%)" % [cond, days_to_full]) if days_to_full > 0 else "100%"
 
 	var mor: int = int(profile.get("morale", 80))
 	_morale_bar.value = mor
@@ -414,6 +420,19 @@ func open_player(player_id: int, context_mode: String = "SQUAD") -> void:
 	var goals: int = int(profile.get("goals", 0))
 	var assists: int = int(profile.get("assists", 0))
 	_stats_val_lbl.text = "%d Apps · %d Goals · %d Ast" % [apps, goals, assists]
+
+	var is_injured: bool = bool(profile.get("is_injured", false)) or int(profile.get("injury_days_remaining", 0)) > 0
+	var inj_days: int = int(profile.get("injury_days_remaining", 0))
+	if is_injured:
+		var tier: String = String(profile.get("injury_severity", "")).strip_edges()
+		if tier.is_empty():
+			tier = "Minor" if inj_days <= 5 else ("Moderate" if inj_days <= 14 else ("Major" if inj_days <= 60 else "Severe"))
+		var val_note: String = " (-5% to -10% value)" if tier.to_lower().begins_with("severe") else ""
+		_injury_val_lbl.text = "%s · %d day(s) left%s" % [tier, inj_days, val_note]
+		_injury_val_lbl.add_theme_color_override("font_color", Color(1.0, 0.35, 0.38))
+	else:
+		_injury_val_lbl.text = "Fit & Available"
+		_injury_val_lbl.add_theme_color_override("font_color", Color(0.25, 0.95, 0.60))
 
 	_build_context_actions(profile)
 	visible = true
