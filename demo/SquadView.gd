@@ -480,16 +480,20 @@ func _create_list_player_row(p: Dictionary, tag: String) -> Button:
 	var name_str: String = String(p.get("name", "Player"))
 	var is_selected: bool = (pid == _selected_player_id)
 	var cap_str: String = " [C]" if pid == _captain_id else ""
-
+	var is_injured: bool = bool(p.get("is_injured", false)) or int(p.get("injury_days_remaining", 0)) > 0
+	var inj_days: int = int(p.get("injury_days_remaining", 0))
+	var inj_tier: String = _format_injury_tier(inj_days, String(p.get("injury_severity", "")))
+	var status_str: String = ("INJ %s (%dd)" % [inj_tier, inj_days]) if is_injured else ("Fit %d%%" % cond)
 	var btn := Button.new()
 	btn.custom_minimum_size = Vector2(0, 34)
 	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	btn.focus_mode = Control.FOCUS_NONE
-	btn.text = " %-6s | %-3s | %-18s%s | OVR %d | Fit %d%%" % [tag, p_pos, name_str, cap_str, ovr, cond]
+	btn.text = " %-6s | %-3s | %-18s%s | OVR %d | %s" % [tag, p_pos, name_str, cap_str, ovr, status_str]
 	btn.add_theme_font_size_override("font_size", 11)
-
-	var bg := Color(0.10, 0.34, 0.24, 0.95) if is_selected else Color(0.06, 0.09, 0.15, 0.90)
-	var border := Color(0.18, 0.95, 0.58, 0.95) if is_selected else Color(0.14, 0.22, 0.34, 0.70)
+	if is_injured:
+		btn.tooltip_text = "Injured (%s, %d day(s) remaining) — Unavailable for matchday XI/Bench" % [inj_tier, inj_days]
+	var bg := Color(0.10, 0.34, 0.24, 0.95) if is_selected else (Color(0.20, 0.06, 0.08, 0.92) if is_injured else Color(0.06, 0.09, 0.15, 0.90))
+	var border := Color(0.18, 0.95, 0.58, 0.95) if is_selected else (Color(0.92, 0.25, 0.30, 0.90) if is_injured else Color(0.14, 0.22, 0.34, 0.70))
 	_style_btn(btn, bg, border, Color(0.90, 0.95, 1.0))
 	btn.pressed.connect(func() -> void: _on_player_clicked(pid))
 	return btn
@@ -499,19 +503,53 @@ func _on_player_clicked(player_id: int) -> void:
 		_selected_player_id = player_id
 		refresh_squad()
 		return
-
 	if _selected_player_id == player_id:
-		# Double-click behavior: open PlayerProfileModal
 		_selected_player_id = -1
 		refresh_squad()
 		player_profile_requested.emit(player_id, "SQUAD")
 		return
-
-	# Swap two distinct players in C++ CareerState
+	if not is_instance_valid(career_state):
+		_selected_player_id = -1
+		refresh_squad()
+		return
 	var club_id: int = career_state.get_managed_club_id()
+	var squad: Array = career_state.get_club_squad(club_id)
+	var idx_a: int = -1
+	var idx_b: int = -1
+	var p_a: Dictionary = {}
+	var p_b: Dictionary = {}
+	for i in range(squad.size()):
+		var entry: Dictionary = squad[i]
+		var eid: int = int(entry.get("id", -1))
+		if eid == _selected_player_id:
+			idx_a = i
+			p_a = entry
+		elif eid == player_id:
+			idx_b = i
+			p_b = entry
+	if idx_a != -1 and idx_b != -1:
+		var pos_a: String = String(p_a.get("position", "CM")).to_upper()
+		var pos_b: String = String(p_b.get("position", "CM")).to_upper()
+		if (idx_a == 0 and pos_b != "GK") or (idx_b == 0 and pos_a != "GK") or \
+		   (idx_a >= 1 and idx_a <= 10 and pos_b == "GK") or (idx_b >= 1 and idx_b <= 10 and pos_a == "GK"):
+			_selected_player_id = -1
+			refresh_squad()
+			_selection_banner.add_theme_color_override("font_color", Color(1.0, 0.42, 0.45))
+			_selection_banner.text = "Only Goalkeepers (GK) can play in the GK slot!"
+			return
+		var inj_a: bool = bool(p_a.get("is_injured", false)) or int(p_a.get("injury_days_remaining", 0)) > 0
+		var inj_b: bool = bool(p_b.get("is_injured", false)) or int(p_b.get("injury_days_remaining", 0)) > 0
+		if (inj_a and idx_b < 18) or (inj_b and idx_a < 18):
+			var blocked_p: Dictionary = p_a if inj_a else p_b
+			var rem_d: int = int(blocked_p.get("injury_days_remaining", 1))
+			_selected_player_id = -1
+			refresh_squad()
+			_selection_banner.add_theme_color_override("font_color", Color(1.0, 0.42, 0.45))
+			_selection_banner.text = "Blocked: %s is injured (%s · %dd left) and cannot enter XI or Bench." % [String(blocked_p.get("name", "Player")), _format_injury_tier(rem_d, String(blocked_p.get("injury_severity", ""))), rem_d]
+			return
 	career_state.swap_squad_players(club_id, _selected_player_id, player_id)
 	_selected_player_id = -1
-	refresh_squad()
+	refresh_squad
 
 func _format_injury_tier(days_left: int, raw_severity: String) -> String:
 	var severity: String = raw_severity.strip_edges()
