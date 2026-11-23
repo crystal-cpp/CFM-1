@@ -171,18 +171,16 @@ func _ensure_ui_built() -> void:
 
 	# Top Bar
 	var top_hbox := HBoxContainer.new()
-	top_hbox.add_theme_constant_override("separation", 10)
+	top_hbox.add_theme_constant_override("separation", 7)
 	main_vbox.add_child(top_hbox)
 
 	_header_title = Label.new()
 	_header_title.text = "SQUAD MANAGEMENT"
 	_header_title.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
-	_header_title.add_theme_font_size_override("font_size", 20)
+	_header_title.add_theme_font_size_override("font_size", 17)
+	_header_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_header_title.clip_text = true
 	top_hbox.add_child(_header_title)
-
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top_hbox.add_child(spacer)
 
 	_formation_pill = _create_badge("Formation: 4-3-3", Color(0.16, 0.38, 0.68), Color(0.75, 0.88, 1.0))
 	top_hbox.add_child(_formation_pill)
@@ -194,7 +192,7 @@ func _ensure_ui_built() -> void:
 	top_hbox.add_child(_avg_cond_pill)
 
 	var tactics_shortcut := Button.new()
-	tactics_shortcut.text = "📋 Club Tactics"
+	tactics_shortcut.text = "📋 Tactics"
 	tactics_shortcut.focus_mode = Control.FOCUS_NONE
 	_style_btn(tactics_shortcut, Color(0.07, 0.12, 0.20, 0.95), Color(0.18, 0.28, 0.44, 0.85))
 	tactics_shortcut.pressed.connect(func() -> void: route_requested.emit("tactics"))
@@ -221,6 +219,8 @@ func _ensure_ui_built() -> void:
 	_selection_banner = Label.new()
 	_selection_banner.text = "Select any player on the pitch, bench, or reserves to swap positions or inspect attributes."
 	_selection_banner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_selection_banner.custom_minimum_size.x = 0
+	_selection_banner.clip_text = true
 	_selection_banner.add_theme_color_override("font_color", Color(0.75, 0.84, 0.95))
 	_selection_banner.add_theme_font_size_override("font_size", 12)
 	tb_hbox.add_child(_selection_banner)
@@ -263,7 +263,7 @@ func _ensure_ui_built() -> void:
 	var pitch_card := PanelContainer.new()
 	pitch_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pitch_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	pitch_card.size_flags_stretch_ratio = 1.25
+	pitch_card.size_flags_stretch_ratio = 0.88
 	var pc_style := StyleBoxFlat.new()
 	pc_style.bg_color = Color(0.035, 0.085, 0.065, 0.98)
 	pc_style.border_color = Color(0.11, 0.82, 0.63, 0.70)
@@ -271,6 +271,7 @@ func _ensure_ui_built() -> void:
 	pc_style.set_corner_radius_all(10)
 	pc_style.set_content_margin_all(10)
 	pitch_card.add_theme_stylebox_override("panel", pc_style)
+	pitch_card.custom_minimum_size = Vector2(280, 0)
 	split.add_child(pitch_card)
 
 	_pitch_canvas = Control.new()
@@ -289,7 +290,7 @@ func _ensure_ui_built() -> void:
 	var right_card := PanelContainer.new()
 	right_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	right_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	right_card.size_flags_stretch_ratio = 1.0
+	right_card.size_flags_stretch_ratio = 1.12
 	var rc_style := StyleBoxFlat.new()
 	rc_style.bg_color = Color(0.043, 0.063, 0.106, 0.95)
 	rc_style.border_color = Color(0.12, 0.20, 0.32, 0.85)
@@ -301,6 +302,7 @@ func _ensure_ui_built() -> void:
 
 	var right_scroll := ScrollContainer.new()
 	right_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	right_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	right_card.add_child(right_scroll)
 
@@ -365,7 +367,7 @@ func refresh_squad() -> void:
 	_current_formation = String(club_info.get("formation", "4-3-3"))
 	_captain_id = int(club_info.get("captain_id", -1))
 
-	_header_title.text = "%s — SQUAD MANAGEMENT" % String(club_info.get("name", "Club")).to_upper()
+	_header_title.text = "SQUAD MANAGEMENT"
 	_formation_pill.text = "Formation: %s" % _current_formation
 	_team_ovr_pill.text = "XI OVR: %d" % int(club_info.get("team_rating", 75))
 
@@ -409,8 +411,8 @@ func refresh_squad() -> void:
 		c.queue_free()
 
 	var slots_def: Array = _formations_cache.get(_current_formation, DEFAULT_FORMATIONS["4-3-3"])
-	var pw: float = maxf(360.0, _pitch_canvas.size.x)
-	var ph: float = maxf(420.0, _pitch_canvas.size.y)
+	var pw: float = maxf(1.0, _pitch_canvas.size.x)
+	var ph: float = maxf(1.0, _pitch_canvas.size.y)
 
 	for i in range(squad.size()):
 		var p: Dictionary = squad[i]
@@ -485,11 +487,14 @@ func _create_list_player_row(p: Dictionary, tag: String) -> Button:
 	var inj_tier: String = _format_injury_tier(inj_days, String(p.get("injury_label", "")))
 	var status_str: String = ("INJ %s (%dd)" % [inj_tier, inj_days]) if is_injured else ("Fit %d%%" % cond)
 	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(0, 34)
+	btn.custom_minimum_size = Vector2(0, 32)
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.clip_text = true
 	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	btn.focus_mode = Control.FOCUS_NONE
-	btn.text = " %-6s | %-3s | %-18s%s | OVR %d | %s" % [tag, p_pos, name_str, cap_str, ovr, status_str]
-	btn.add_theme_font_size_override("font_size", 11)
+	var compact_name: String = name_str if name_str.length() <= 14 else name_str.substr(0, 13) + "…"
+	btn.text = " %s | %s | %s%s | %d | %s" % [tag, p_pos, compact_name, cap_str, ovr, status_str]
+	btn.add_theme_font_size_override("font_size", 10)
 	if is_injured:
 		btn.tooltip_text = "Injured (%s, %d day(s) remaining) — Unavailable for matchday XI/Bench" % [inj_tier, inj_days]
 	var bg := Color(0.10, 0.34, 0.24, 0.95) if is_selected else (Color(0.20, 0.06, 0.08, 0.92) if is_injured else Color(0.06, 0.09, 0.15, 0.90))
