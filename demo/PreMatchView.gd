@@ -585,115 +585,111 @@ func _build_fallback_match_context(fixture: Dictionary) -> Dictionary:
 func _create_player_row(p: Dictionary, is_starter: bool) -> HBoxContainer:
 	var pid := int(p.get("id", -1))
 	var fitness: float = float(p.get("condition", p.get("stamina", 100.0)))
+	var is_injured: bool = bool(p.get("is_injured", false)) or int(p.get("injury_days_remaining", 0)) > 0
+	var inj_days: int = int(p.get("injury_days_remaining", 0))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
-
 	var name_lbl := Label.new()
 	var tag := "" if is_starter else "SUB · "
 	name_lbl.text = "%s[%s] %s (OVR %d)" % [tag, p.get("position", "CM"), p.get("name", "Player"), int(p.get("ovr", 75))]
 	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if pid == _selected_swap_player_id:
 		name_lbl.add_theme_color_override("font_color", Color(0.25, 0.90, 1.0))
+	elif is_injured:
+		name_lbl.add_theme_color_override("font_color", Color(1.0, 0.38, 0.42))
 	elif not is_starter:
 		name_lbl.add_theme_color_override("font_color", Color(0.80, 0.85, 0.92))
 	row.add_child(name_lbl)
-
 	var stam_lbl := Label.new()
-	stam_lbl.text = "%d%%" % int(round(fitness))
-	stam_lbl.add_theme_color_override(
-		"font_color",
-		Color(0.35, 0.95, 0.55) if fitness >= 75.0 else (Color(1.0, 0.80, 0.30) if fitness >= 55.0 else Color(1.0, 0.35, 0.35))
-	)
+	if is_injured:
+		var tier := "Minor" if inj_days <= 5 else ("Moderate" if inj_days <= 14 else ("Major" if inj_days <= 60 else "Severe"))
+		if not String(p.get("injury_severity", "")).is_empty(): tier = String(p.get("injury_severity", ""))
+		stam_lbl.text = "INJ · %s (%dd)" % [tier, inj_days]
+		stam_lbl.add_theme_color_override("font_color", Color(1.0, 0.32, 0.36))
+	else:
+		var rec_rate: float = _get_daily_recovery_rate()
+		var days_to_full: int = int(ceili(maxf(0.0, 100.0 - fitness) / maxf(1.0, rec_rate * 100.0)))
+		stam_lbl.text = ("%d%% (~%dd full)" % [int(round(fitness)), days_to_full]) if days_to_full > 0 else ("%d%%" % int(round(fitness)))
+		stam_lbl.add_theme_color_override("font_color", Color(0.35, 0.95, 0.55) if fitness >= 75.0 else (Color(1.0, 0.80, 0.30) if fitness >= 55.0 else Color(1.0, 0.35, 0.35)))
 	row.add_child(stam_lbl)
-
 	if pid > 0 and is_instance_valid(career_state) and career_state.has_method("swap_squad_players"):
 		var swap_btn := Button.new()
 		swap_btn.custom_minimum_size = Vector2(78, 24)
-		if pid == _selected_swap_player_id:
-			swap_btn.text = "Cancel"
-		elif _selected_swap_player_id > 0:
-			swap_btn.text = "Swap In"
-		else:
-			swap_btn.text = "Swap"
+		swap_btn.text = "Cancel" if pid == _selected_swap_player_id else ("Swap In" if _selected_swap_player_id > 0 else "Swap")
 		swap_btn.pressed.connect(func() -> void: _on_player_swap_clicked(pid))
 		row.add_child(swap_btn)
-
 	return row
-
 
 func _on_player_swap_clicked(player_id: int) -> void:
 	if _selected_swap_player_id == player_id:
 		_selected_swap_player_id = -1
 		_refresh_view()
 		return
-
 	if _selected_swap_player_id <= 0:
 		_selected_swap_player_id = player_id
 		_refresh_view()
 		return
-
 	var first_id := _selected_swap_player_id
 	_selected_swap_player_id = -1
-
 	if is_instance_valid(career_state) and career_state.has_method("swap_squad_players"):
 		var managed_id: int = int(career_state.get_managed_club_id()) if career_state.has_method("get_managed_club_id") else int(match_context.get("home_club_id", 1))
+		var squad: Array = career_state.get_club_squad(managed_id)
+		var first_idx: int = -1
+		var second_idx: int = -1
+		var first_p: Dictionary = {}
+		var second_p: Dictionary = {}
+		for i in range(squad.size()):
+			var entry: Dictionary = squad[i]
+			var eid := int(entry.get("id", -1))
+			if eid == first_id: first_idx = i; first_p = entry
+			elif eid == player_id: second_idx = i; second_p = entry
+		var first_inj: bool = bool(first_p.get("is_injured", false)) or int(first_p.get("injury_days_remaining", 0)) > 0
+		var second_inj: bool = bool(second_p.get("is_injured", false)) or int(second_p.get("injury_days_remaining", 0)) > 0
+		if (first_inj and second_idx >= 0 and second_idx < 11) or (second_inj and first_idx >= 0 and first_idx < 11):
+			_refresh_view()
+			_swap_hint_lbl.add_theme_color_override("font_color", Color(1.0, 0.42, 0.45))
+			_swap_hint_lbl.text = "Blocked: Injured players cannot be placed in the Starting XI."
+			return
 		career_state.swap_squad_players(managed_id, first_id, player_id)
 		_sync_context_with_career_state()
-
-	_refresh_view()
-
+	_swap_hint_lbl.add_theme_color_override("font_color", Color(0.65, 0.78, 0.92))
+	_refresh_view
 
 func _refresh_view() -> void:
-	if match_context.is_empty():
-		return
+	if match_context.is_empty(): return
 	var imp: Dictionary = match_context.get("importance", {})
 	_importance_badge.text = "[ %s ]" % String(imp.get("label", "LEAGUE MATCH"))
 	_importance_badge.add_theme_color_override("font_color", imp.get("text_color", Color.WHITE))
 	_importance_desc.text = String(imp.get("description", ""))
 	_stadium_label.text = "STADIUM · %s" % String(match_context.get("stadium", "Stadium"))
-
 	_home_title.text = "%s (%d OVR)" % [match_context.get("home_club", "Home"), int(match_context.get("home_ovr", 75))]
 	_home_tag_label.text = "HOME"
 	_away_title.text = "%s (%d OVR)" % [match_context.get("away_club", "Away"), int(match_context.get("away_ovr", 75))]
 	_away_tag_label.text = "AWAY"
-
 	var kits: Dictionary = match_context.get("kits", {})
 	_home_kit_swatch.color = kits.get("home_primary", Color.RED)
 	var clash_detected: bool = bool(kits.get("clash_detected", false))
-	if clash_detected:
-		use_alternate_away_kit = true
+	if clash_detected: use_alternate_away_kit = true
 	_swap_kit_btn.disabled = clash_detected
 	_swap_kit_btn.text = "Alternate Kit Required" if clash_detected else "Toggle Away Kit"
 	var active_away: Color = kits.get("away_primary", Color.BLUE) if use_alternate_away_kit else kits.get("away_default_primary", Color.BLUE)
 	_away_kit_swatch.color = active_away
 	kits["active_away_primary"] = active_away
 	_kit_status_lbl.text = "Kit Clash Auto-Resolved (Alternate Away Kit Active)" if clash_detected else ("Alternate Away Kit Active" if use_alternate_away_kit else "No Kit Clash Detected")
-
 	var tactics: Dictionary = match_context.get("tactics", {})
 	var active_fmt: String = String(tactics.get("formation", "4-3-3"))
 	var found_fmt := false
 	for i: int in range(_formation_opt.item_count):
 		if _formation_opt.get_item_text(i) == active_fmt:
-			_formation_opt.select(i)
-			found_fmt = true
-			break
+			_formation_opt.select(i); found_fmt = true; break
 	if not found_fmt and not active_fmt.is_empty():
-		_formation_opt.add_item(active_fmt)
-		_formation_opt.select(_formation_opt.item_count - 1)
-
+		_formation_opt.add_item(active_fmt); _formation_opt.select(_formation_opt.item_count - 1)
 	var saved_mentality := int(tactics.get("mentality", 2))
-	if saved_mentality >= 0 and saved_mentality < _mentality_opt.item_count:
-		_mentality_opt.select(saved_mentality)
-
+	if saved_mentality >= 0 and saved_mentality < _mentality_opt.item_count: _mentality_opt.select(saved_mentality)
 	var saved_pressing := int(tactics.get("pressing", 1))
-	if saved_pressing >= 0 and saved_pressing < _pressing_opt.item_count:
-		_pressing_opt.select(saved_pressing)
-
-	for child: Node in _lineup_list.get_children():
-		child.queue_free()
-	for child: Node in _bench_list.get_children():
-		child.queue_free()
-
+	if saved_pressing >= 0 and saved_pressing < _pressing_opt.item_count: _pressing_opt.select(saved_pressing)
+	for child: Node in _lineup_list.get_children(): child.queue_free()
+	for child: Node in _bench_list.get_children(): child.queue_free()
 	var user_is_home: bool = bool(match_context.get("user_is_home", true))
 	var xi: Array = match_context.get("user_lineup", match_context.get("home_lineup", []) if user_is_home else match_context.get("away_lineup", []))
 	var bench: Array = match_context.get("user_bench", match_context.get("home_bench", []) if user_is_home else match_context.get("away_bench", []))
@@ -702,13 +698,15 @@ func _refresh_view() -> void:
 	var opponent_ovr: int = int(match_context.get("opponent_ovr", match_context.get("away_ovr", 75) if user_is_home else match_context.get("home_ovr", 75)))
 	var opponent_formation: String = String(match_context.get("opponent_formation", match_context.get("away_formation", "4-3-3") if user_is_home else match_context.get("home_formation", "4-3-3")))
 	var tired_count: int = 0
-
+	var injured_xi_count: int = 0
+	var total_xi_fit: float = 0.0
 	for p: Dictionary in xi:
 		var fitness: float = float(p.get("condition", p.get("stamina", 100.0)))
-		if fitness < 65.0:
-			tired_count += 1
+		var p_inj: bool = bool(p.get("is_injured", false)) or int(p.get("injury_days_remaining", 0)) > 0
+		total_xi_fit += fitness
+		if p_inj: injured_xi_count += 1
+		elif fitness < 65.0: tired_count += 1
 		_lineup_list.add_child(_create_player_row(p, true))
-
 	_bench_header_lbl.text = "BENCH / SUBSTITUTES (%d)" % bench.size()
 	if bench.is_empty():
 		var empty_bench_lbl := Label.new()
@@ -716,30 +714,32 @@ func _refresh_view() -> void:
 		empty_bench_lbl.add_theme_color_override("font_color", Color(0.60, 0.66, 0.76))
 		_bench_list.add_child(empty_bench_lbl)
 	else:
-		for bp: Dictionary in bench:
-			_bench_list.add_child(_create_player_row(bp, false))
-
+		for bp: Dictionary in bench: _bench_list.add_child(_create_player_row(bp, false))
 	if _selected_swap_player_id > 0:
 		_swap_hint_lbl.text = "Select a second player to complete the lineup swap (or click Cancel)."
 	else:
 		_swap_hint_lbl.text = "Bench synced to squad (%d reserve(s)). Click Swap on any two players to adjust your XI." % bench.size()
-
-	if _opponent_title_label:
-		_opponent_title_label.text = "OPPONENT SCOUTING · %s" % opponent_name
-	if _opponent_meta_label:
-		_opponent_meta_label.text = "OVR %d  ·  Formation %s  ·  Expected starters %d" % [opponent_ovr, opponent_formation, opponent_xi.size()]
+	if _opponent_title_label: _opponent_title_label.text = "OPPONENT SCOUTING · %s" % opponent_name
+	if _opponent_meta_label: _opponent_meta_label.text = "OVR %d  ·  Formation %s  ·  Expected starters %d" % [opponent_ovr, opponent_formation, opponent_xi.size()]
 	if _opponent_lineup_list:
-		for child in _opponent_lineup_list.get_children():
-			child.queue_free()
+		for child in _opponent_lineup_list.get_children(): child.queue_free()
 		for i: int in range(opponent_xi.size()):
 			var player: Dictionary = opponent_xi[i] if opponent_xi[i] is Dictionary else {}
 			var scout_row := Label.new()
 			scout_row.text = "%02d  [%s]  %s  ·  OVR %d" % [i + 1, player.get("position", "CM"), player.get("name", "Player"), int(player.get("ovr", 70))]
 			scout_row.add_theme_color_override("font_color", Color(0.82, 0.87, 0.95))
 			_opponent_lineup_list.add_child(scout_row)
-
-	_warning_lbl.text = "Warning: %d starter(s) below 65%% fitness — higher injury risk." % tired_count if tired_count > 0 else "Squad condition optimal."
-
+	var avg_xi_fit: int = int(round(total_xi_fit / maxf(1.0, float(xi.size()))))
+	var rec_pct: int = int(round(_get_daily_recovery_rate() * 100.0))
+	if injured_xi_count > 0:
+		_warning_lbl.add_theme_color_override("font_color", Color(1.0, 0.35, 0.38))
+		_warning_lbl.text = "BLOCKED: %d injured starter(s) in Starting XI — swap with healthy players before kickoff." % injured_xi_count
+	elif tired_count > 0:
+		_warning_lbl.add_theme_color_override("font_color", Color(1.0, 0.78, 0.35))
+		_warning_lbl.text = "Warning: %d starter(s) below 65%% fitness (XI Avg %d%% · ~%d%%/day recovery) — higher injury risk." % [tired_count, avg_xi_fit, rec_pct]
+	else:
+		_warning_lbl.add_theme_color_override("font_color", Color(0.35, 0.95, 0.55))
+		_warning_lbl.text = "Squad condition optimal (XI Avg %d%% · ~%d%%/day recovery)." % [avg_xi_fit, rec_pct]
 
 func _on_toggle_away_kit() -> void:
 	var kits: Dictionary = match_context.get("kits", {})
@@ -785,6 +785,18 @@ func _on_tactics_changed(_idx: int) -> void:
 	_refresh_view()
 
 
+func _get_daily_recovery_rate() -> float:
+	if is_instance_valid(career_state) and career_state.has_method("get_stamina_recovery_rate_per_day"):
+		return clampf(float(career_state.call("get_stamina_recovery_rate_per_day")), 0.05, 1.0)
+	return 0.30
+
 func _on_kickoff_pressed() -> void:
 	_on_tactics_changed(0)
+	var xi: Array = match_context.get("user_lineup", [])
+	for p in xi:
+		if p is Dictionary and (bool(p.get("is_injured", false)) or int(p.get("injury_days_remaining", 0)) > 0):
+			_warning_lbl.add_theme_color_override("font_color", Color(1.0, 0.35, 0.38))
+			_warning_lbl.text = "Cannot kick off with injured starter %s (%dd remaining) — replace them first." % [String(p.get("name", "Player")), int(p.get("injury_days_remaining", 1))]
+			return
 	start_match_requested.emit(match_context)
+
