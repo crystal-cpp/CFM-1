@@ -457,7 +457,7 @@ func _build_ui() -> void:
 	comm_vbox.add_child(feed_tag)
 
 	_commentary_label = Label.new()
-	_commentary_label.text = "00'  Kick-off! Both teams set up in formation."
+	_commentary_label.text = ""
 	_commentary_label.clip_text = true
 	_commentary_label.add_theme_color_override("font_color", Color(0.94, 0.96, 1.0))
 	_commentary_label.add_theme_font_size_override("font_size", 15)
@@ -523,7 +523,7 @@ func _build_ui() -> void:
 	ko_center.add_child(ko_card)
 
 	_kickoff_label = Label.new()
-	_kickoff_label.text = "HOME KICKOFF\nCLICK TO RESUME"
+	_kickoff_label.text = "KICKOFF\nCLICK TO RESUME"
 	_kickoff_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_kickoff_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_kickoff_label.add_theme_color_override("font_color", Color(0.95, 0.98, 1.0))
@@ -575,7 +575,7 @@ func _build_ui() -> void:
 	vbox.add_child(_fulltime_stats_label)
 
 	_fulltime_progress_label = Label.new()
-	_fulltime_progress_label.text = "Skip Tokens: 1 | Manual Matches: 0/5"
+	_fulltime_progress_label.text = "Skip Available: 0 | Manual Matches: 0/5"
 	_fulltime_progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_fulltime_progress_label.add_theme_color_override("font_color", Color(0.75, 0.82, 0.92))
 	_fulltime_progress_label.add_theme_font_size_override("font_size", 13)
@@ -657,26 +657,26 @@ func _update_chance_controls() -> void:
 		_slide_tackle_btn.visible = (c_state == _user_defend_chance())
 	if _gk_rush_btn:
 		_gk_rush_btn.visible = (c_state == _user_defend_chance())
-		_gk_rush_btn.text = "Cancel GK Rush [G]" if gk_rushing else "GK Rush Out [G]"
+		_gk_rush_btn.text = "Cancel GK Rush [G]" if gk_rushing else "GK Rush [G]"
 
 	if _chance_status_label:
 		if match_engine.is_waiting_for_kickoff_resume():
 			_status_pill.text = "HALF TIME" if match_engine.get_current_minute() == 45 else "KICKOFF"
 			_status_pill.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
-			_chance_status_label.text = "Click anywhere on the pitch to resume."
+			_chance_status_label.text = "Click anywhere to resume."
 			_chance_status_label.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
 		elif c_state == _user_attack_chance():
 			if decision_paused:
-				_chance_status_label.text = "DECISION PAUSED: Tap teammate to pass, drag slow for through ball, tap pitch to dribble, or swipe fast to shoot."
+				_chance_status_label.text = "Tap to pass, drag slow for through ball, tap pitch to dribble, or swipe fast to shoot."
 				_chance_status_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.30))
 			else:
-				_chance_status_label.text = "Executing action in real time..."
+				_chance_status_label.text = ""
 				_chance_status_label.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
 		elif c_state == _user_defend_chance():
-			_chance_status_label.text = "REAL-TIME DEFEND: Swipe to slide tackle, tap pitch to block lanes, or rush GK out."
+			_chance_status_label.text = "Swipe to slide tackle, tap to block, or rush GK out."
 			_chance_status_label.add_theme_color_override("font_color", Color(1.0, 0.50, 0.42))
 		else:
-			_chance_status_label.text = "Open play simulation active."
+			_chance_status_label.text = ""
 			_chance_status_label.add_theme_color_override("font_color", Color(0.68, 0.78, 0.90))
 
 func open_tactical_screen() -> void:
@@ -845,7 +845,7 @@ func hide_fulltime_summary() -> void:
 		_tactical_screen.reset_match_substitutions()
 	_commentary_history.clear()
 	if _commentary_label:
-		_commentary_label.text = "00'  Kick-off! Both teams set up in formation."
+		_commentary_label.text = ""
 	refresh_all()
 
 func _on_toast_timeout() -> void:
@@ -858,9 +858,9 @@ func _on_minute_changed(_minute: int) -> void:
 func _on_chance_state_changed(new_state: int, _ctrl_idx: int) -> void:
 	refresh_all()
 	if new_state == _user_attack_chance():
-		show_toast("ATTACK CHANCE — Decision Paused! Choose Pass, Through Ball, Dribble, or Shot.", 3.0)
+		show_toast("ATTACK CHANCE", 3.0)
 	elif new_state == _user_defend_chance():
-		show_toast("DEFEND CHANCE — Real-Time! Swipe to Slide Tackle or tap to block lanes.", 3.0)
+		show_toast("DEFEND CHANCE", 3.0)
 
 func _on_goal_scored(home: int, away: int, is_home: bool) -> void:
 	refresh_all()
