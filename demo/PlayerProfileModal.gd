@@ -424,7 +424,7 @@ func open_player(player_id: int, context_mode: String = "SQUAD") -> void:
 	var is_injured: bool = bool(profile.get("is_injured", false)) or int(profile.get("injury_days_remaining", 0)) > 0
 	var inj_days: int = int(profile.get("injury_days_remaining", 0))
 	if is_injured:
-		var tier: String = String(profile.get("injury_severity", "")).strip_edges()
+		var tier: String = String(profile.get("injury_label", "")).strip_edges()
 		if tier.is_empty():
 			tier = "Minor" if inj_days <= 5 else ("Moderate" if inj_days <= 14 else ("Major" if inj_days <= 60 else "Severe"))
 		var val_note: String = " (-5% to -10% value)" if tier.to_lower().begins_with("severe") else ""
