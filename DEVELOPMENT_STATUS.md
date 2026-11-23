@@ -94,6 +94,8 @@ Source-only corrective changes have been committed after the Phase 5E implementa
 
    * Verified `promote_youth_player(player_id)` atomically removes the prospect from `YouthAcademy`, appends to senior `Team`, assigns a senior wage/contract, and posts a `"BOARD"` (`"club"`) Inbox confirmation.
 
+   * **Outstanding Youth Academy cleanup:** 4–5 players remain fixed/persistently present in the academy roster. Their source has not yet been identified or corrected. Trace whether they are hard-coded/seeded entries or are reinserted during refresh or Save/Load; remove only those fixed entries while preserving legitimate generated prospects. Add regression checks for roster refresh, day advancement, and Save/Load so they do not reappear.
+
 ### B. Phase 4B GDScript Views & Shell Integration (`demo/`)
 
 1. **`demo/SquadView.gd` / `demo/SquadView.tscn`**:
