@@ -836,4 +836,3 @@ func _on_kickoff_pressed() -> void:
 			_warning_lbl.text = "Cannot kick off with injured starter %s (%dd remaining) — replace them first." % [String(p.get("name", "Player")), int(p.get("injury_days_remaining", 1))]
 			return
 	start_match_requested.emit(match_context)
-
