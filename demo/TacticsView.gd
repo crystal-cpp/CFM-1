@@ -17,7 +17,7 @@ var _approach_opt: OptionButton
 var _impact_summary_lbl: Label
 var _status_lbl: Label
 
-const FORMATIONS: Array[String] = ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2", "5-3-2", "4-1-4-1"]
+const FORMATIONS: Array[String] = ["4-3-3", "4-4-2", "4-2-3-1", "3-5-2", "4-1-4-1", "4-3-2-1", "4-3-1-2", "4-1-2-1-2 Narrow", "4-1-2-1-2 Wide", "4-5-1", "3-4-3", "3-4-2-1", "3-4-1-2", "3-1-4-2", "5-3-2", "5-4-1", "5-2-3", "4-2-2-2", "4-2-4", "3-3-3-1", "4-1-3-2", "3-2-4-1", "5-2-1-2", "4-6-0"]
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -57,13 +57,13 @@ func _ensure_ui_built() -> void:
 	scroll.add_child(vbox)
 
 	var title := Label.new()
-	title.text = "PERMANENT CLUB TACTICS & SYSTEM"
+	title.text = "TACTIC MANAGEMENT"
 	title.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	title.add_theme_font_size_override("font_size", 20)
 	vbox.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "Configure your club's baseline tactical identity. Temporary in-match adjustments do not overwrite these presets."
+	sub.text = "Configure your tactics."
 	sub.add_theme_color_override("font_color", Color(0.65, 0.76, 0.90))
 	sub.add_theme_font_size_override("font_size", 12)
 	vbox.add_child(sub)
@@ -87,12 +87,12 @@ func _ensure_ui_built() -> void:
 
 	_formation_opt = _add_tactic_row(grid, "Base Formation", FORMATIONS)
 	_mentality_opt = _add_tactic_row(grid, "Team Mentality", ["Ultra Defensive", "Defensive", "Balanced", "Attacking", "Ultra Attacking"])
-	_pressing_opt = _add_tactic_row(grid, "Pressing Intensity", ["Low Block (Conserve Stamina)", "Balanced Press", "Gegenpress (High Stamina Drain)"])
-	_line_opt = _add_tactic_row(grid, "Defensive Line", ["Deep Line", "Standard Line", "High Offside Trap"])
-	_passing_opt = _add_tactic_row(grid, "Passing Style", ["Short Possession", "Mixed Build-Up", "Direct Counter"])
-	_width_opt = _add_tactic_row(grid, "Attacking Width", ["Narrow Overload", "Balanced Width", "Wide Touchline Stretch"])
-	_tempo_opt = _add_tactic_row(grid, "Build-Up Tempo", ["Patient / Slow", "Normal Tempo", "High-Speed Transition"])
-	_approach_opt = _add_tactic_row(grid, "Defensive Approach", ["Cautious Zonal", "Balanced Marking", "Aggressive Ball-Winning"])
+	_pressing_opt = _add_tactic_row(grid, "Pressing Intensity", ["Low", "Balanced", "High"])
+	_line_opt = _add_tactic_row(grid, "Defensive Line", ["Deep", "Standard", "Offside Trap"])
+	_passing_opt = _add_tactic_row(grid, "Passing Style", ["Short Passing", "Mixed", "Direct"])
+	_width_opt = _add_tactic_row(grid, "Attacking Width", ["Narrow", "Balanced", "Wide"])
+	_tempo_opt = _add_tactic_row(grid, "Build-Up Tempo", ["Slow", "Normal", "High"])
+	_approach_opt = _add_tactic_row(grid, "Defensive Approach", ["Cautious", "Balanced", "Aggressive"])
 
 	# Tactical Impact Preview Box
 	var impact_card := PanelContainer.new()
@@ -117,7 +117,7 @@ func _ensure_ui_built() -> void:
 	vbox.add_child(btn_hbox)
 
 	var save_btn := Button.new()
-	save_btn.text = "💾 Apply Club Tactics"
+	save_btn.text = "Apply"
 	save_btn.custom_minimum_size = Vector2(180, 38)
 	save_btn.focus_mode = Control.FOCUS_NONE
 	_style_btn(save_btn, Color(0.06, 0.55, 0.38, 0.95), Color(0.11, 0.88, 0.65, 0.95))
@@ -125,7 +125,7 @@ func _ensure_ui_built() -> void:
 	btn_hbox.add_child(save_btn)
 
 	var reset_btn := Button.new()
-	reset_btn.text = "↺ Reset Balanced"
+	reset_btn.text = "Reset"
 	reset_btn.custom_minimum_size = Vector2(150, 38)
 	reset_btn.focus_mode = Control.FOCUS_NONE
 	_style_btn(reset_btn, Color(0.09, 0.13, 0.21, 0.90), Color(0.20, 0.28, 0.42, 0.85))
@@ -179,11 +179,11 @@ func refresh_tactics() -> void:
 func _update_impact_preview() -> void:
 	var stamina_load: String = "Moderate"
 	if _pressing_opt.selected == 2 and _tempo_opt.selected == 2:
-		stamina_load = "VERY HIGH (Expect 25–30% extra second-half fatigue)"
+		stamina_load = "Very High"
 	elif _pressing_opt.selected == 0 and _tempo_opt.selected == 0:
-		stamina_load = "LOW (Preserves late-game condition)"
+		stamina_load = "Low"
 
-	_impact_summary_lbl.text = "TACTICAL ENGINE BRIEFING:\n• System: %s (%s) — %s build-up at %s tempo.\n• MatchEngine Stamina Drain Projection: %s." % [
+	_impact_summary_lbl.text = "Tactical Summary:\n• System: %s (%s) — %s build-up at %s tempo.\n• Stamina Drain Prediction: %s." % [
 		_formation_opt.get_item_text(_formation_opt.selected),
 		_mentality_opt.get_item_text(_mentality_opt.selected),
 		_passing_opt.get_item_text(_passing_opt.selected),
@@ -207,7 +207,7 @@ func _on_apply_pressed() -> void:
 		"defensive_approach": _approach_opt.selected
 	}
 	if career_state.set_club_tactics(club_id, payload):
-		_status_lbl.text = "✓ Saved permanent club tactics (%s)." % selected_form
+		_status_lbl.text = "Saved tactics (%s)." % selected_form
 		tactics_saved.emit(selected_form)
 
 func _on_reset_pressed() -> void:

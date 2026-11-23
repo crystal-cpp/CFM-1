@@ -201,9 +201,9 @@ func _ensure_ui_built() -> void:
 	main_vbox.add_child(tabs_hbox)
 
 	var tab_defs: Array[Dictionary] = [
-		{ "id": "my_fixtures", "label": "🏟️  My Club Fixtures" },
-		{ "id": "league_matchdays", "label": "📅  League Matchdays" },
-		{ "id": "results_archive", "label": "📜  Results Archive" }
+		{ "id": "my_fixtures", "label": "Club Fixtures" },
+		{ "id": "league_matchdays", "label": "League Matchdays" },
+		{ "id": "results_archive", "label": "Results" }
 	]
 	for td in tab_defs:
 		var tid: String = td["id"]
@@ -313,7 +313,7 @@ func _build_league_matchdays_tab(parent: Control) -> void:
 	nav_hbox.add_child(_md_next_btn)
 
 	_md_current_btn = Button.new()
-	_md_current_btn.text = "📍 Current Round"
+	_md_current_btn.text = "Current Round"
 	_md_current_btn.focus_mode = Control.FOCUS_NONE
 	_style_btn(_md_current_btn, Color(0.06, 0.38, 0.25, 0.95), Color(0.16, 0.88, 0.55, 0.90))
 	_md_current_btn.pressed.connect(func() -> void:
@@ -457,7 +457,7 @@ func _build_detail_modal() -> void:
 	vb.add_child(btn_row)
 
 	_detail_action_btn = Button.new()
-	_detail_action_btn.text = "⚽ Go to Pre-Match"
+	_detail_action_btn.text = "Go to Pre-Match"
 	_detail_action_btn.custom_minimum_size = Vector2(160, 34)
 	_detail_action_btn.focus_mode = Control.FOCUS_NONE
 	_style_btn(_detail_action_btn, Color(0.06, 0.45, 0.30, 0.95), Color(0.15, 0.92, 0.58, 0.90))

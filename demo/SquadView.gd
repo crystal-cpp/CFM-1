@@ -400,7 +400,7 @@ func refresh_squad() -> void:
 		_selection_banner.text = "Injured in XI/Bench: %s — Swap to Reserves before matchday." % ", ".join(injured_active_names)
 	else:
 		_selection_banner.add_theme_color_override("font_color", Color(0.75, 0.84, 0.95))
-		_selection_banner.text = ""
+		_selection_banner.text = "Manage your squad here."
 
 	# Clear old children
 	for c in _pitch_slots_layer.get_children():

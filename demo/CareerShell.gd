@@ -42,16 +42,16 @@ var _menu_toggle_btn: Button
 
 # Route Buttons & Views
 const ROUTES: Array[Dictionary] = [
-	{ "id": "dashboard", "label": "Dashboard", "icon": "📊" },
-	{ "id": "squad", "label": "Squad", "icon": "👥" },
-	{ "id": "tactics", "label": "Tactics", "icon": "📋" },
-	{ "id": "youth", "label": "Youth Academy", "icon": "⭐" },
-	{ "id": "schedule", "label": "Schedule", "icon": "📅" },
-	{ "id": "competitions", "label": "Competitions", "icon": "🏆" },
-	{ "id": "transfers", "label": "Transfers", "icon": "🔄" },
-	{ "id": "club", "label": "Club Management", "icon": "🏛️" },
-	{ "id": "finances", "label": "Finances", "icon": "💰" },
-	{ "id": "inbox", "label": "News / Inbox", "icon": "✉️" }
+	{ "id": "dashboard", "label": "Dashboard", "icon": "" },
+	{ "id": "squad", "label": "Squad", "icon": "" },
+	{ "id": "tactics", "label": "Tactics", "icon": "" },
+	{ "id": "youth", "label": "Youth Academy", "icon": "" },
+	{ "id": "schedule", "label": "Schedule", "icon": "" },
+	{ "id": "competitions", "label": "Competitions", "icon": "" },
+	{ "id": "transfers", "label": "Transfers", "icon": "" },
+	{ "id": "club", "label": "Club Management", "icon": "" },
+	{ "id": "finances", "label": "Finances", "icon": "" },
+	{ "id": "inbox", "label": "News / Inbox", "icon": "" }
 ]
 
 var _route_buttons: Dictionary = {}
@@ -289,7 +289,7 @@ func _build_header(parent: Control) -> void:
 	hbox.add_child(_balance_lbl)
 
 	_advance_day_btn = Button.new()
-	_advance_day_btn.text = "⏩ +1 Day"
+	_advance_day_btn.text = "+1 Day"
 	_advance_day_btn.custom_minimum_size = Vector2(78, 32)
 	_advance_day_btn.focus_mode = Control.FOCUS_NONE
 	_style_shell_button(_advance_day_btn, Color(0.08, 0.22, 0.38, 0.9), Color(0.20, 0.48, 0.80, 0.85))
@@ -297,7 +297,7 @@ func _build_header(parent: Control) -> void:
 	hbox.add_child(_advance_day_btn)
 
 	_codes_btn = Button.new()
-	_codes_btn.text = "🎟️ Codes"
+	_codes_btn.text = "Codes"
 	_codes_btn.custom_minimum_size = Vector2(78, 32)
 	_codes_btn.focus_mode = Control.FOCUS_NONE
 	_style_shell_button(_codes_btn, Color(0.18, 0.14, 0.34, 0.92), Color(0.55, 0.40, 0.95, 0.88), Color(0.88, 0.82, 1.0))
@@ -305,7 +305,7 @@ func _build_header(parent: Control) -> void:
 	hbox.add_child(_codes_btn)
 
 	_save_btn = Button.new()
-	_save_btn.text = "💾 Save"
+	_save_btn.text = "Save"
 	_save_btn.custom_minimum_size = Vector2(68, 32)
 	_save_btn.focus_mode = Control.FOCUS_NONE
 	_style_shell_button(_save_btn, Color(0.08, 0.42, 0.25, 0.9), Color(0.16, 0.85, 0.50, 0.85))
@@ -316,7 +316,7 @@ func _build_header(parent: Control) -> void:
 	inbox_container.custom_minimum_size = Vector2(80, 32)
 
 	_inbox_btn = Button.new()
-	_inbox_btn.text = "✉️ Inbox"
+	_inbox_btn.text = "Inbox"
 	_inbox_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_inbox_btn.focus_mode = Control.FOCUS_NONE
 	_style_shell_button(_inbox_btn, Color(0.07, 0.11, 0.18, 0.9), Color(0.18, 0.26, 0.40, 0.85))
@@ -342,7 +342,7 @@ func _build_header(parent: Control) -> void:
 	hbox.add_child(inbox_container)
 
 	_manager_btn = Button.new()
-	_manager_btn.text = "👔 Manager"
+	_manager_btn.text = "Manager"
 	_manager_btn.custom_minimum_size = Vector2(92, 32)
 	_manager_btn.clip_text = true
 	_manager_btn.focus_mode = Control.FOCUS_NONE
@@ -351,7 +351,7 @@ func _build_header(parent: Control) -> void:
 	hbox.add_child(_manager_btn)
 
 	_menu_btn = Button.new()
-	_menu_btn.text = "🏠 Menu"
+	_menu_btn.text = "Menu"
 	_menu_btn.custom_minimum_size = Vector2(74, 32)
 	_menu_btn.focus_mode = Control.FOCUS_NONE
 	_style_shell_button(_menu_btn, Color(0.14, 0.10, 0.16, 0.9), Color(0.45, 0.25, 0.35, 0.85))
@@ -833,7 +833,7 @@ func refresh_header() -> void:
 	_inbox_badge.visible = (unread > 0)
 
 	var mgr_name: String = String(summary.get("manager_name", "Manager"))
-	_manager_btn.text = "👔 %s" % mgr_name
+	_manager_btn.text = "%s" % mgr_name
 
 func refresh_all_views() -> void:
 	refresh_header()
@@ -956,6 +956,6 @@ func _on_pre_match_requested() -> void:
 			visible = false
 			match_requested.emit()
 		else:
-			show_toast("Unable to open Pre-Match Center. Check the upcoming fixtures.", 2.5)
+			show_toast("Please forward to upcoming fixtures.", 2.5)
 	else:
-		show_toast("MatchScene is not available. Ensure the active match scene is loaded.", 2.5)
+		show_toast("Match is not available. Ensure the active match is loaded.", 2.5)

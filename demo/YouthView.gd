@@ -65,7 +65,7 @@ func _ensure_ui_built() -> void:
 	hdr_hbox.add_child(title)
 
 	_scout_btn = Button.new()
-	_scout_btn.text = "🔭 Scout New Prospect"
+	_scout_btn.text = "Scout New"
 	_scout_btn.custom_minimum_size = Vector2(180, 36)
 	_scout_btn.focus_mode = Control.FOCUS_NONE
 	_style_btn(_scout_btn, Color(0.06, 0.45, 0.32, 0.95), Color(0.11, 0.85, 0.63, 0.90))
@@ -78,7 +78,7 @@ func _ensure_ui_built() -> void:
 
 	# Development Cycle Clarification Banner
 	var cycle_lbl := Label.new()
-	cycle_lbl.text = "Development Schedule: Weekly training ticks award attribute XP scaled by Coach Skill & Training Facility Level. Annual aging (+1 yr) occurs on July 1."
+	cycle_lbl.text = "Development Schedule: Weekly training award XP scaled by Coach Skill & Training Facility Level."
 	cycle_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	cycle_lbl.add_theme_color_override("font_color", Color(0.68, 0.80, 0.94))
 	cycle_lbl.add_theme_font_size_override("font_size", 12)
@@ -151,7 +151,7 @@ func _ensure_ui_built() -> void:
 	_style_btn(hire_btn, Color(0.06, 0.42, 0.30, 0.95), Color(0.11, 0.82, 0.63, 0.85))
 	hire_btn.pressed.connect(func() -> void:
 		if is_instance_valid(career_state):
-			career_state.hire_youth_coach("Le Huynh Duc", 78, 4000.0, "Technical")
+			career_state.hire_youth_coach("Pep Guardiola", 78, 4000.0, "Technical")
 			refresh_youth()
 	)
 	coach_hdr.add_child(hire_btn)
@@ -253,7 +253,7 @@ func refresh_youth() -> void:
 
 	if prospects.is_empty():
 		var empty_lbl := Label.new()
-		empty_lbl.text = "No prospects currently in the Youth Academy. Use 'Scout New Prospect' to recruit."
+		empty_lbl.text = "No prospects currently in the Youth Academy. 'Scout New' to recruit."
 		empty_lbl.add_theme_color_override("font_color", Color(0.60, 0.70, 0.82))
 		_prospects_vbox.add_child(empty_lbl)
 		return
