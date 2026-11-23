@@ -500,14 +500,12 @@ func _sync_default_round_key() -> void:
 func refresh_schedule() -> void:
 	if not _ui_built or not is_instance_valid(career_state) or not career_state.is_career_active():
 		return
-
 	var phase: Dictionary = career_state.get_season_phase_info()
 	_season_pill.text = "%s • Jul – May" % String(phase.get("season_label", "2026/27"))
 	var full_phase_label: String = String(phase.get("phase_label", "Pre-Season"))
 	var compact_phase_label: String = "Pre-Season" if full_phase_label.to_lower().contains("pre-season") else ("League" if full_phase_label.to_lower().contains("league") else full_phase_label)
 	_phase_pill.text = "Wk %d • %s" % [int(phase.get("week", 1)), compact_phase_label]
 	_phase_pill.tooltip_text = full_phase_label
-
 	var next_fix: Dictionary = career_state.get_next_fixture()
 	if next_fix.is_empty():
 		_next_match_pill.text = "Season Complete"
@@ -518,13 +516,12 @@ func refresh_schedule() -> void:
 		var is_home: bool = bool(next_fix.get("is_home", true))
 		var opp: String = String(next_fix.get("away_club_name", "Opponent")) if is_home else String(next_fix.get("home_club_name", "Opponent"))
 		var tag: String = "Friendly" if bool(next_fix.get("is_friendly", false)) else ("MD %d" % int(next_fix.get("matchday", 1)))
-		_next_match_pill.text = "Next: %s %s %s" % [tag, "vs" if is_home else "@", opp]
-		_next_match_pill.tooltip_text = "Next (%s): %s %s (%s)" % [tag, "vs" if is_home else "@", opp, String(next_fix.get("date_iso", ""))]
+		var proj: Dictionary = _project_squad_readiness_for_fixture(next_fix)
+		_next_match_pill.text = "Next: %s %s %s · XI ~%d%%" % [tag, "vs" if is_home else "@", opp, int(proj["projected_xi_stamina"])]
+		_next_match_pill.tooltip_text = "Next (%s): %s %s (%s)\nIn %d day(s) · Projected XI Fitness: %d%% · Cleared: %d · Still Out: %d" % [tag, "vs" if is_home else "@", opp, String(next_fix.get("date_iso", "")), int(proj["days_until"]), int(proj["projected_xi_stamina"]), (proj["cleared_names"] as Array).size(), (proj["ruled_out_names"] as Array).size()]
 		_sim_next_btn.disabled = false
 		_play_next_btn.disabled = false
-
 	_rebuild_round_dropdown()
-
 	match _active_tab:
 		"my_fixtures":
 			_refresh_my_fixtures_tab()
@@ -772,6 +769,15 @@ func _create_fixture_card(fix: Dictionary, is_next_match: bool) -> PanelContaine
 	else:
 		hbox.add_child(_create_badge("UPCOMING", Color(0.16, 0.24, 0.38), Color(0.65, 0.78, 0.92)))
 
+	if not played and is_user:
+		var proj: Dictionary = _project_squad_readiness_for_fixture(fix)
+		var out_cnt: int = (proj["ruled_out_names"] as Array).size()
+		var proj_fit: int = int(proj["projected_xi_stamina"])
+		var rec_label: String = "XI ~%d%%" % proj_fit if out_cnt == 0 else "XI ~%d%% · %d OUT" % [proj_fit, out_cnt]
+		var rec_bg := Color(0.62, 0.22, 0.26) if out_cnt > 0 else (Color(0.55, 0.42, 0.12) if proj_fit < 85 else Color(0.08, 0.42, 0.32))
+		var rec_fg := Color(1.0, 0.78, 0.80) if out_cnt > 0 else (Color(1.0, 0.88, 0.40) if proj_fit < 85 else Color(0.45, 1.0, 0.75))
+		hbox.add_child(_create_badge(rec_label, rec_bg, rec_fg))
+
 	var inspect_btn := Button.new()
 	inspect_btn.text = "Report" if played else "Details"
 	inspect_btn.focus_mode = Control.FOCUS_NONE
@@ -856,6 +862,18 @@ func _open_fixture_detail_modal(fixture_id: int) -> void:
 		preview_lbl.add_theme_font_size_override("font_size", 12)
 		_detail_events_vbox.add_child(preview_lbl)
 
+		var proj: Dictionary = _project_squad_readiness_for_fixture(det)
+		var rec_lbl := Label.new()
+		var cleared: Array = proj["cleared_names"]
+		var ruled_out: Array = proj["ruled_out_names"]
+		var cleared_str: String = ", ".join(PackedStringArray(cleared)) if not cleared.is_empty() else "None"
+		var out_str: String = ", ".join(PackedStringArray(ruled_out)) if not ruled_out.is_empty() else "None"
+		rec_lbl.text = "\nSquad Recovery Projection (%d day(s) out · ~%d%%/day):\n• Projected Starting XI Stamina: %d%%\n• Cleared by Kickoff: %s\n• Still Ruled Out: %s" % [int(proj["days_until"]), int(round(float(proj["recovery_rate"]) * 100.0)), int(proj["projected_xi_stamina"]), cleared_str, out_str]
+		rec_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		rec_lbl.add_theme_color_override("font_color", Color(0.55, 0.92, 0.76) if ruled_out.is_empty() else Color(1.0, 0.78, 0.42))
+		rec_lbl.add_theme_font_size_override("font_size", 12)
+		_detail_events_vbox.add_child(rec_lbl)
+
 	var next_fix: Dictionary = career_state.get_next_fixture()
 	_detail_action_btn.visible = (not played and int(next_fix.get("fixture_id", -1)) == fixture_id)
 	_detail_modal.visible = true
@@ -866,3 +884,43 @@ func _on_advance_to_next_pressed() -> void:
 	career_state.advance_to_next_matchday()
 	_sync_default_round_key()
 	refresh_schedule()
+
+func _project_squad_readiness_for_fixture(fix: Dictionary) -> Dictionary:
+	var rec_rate: float = 0.30
+	if is_instance_valid(career_state) and career_state.has_method("get_stamina_recovery_rate_per_day"):
+		rec_rate = clampf(float(career_state.call("get_stamina_recovery_rate_per_day")), 0.05, 1.0)
+	var phase: Dictionary = career_state.get_season_phase_info() if is_instance_valid(career_state) else {}
+	var days_until: int = int(fix.get("days_until", -1))
+	if days_until < 0:
+		var current_date: String = String(phase.get("current_date", ""))
+		var fixture_date: String = String(fix.get("date_iso", ""))
+		if not current_date.is_empty() and not fixture_date.is_empty():
+			var current_ts: int = int(Time.get_unix_time_from_datetime_string(current_date + "T00:00:00"))
+			var fixture_ts: int = int(Time.get_unix_time_from_datetime_string(fixture_date + "T00:00:00"))
+			days_until = maxi(0, int(floor(float(fixture_ts - current_ts) / 86400.0)))
+		else:
+			var cur_wk: int = int(phase.get("week", 1))
+			var fix_wk: int = int(fix.get("week", cur_wk))
+			days_until = maxi(0, (fix_wk - cur_wk) * 7)
+	var club_id: int = career_state.get_managed_club_id() if is_instance_valid(career_state) else -1
+	var squad: Array = career_state.get_club_squad(club_id) if club_id != -1 else []
+	var xi_sum: float = 0.0
+	var xi_count: int = 0
+	var cleared_names: Array[String] = []
+	var ruled_out_names: Array[String] = []
+	for i in range(squad.size()):
+		var p: Dictionary = squad[i]
+		var cur_stam: float = float(p.get("condition", p.get("stamina", 100.0)))
+		var proj_stam: float = minf(100.0, cur_stam + float(days_until) * rec_rate * 100.0)
+		if i < 11:
+			xi_sum += proj_stam
+			xi_count += 1
+		var is_inj: bool = bool(p.get("is_injured", false)) or int(p.get("injury_days_remaining", 0)) > 0
+		var rem_days: int = int(p.get("injury_days_remaining", 0))
+		if is_inj and rem_days > 0:
+			var pname: String = String(p.get("name", "Player"))
+			if rem_days <= days_until:
+				cleared_names.append("%s (clears in %dd)" % [pname, rem_days])
+			else:
+				ruled_out_names.append("%s (%dd left at kickoff)" % [pname, rem_days - days_until])
+	return {"days_until": days_until, "recovery_rate": rec_rate, "projected_xi_stamina": int(round(xi_sum / maxf(1.0, float(xi_count)))), "cleared_names": cleared_names, "ruled_out_names": ruled_out_names}
