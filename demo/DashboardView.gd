@@ -203,7 +203,7 @@ func _build_next_match_hero(parent: Control) -> void:
 
 	# Action Button: PRE-MATCH
 	_pre_match_btn = Button.new()
-	_pre_match_btn.text = "⚽ PRE-MATCH"
+	_pre_match_btn.text = "PRE-MATCH"
 	_pre_match_btn.custom_minimum_size = Vector2(148, 44)
 	_pre_match_btn.focus_mode = Control.FOCUS_NONE
 	_apply_button_theme(_pre_match_btn, Color(0.10, 0.58, 0.34, 0.95), Color(0.20, 0.95, 0.58, 0.95))
@@ -219,12 +219,12 @@ func _build_quick_actions(parent: Control) -> void:
 	parent.add_child(bar)
 
 	var actions: Array[Dictionary] = [
-		{ "label": "👥 Squad", "route": "squad" },
-		{ "label": "📋 Tactics", "route": "tactics" },
-		{ "label": "⭐ Youth Academy", "route": "youth" },
-		{ "label": "🔄 Transfers", "route": "transfers" },
-		{ "label": "📅 Schedule", "route": "schedule" },
-		{ "label": "🏆 Standings", "route": "competitions" }
+		{ "label": "Squad", "route": "squad" },
+		{ "label": "Tactics", "route": "tactics" },
+		{ "label": "Youth Academy", "route": "youth" },
+		{ "label": "Transfers", "route": "transfers" },
+		{ "label": "Schedule", "route": "schedule" },
+		{ "label": "Standings", "route": "competitions" }
 	]
 
 	for act in actions:
@@ -506,7 +506,7 @@ func _refresh_objectives() -> void:
 
 		var row := HBoxContainer.new()
 		var t_lbl := Label.new()
-		t_lbl.text = ("✅ " if completed else "🎯 ") + title
+		t_lbl.text = ("" if completed else "") + title
 		t_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		t_lbl.clip_text = true
 		t_lbl.add_theme_font_size_override("font_size", 12)

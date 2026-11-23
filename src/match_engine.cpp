@@ -544,7 +544,7 @@ void MatchEngine::_apply_role_profile(SimPlayer& p_player, int p_base_ovr) const
 }
 
 void MatchEngine::set_defensive_chance_time_scale(float p_scale) {
-    defensive_chance_time_scale = std::clamp(p_scale, 0.45f, 1.0f);
+    defensive_chance_time_scale = std::clamp(p_scale, 0.55f, 1.0f);
 }
 
 void MatchEngine::set_skip_tokens(int p_tokens) {
@@ -1845,6 +1845,8 @@ bool MatchEngine::command_move_player(Vector2 p_target_pos) {
         if (player.dribble_carry_distance < 65.0f) {
             player.dribble_boost_timer = 0.24f;
         }
+    } else if (chance_state == _user_defend_chance_state()) {
+        player.sprint_boost_timer = std::max(player.sprint_boost_timer, 0.35f);
     }
 
     return true;
@@ -2751,6 +2753,15 @@ Vector2 MatchEngine::_compute_tactical_target(
         if (has_user_move_target) {
             return user_move_target;
         }
+        if (chance_state == _user_defend_chance_state()) {
+            // Auto-jockey goal-side of the ball carrier until the user clicks a move/tackle point
+            Vector2 goal_center(own_goal_x, center_y);
+            Vector2 to_goal = goal_center - ball_position;
+            Vector2 jockey_offset = (to_goal.length() > 1.0f)
+                ? (to_goal.normalized() * 16.0f)
+                : Vector2(-attack_dir * 16.0f, 0.0f);
+            return ball_position + jockey_offset;
+        }
         return p_player.position;
     }
 
@@ -2978,6 +2989,8 @@ void MatchEngine::_update_player_movement(float dt) {
 
         bool is_user_controlled = (manual_control_active && i == user_controlled_index);
         bool is_user_ball_carrier = (is_user_controlled && ball_carrier_index == i && ball_state == BALL_CARRIED);
+        bool is_user_defend_chance = ((p.is_home == user_is_home) && chance_state == _user_defend_chance_state());
+        bool is_user_defending_ctrl = (is_user_controlled && is_user_defend_chance);
 
         if (is_user_controlled && has_user_move_target && dist < 8.0f) {
             has_user_move_target = false;
@@ -3000,6 +3013,12 @@ void MatchEngine::_update_player_movement(float dt) {
                 : (max_speed * 0.68f);
         } else if ((p.is_home == user_is_home) && chance_state == _user_attack_chance_state() && i != user_controlled_index && p.role != "CB") {
             max_speed *= 1.07f;
+        } else if (is_user_defending_ctrl) {
+            // Responsive closing pace for the user's active defender during Defend Chances
+            max_speed = (108.0f + p.pace * 0.96f) * fatigue_mult * tempo_speed_mult;
+        } else if (is_user_defend_chance) {
+            // Keep user's AI backline/midfield teammates alert when tracking runners
+            max_speed *= 1.10f;
         }
 
         if (p.is_sliding) {
@@ -3023,7 +3042,7 @@ void MatchEngine::_update_player_movement(float dt) {
 
         Vector2 desired_vel(0.0f, 0.0f);
         if (dist > 1.5f) {
-            float slow_radius = is_user_ball_carrier ? 24.0f : (is_recovering ? 22.0f : 32.0f);
+            float slow_radius = is_user_defending_ctrl ? 12.0f : (is_user_ball_carrier ? 24.0f : (is_recovering ? 22.0f : 32.0f));
             float speed_scale = std::clamp(dist / slow_radius, 0.18f, 1.0f);
             float target_speed = max_speed * speed_scale;
             desired_vel = (to_target / dist) * target_speed;
@@ -3076,11 +3095,13 @@ void MatchEngine::_update_player_movement(float dt) {
         if (cur_speed > 8.0f && des_speed > 8.0f) {
             turn_alignment = std::clamp((p.velocity / cur_speed).dot(desired_vel / des_speed), -1.0f, 1.0f);
         }
-        float turn_penalty = (turn_alignment < 0.25f) ? (0.68f + 0.32f * std::max(0.0f, turn_alignment + 0.5f)) : 1.0f;
+        float turn_penalty = (turn_alignment < 0.25f)
+            ? ((is_user_defending_ctrl ? 0.82f : 0.68f) + (is_user_defending_ctrl ? 0.18f : 0.32f) * std::max(0.0f, turn_alignment + 0.5f))
+            : 1.0f;
 
         float agility_factor = 0.85f + ((p.pace * 0.45f + p.dribbling * 0.55f) / 100.0f) * 0.45f;
-        float accel_rate = (is_user_ball_carrier ? 11.5f : 8.2f) * agility_factor * fatigue_mult;
-        float decel_rate = (is_user_ball_carrier ? 13.5f : 10.0f) * agility_factor * fatigue_mult;
+        float accel_rate = ((is_user_ball_carrier || is_user_defending_ctrl) ? 12.2f : 8.2f) * agility_factor * fatigue_mult;
+        float decel_rate = ((is_user_ball_carrier || is_user_defending_ctrl) ? 14.0f : 10.0f) * agility_factor * fatigue_mult;
         float rate = (des_speed >= cur_speed) ? (accel_rate * turn_penalty) : decel_rate;
         float steer_alpha = 1.0f - std::exp(-rate * dt);
         p.velocity = p.velocity.lerp(desired_vel, steer_alpha);
