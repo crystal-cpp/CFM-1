@@ -603,7 +603,7 @@ func _create_player_row(p: Dictionary, is_starter: bool) -> HBoxContainer:
 	var stam_lbl := Label.new()
 	if is_injured:
 		var tier := "Minor" if inj_days <= 5 else ("Moderate" if inj_days <= 14 else ("Major" if inj_days <= 60 else "Severe"))
-		if not String(p.get("injury_severity", "")).is_empty(): tier = String(p.get("injury_severity", ""))
+		if not String(p.get("injury_label", "")).is_empty(): tier = String(p.get("injury_label", ""))
 		stam_lbl.text = "INJ · %s (%dd)" % [tier, inj_days]
 		stam_lbl.add_theme_color_override("font_color", Color(1.0, 0.32, 0.36))
 	else:
