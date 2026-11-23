@@ -1403,6 +1403,8 @@ void MatchEngine::_apply_formation_positions(bool p_reset_ball, bool p_force_sna
 }
 
 void MatchEngine::_reset_after_goal(bool p_conceding_is_home) {
+    gk_rush_active = false;
+    gk_rush_timer = 0.0f;
     chance_state = CHANCE_NONE;
     manual_control_active = false;
     user_controlled_index = -1;
@@ -1461,6 +1463,8 @@ void MatchEngine::resume_from_goal_kickoff() {
 }
 
 void MatchEngine::_give_kickoff(bool p_home_kickoff) {
+    gk_rush_active = false;
+    gk_rush_timer = 0.0f;
     Vector2 center = field_size * 0.5f;
     float half_width = center.x;
     const float margin = 14.0f;
@@ -1473,6 +1477,10 @@ void MatchEngine::_give_kickoff(bool p_home_kickoff) {
         p.tackle_cooldown = 0.0f;
         p.sprint_boost_timer = 0.0f;
         p.dribble_boost_timer = 0.0f;
+        p.dribble_carry_distance = 0.0f;
+        p.is_sliding = false;
+        p.slide_timer = 0.0f;
+        p.slide_dir = Vector2(0.0f, 0.0f);
         p.position = p.anchor;
 
         if (p.is_home) {
@@ -2289,8 +2297,17 @@ void MatchEngine::_end_active_chance(bool p_goal_scored) {
         return;
     }
 
+    gk_rush_active = false;
+    gk_rush_timer = 0.0f;
+
     if (user_controlled_index >= 0 && user_controlled_index < 22) {
         sim_players[user_controlled_index].dribble_boost_timer = 0.0f;
+    }
+    for (SimPlayer& p : sim_players) {
+        p.dribble_carry_distance = 0.0f;
+        p.is_sliding = false;
+        p.slide_timer = 0.0f;
+        p.slide_dir = Vector2(0.0f, 0.0f);
     }
 
     chance_state = CHANCE_NONE;
@@ -4009,6 +4026,8 @@ void MatchEngine::reset_standalone_match_setup() {
 }
 
 void MatchEngine::start_match() {
+    gk_rush_active = false;
+    gk_rush_timer = 0.0f;
     if (sim_players.size() != 22) {
         UtilityFunctions::printerr("MatchEngine: Cannot start match; expected 22 initialized players.");
         match_active = false;
@@ -4073,6 +4092,10 @@ void MatchEngine::start_match() {
         p.tackle_cooldown = 0.0f;
         p.sprint_boost_timer = 0.0f;
         p.dribble_boost_timer = 0.0f;
+        p.dribble_carry_distance = 0.0f;
+        p.is_sliding = false;
+        p.slide_timer = 0.0f;
+        p.slide_dir = Vector2(0.0f, 0.0f);
     }
 
     _reset_field_positions();
@@ -4153,6 +4176,8 @@ void MatchEngine::_log_event(const String& p_type, bool p_is_home, const String&
 }
 
 void MatchEngine::_trigger_halftime() {
+    gk_rush_active = false;
+    gk_rush_timer = 0.0f;
     _end_active_chance(false);
 
     // +20% stamina recovery at half-time (capped at player's starting match condition)
@@ -4163,6 +4188,10 @@ void MatchEngine::_trigger_halftime() {
         p.tackle_cooldown = 0.0f;
         p.sprint_boost_timer = 0.0f;
         p.dribble_boost_timer = 0.0f;
+        p.dribble_carry_distance = 0.0f;
+        p.is_sliding = false;
+        p.slide_timer = 0.0f;
+        p.slide_dir = Vector2(0.0f, 0.0f);
         p.velocity = Vector2(0.0f, 0.0f);
     }
 
