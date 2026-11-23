@@ -221,9 +221,9 @@ This milestone's startup shell, routing, save-slot entry points and scene owners
     * **Match Injury Generation**: During `MatchEngine` execution, physical challenges and high-fatigue sprints evaluate injury risk (higher risk when `CurrentStamina < 35%` or after heavy tackles).
     * **Simple, Readable Severity Tiers & Recovery Timers**:
       * `Minor Injury`: `3–5` in-game days out.
-      * `Medium Injury`: `7–14` in-game days out (approximately 1–2 weeks).
-      * `Injury`: `30–60` in-game days out (approximately 1–2 months).
-      * `Serious Injury`: `120–180` in-game days out (approximately 4–6 months); apply a one-time `5–10%` reduction to current market value when registered, without repeated compounding.
+      * `Moderate Injury`: `7–14` in-game days out (approximately 1–2 weeks).
+      * `Major Injury`: `30–60` in-game days out (approximately 1–2 months).
+      * `Severe Injury`: `120–180` in-game days out (approximately 4–6 months); apply a one-time `5–10%` reduction to current market value when registered, without repeated compounding.
     * **Calendar Recovery & Availability Enforcement**: `CareerState::advance_day()` decrements `injury_days_remaining` by `1` per day until `0` (automatically clearing `is_injured = false` and posting a clearance note). While `is_injured == true`, the player cannot be selected in Starting XI/Bench for matches (`SquadView` & `PreMatchView` enforce replacement) and does not gain active training XP.
     * **UI, Value & Save/Load Integration**: Displays injury severity + remaining days badge in `SquadView`, `DashboardView`, `PreMatchView`, and `PlayerProfileModal`; dispatches `"INJURY"` Inbox alerts; persists all injury fields in `<slot>.json`.
    * **3. User-Controlled Dribbling Pace & Defensive Recovery Balance (`MatchEngine`)**:

@@ -243,7 +243,7 @@ Source-only corrective changes have been committed after the Phase 5E implementa
 
    * **Stamina Persistence & Configurable Calendar Recovery**: Preserves post-match stamina without automatic full resets and recovers `stamina_recovery_rate_per_day` (default `0.30` / $30\%$ of max stamina per in-game calendar day, tunable in `0.25–0.30` range, capped at $100\%$).
 
-   * **World Soccer Champs-Inspired Injury System**: Match-sustained injuries with four severity tiers: Minor Injury (3–5 days), Medium Injury (7–14 days), Injury (30–60 days), and Serious Injury (120–180 days / 4–6 months). A Serious Injury applies a one-time 5–10% current market-value reduction. Daily calendar countdown in `advance_day()`, squad selection lock while injured, `"INJURY"` Inbox alerts and JSON save persistence.
+   * **World Soccer Champs-Inspired Injury System**: Match-sustained injuries with four severity tiers: Minor Injury (3–5 days), Moderate Injury (7–14 days), Major Injury (30–60 days), and Severe Injury (120–180 days / 4–6 months). A Severe Injury applies a one-time 5–10% current market-value reduction. Daily calendar countdown in `advance_day()`, squad selection lock while injured, `"INJURY"` Inbox alerts and JSON save persistence.
 
    * **User-Controlled Dribbling Pace & Defensive Recovery Balance (`MatchEngine`)**:
      * Balance the user's attacker and opposing defenders using their individual `Pace` attributes and current stamina/fatigue during attacking chances; avoid a universal dribble-speed boost that ignores player stats.
