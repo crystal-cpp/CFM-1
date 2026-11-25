@@ -169,6 +169,10 @@ void MatchEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_player_stamina"), &MatchEngine::get_player_stamina);
     ClassDB::bind_method(D_METHOD("get_ball_position"), &MatchEngine::get_ball_position);
     ClassDB::bind_method(D_METHOD("get_match_stats"), &MatchEngine::get_match_stats);
+    ClassDB::bind_method(D_METHOD("get_restart_state"), &MatchEngine::get_restart_state);
+    ClassDB::bind_method(D_METHOD("is_restart_active"), &MatchEngine::is_restart_active);
+    ClassDB::bind_method(D_METHOD("get_sent_off_flags"), &MatchEngine::get_sent_off_flags);
+    ClassDB::bind_method(D_METHOD("get_yellow_card_counts"), &MatchEngine::get_yellow_card_counts);
 
     // Live-Position Chance & Manual Shooting Controls
     ClassDB::bind_method(D_METHOD("set_home_auto_shoot_enabled", "enabled"), &MatchEngine::set_home_auto_shoot_enabled);
@@ -198,6 +202,10 @@ void MatchEngine::_bind_methods() {
     ADD_SIGNAL(MethodInfo("gk_rush_changed",
         PropertyInfo(Variant::BOOL, "active"),
         PropertyInfo(Variant::INT, "gk_index")));
+    ADD_SIGNAL(MethodInfo("restart_state_changed",
+        PropertyInfo(Variant::INT, "restart_type"),
+        PropertyInfo(Variant::BOOL, "to_home"),
+        PropertyInfo(Variant::VECTOR2, "spot")));
     ADD_SIGNAL(MethodInfo("squad_updated"));
     ADD_SIGNAL(MethodInfo("substitution_applied",
         PropertyInfo(Variant::BOOL, "is_home"),
@@ -1630,6 +1638,7 @@ int MatchEngine::select_nearest_defender() {
         : ball_position;
 
     for (int i = start_idx; i < end_idx; i++) {
+        if (sim_players[i].is_sent_off) continue;
         float d = sim_players[i].position.distance_to(focus_point);
         bool on_goal_side = user_is_home
             ? (sim_players[i].position.x <= focus_point.x + 12.0f)
@@ -2128,6 +2137,278 @@ void MatchEngine::_award_defensive_free_kick(bool p_to_home, Vector2 p_spot, con
     }
 }
 
+Array MatchEngine::get_sent_off_flags() const {
+    Array arr;
+    for (const SimPlayer& p : sim_players) {
+        arr.append(p.is_sent_off);
+    }
+    return arr;
+}
+
+Array MatchEngine::get_yellow_card_counts() const {
+    Array arr;
+    for (const SimPlayer& p : sim_players) {
+        arr.append(p.yellow_cards);
+    }
+    return arr;
+}
+
+bool MatchEngine::_is_last_defender_dogso(const SimPlayer& p_defender, const SimPlayer& p_attacker) const {
+    float atk_goal_x = p_attacker.is_home ? field_size.x : 0.0f;
+    float atk_dist_to_goal = std::abs(p_attacker.position.x - atk_goal_x);
+    if (atk_dist_to_goal > field_size.x * 0.42f) {
+        return false;
+    }
+    int def_start = p_defender.is_home ? 1 : 12;
+    int outfield_ahead = 0;
+    for (int i = def_start; i < def_start + 10; i++) {
+        if (sim_players[i].is_sent_off) continue;
+        float d = std::abs(sim_players[i].position.x - atk_goal_x);
+        if (d < atk_dist_to_goal - 6.0f) {
+            outfield_ahead++;
+        }
+    }
+    return outfield_ahead == 0;
+}
+
+bool MatchEngine::_try_apply_tackle_injury(SimPlayer& p_attacker, float p_challenge_force, bool p_is_slide) {
+    if (p_attacker.is_home != user_is_home || p_attacker.player_id.is_empty() || p_attacker.role == "GK") {
+        return false;
+    }
+    for (int i = 0; i < match_injuries.size(); i++) {
+        Dictionary existing = match_injuries[i];
+        if (String(existing.get("player_id", "")) == p_attacker.player_id) {
+            return false;
+        }
+    }
+
+    float fatigue_risk = std::clamp((100.0f - p_attacker.stamina) / 100.0f, 0.0f, 1.0f);
+    float contact_mult = (p_is_slide ? 1.45f : 0.75f) * std::clamp(p_challenge_force, 0.7f, 1.4f);
+    float injury_prob = std::clamp((0.004f + fatigue_risk * 0.011f) * contact_mult, 0.002f, 0.024f);
+    if (UtilityFunctions::randf() >= injury_prob) {
+        return false;
+    }
+
+    float r = UtilityFunctions::randf();
+    int sev = (r < 0.72f) ? 1 : ((r < 0.95f) ? 2 : 3);
+    Dictionary inj;
+    inj["player_id"] = p_attacker.player_id;
+    inj["severity"] = sev;
+    inj["days"] = -1;
+    match_injuries.append(inj);
+
+    _log_event("injury", p_attacker.is_home, p_attacker.name,
+        p_attacker.name + String(" picks up a knock from the challenge."));
+    return true;
+}
+
+void MatchEngine::_evaluate_foul_and_discipline(int p_defender_idx, int p_attacker_idx, float p_challenge_force, float p_from_behind, bool p_is_slide) {
+    if (p_defender_idx < 0 || p_defender_idx >= 22 || p_attacker_idx < 0 || p_attacker_idx >= 22) {
+        return;
+    }
+    SimPlayer& defender = sim_players[p_defender_idx];
+    SimPlayer& attacker = sim_players[p_attacker_idx];
+    if (defender.is_sent_off) return;
+
+    int def_mentality = defender.is_home ? home_mentality : away_mentality;
+    int def_pressing = defender.is_home ? home_pressing : away_pressing;
+    float tactic_aggression = 0.72f + (static_cast<float>(def_mentality) * 0.10f) + (static_cast<float>(def_pressing) * 0.14f);
+
+    bool injured_on_play = _try_apply_tackle_injury(attacker, p_challenge_force, p_is_slide);
+    bool is_dogso = _is_last_defender_dogso(defender, attacker);
+
+    float danger = 0.18f * tactic_aggression
+                 + (p_is_slide ? 0.16f : 0.0f)
+                 + std::max(0.0f, p_from_behind) * 0.28f
+                 + (std::clamp(p_challenge_force, 0.5f, 1.5f) - 0.8f) * 0.18f
+                 + (is_dogso ? 0.42f : 0.0f)
+                 + (injured_on_play ? 0.08f : 0.0f);
+
+    bool direct_red = (is_dogso && p_from_behind > 0.35f && UtilityFunctions::randf() < std::clamp(danger * 0.65f, 0.15f, 0.75f))
+                   || (danger > 0.85f && UtilityFunctions::randf() < 0.28f);
+
+    if (direct_red) {
+        defender.is_sent_off = true;
+        defender.position = Vector2(field_size.x * 0.5f, 4.0f);
+        defender.velocity = Vector2(0.0f, 0.0f);
+        if (defender.is_home) stats.home_red_cards++;
+        else stats.away_red_cards++;
+        if (user_controlled_index == p_defender_idx) {
+            select_nearest_defender();
+        }
+        _log_event("red_card", defender.is_home, defender.name,
+            String("RED CARD! ") + defender.name + String(" is sent off for a serious foul!"));
+    } else if (UtilityFunctions::randf() < std::clamp(danger * 0.75f, 0.12f, 0.82f)) {
+        defender.yellow_cards++;
+        if (defender.yellow_cards >= 2) {
+            defender.is_sent_off = true;
+            defender.position = Vector2(field_size.x * 0.5f, 4.0f);
+            defender.velocity = Vector2(0.0f, 0.0f);
+            if (defender.is_home) stats.home_red_cards++;
+            else stats.away_red_cards++;
+            if (user_controlled_index == p_defender_idx) {
+                select_nearest_defender();
+            }
+            _log_event("red_card", defender.is_home, defender.name,
+                String("SECOND YELLOW -> RED CARD! ") + defender.name + String(" is dismissed!"));
+        } else {
+            if (defender.is_home) stats.home_yellow_cards++;
+            else stats.away_yellow_cards++;
+            _log_event("yellow_card", defender.is_home, defender.name,
+                String("YELLOW CARD! ") + defender.name + String(" is booked by the referee."));
+        }
+    }
+}
+
+bool MatchEngine::_evaluate_pass_offside(int p_passer_idx, int p_receiver_idx) const {
+    if (p_passer_idx < 0 || p_passer_idx >= 22 || p_receiver_idx < 0 || p_receiver_idx >= 22) {
+        return false;
+    }
+    const SimPlayer& passer = sim_players[p_passer_idx];
+    const SimPlayer& receiver = sim_players[p_receiver_idx];
+    if (passer.is_home != receiver.is_home || receiver.role == "GK") {
+        return false;
+    }
+
+    float mid_x = field_size.x * 0.5f;
+    bool atk_home = passer.is_home;
+    bool in_opp_half = atk_home ? (receiver.position.x > mid_x + 1.0f) : (receiver.position.x < mid_x - 1.0f);
+    if (!in_opp_half) {
+        return false;
+    }
+
+    int opp_start = atk_home ? 11 : 0;
+    std::vector<float> opp_xs;
+    opp_xs.reserve(11);
+    for (int i = opp_start; i < opp_start + 11; i++) {
+        if (sim_players[i].is_sent_off) continue;
+        opp_xs.push_back(sim_players[i].position.x);
+    }
+    if (opp_xs.size() < 2) {
+        return false;
+    }
+
+    if (atk_home) {
+        std::sort(opp_xs.begin(), opp_xs.end(), std::greater<float>());
+        float second_last_x = opp_xs[1];
+        float offside_line = std::max(mid_x, std::max(second_last_x, ball_position.x));
+        return receiver.position.x > (offside_line + 2.5f);
+    } else {
+        std::sort(opp_xs.begin(), opp_xs.end());
+        float second_last_x = opp_xs[1];
+        float offside_line = std::min(mid_x, std::min(second_last_x, ball_position.x));
+        return receiver.position.x < (offside_line - 2.5f);
+    }
+}
+
+void MatchEngine::_begin_restart(int p_restart_type, bool p_to_home, Vector2 p_spot) {
+    if (!match_active || sim_players.size() != 22) return;
+    if (chance_state != CHANCE_NONE) {
+        _end_active_chance(false);
+    }
+    cancel_gk_rush();
+
+    restart_state = p_restart_type;
+    restart_to_home = p_to_home;
+    restart_spot.x = std::clamp(p_spot.x, 14.0f, field_size.x - 14.0f);
+    restart_spot.y = std::clamp(p_spot.y, 14.0f, field_size.y - 14.0f);
+    restart_timer = 0.72f;
+
+    int team_start = p_to_home ? 0 : 11;
+    int taker = -1;
+    if (p_restart_type == RESTART_GOAL_KICK) {
+        taker = team_start; // GK
+    } else {
+        float best_d = 1e9f;
+        for (int i = team_start + 1; i < team_start + 11; i++) {
+            if (sim_players[i].is_sent_off) continue;
+            float d = sim_players[i].position.distance_to(restart_spot);
+            if (d < best_d) {
+                best_d = d;
+                taker = i;
+            }
+        }
+        if (taker == -1) taker = team_start;
+    }
+
+    restart_taker_idx = taker;
+    sim_players[taker].position = restart_spot;
+    sim_players[taker].velocity = Vector2(0.0f, 0.0f);
+    ball_position = restart_spot;
+    ball_velocity = Vector2(0.0f, 0.0f);
+    ball_state = BALL_CARRIED;
+    ball_carrier_index = taker;
+    last_touch_index = taker;
+    possession_team = p_to_home ? 0 : 1;
+    pass_target_index = -1;
+    is_through_ball_in_flight = false;
+    pending_pass_offside = false;
+
+    String side_name = p_to_home ? home_club_name : away_club_name;
+    if (p_restart_type == RESTART_THROW_IN) {
+        _log_event("throw_in", p_to_home, sim_players[taker].name,
+            String("Throw-in to ") + side_name + String("."));
+    } else if (p_restart_type == RESTART_GOAL_KICK) {
+        _log_event("goal_kick", p_to_home, sim_players[taker].name,
+            String("Goal kick to ") + side_name + String("."));
+    } else if (p_restart_type == RESTART_CORNER) {
+        _log_event("corner", p_to_home, sim_players[taker].name,
+            String("Corner kick awarded to ") + side_name + String("!"));
+    } else if (p_restart_type == RESTART_FREE_KICK) {
+        _log_event("free_kick", p_to_home, sim_players[taker].name,
+            String("Indirect free kick to ") + side_name + String("."));
+    }
+    emit_signal("restart_state_changed", restart_state, restart_to_home, restart_spot);
+}
+
+void MatchEngine::_complete_restart() {
+    if (restart_state == RESTART_NONE || sim_players.size() != 22) {
+        restart_state = RESTART_NONE;
+        return;
+    }
+
+    int prev_restart = restart_state;
+    bool to_home = restart_to_home;
+    int taker = (restart_taker_idx >= 0 && restart_taker_idx < 22) ? restart_taker_idx : (to_home ? 0 : 11);
+    restart_state = RESTART_NONE;
+    restart_timer = 0.0f;
+    restart_taker_idx = -1;
+    emit_signal("restart_state_changed", RESTART_NONE, to_home, restart_spot);
+
+    int team_start = to_home ? 0 : 11;
+    int receiver = -1;
+    float best_score = -1e9f;
+    for (int i = team_start + 1; i < team_start + 11; i++) {
+        if (i == taker || sim_players[i].is_sent_off) continue;
+        float d = sim_players[i].position.distance_to(sim_players[taker].position);
+        float score = -d;
+        if (prev_restart == RESTART_CORNER) {
+            float opp_goal_x = to_home ? field_size.x : 0.0f;
+            float dist_to_goal = sim_players[i].position.distance_to(Vector2(opp_goal_x, field_size.y * 0.5f));
+            score = -dist_to_goal + ((sim_players[i].role == "ST" || sim_players[i].role == "CB" || sim_players[i].role == "CAM") ? 45.0f : 0.0f);
+        } else if (prev_restart == RESTART_GOAL_KICK) {
+            score = (d > 65.0f && d < 260.0f) ? (120.0f - std::abs(d - 150.0f)) : -d;
+        }
+        if (score > best_score) {
+            best_score = score;
+            receiver = i;
+        }
+    }
+
+    if (receiver != -1) {
+        _execute_pass(taker, receiver, false);
+        // No offside directly from a throw-in, goal kick, or corner
+        if (prev_restart == RESTART_THROW_IN || prev_restart == RESTART_GOAL_KICK || prev_restart == RESTART_CORNER) {
+            pending_pass_offside = false;
+        }
+        if (prev_restart == RESTART_CORNER && chance_state == CHANCE_NONE) {
+            _spawn_wide_range_chance(to_home);
+        }
+    } else {
+        action_decision_timer = 0.25f;
+    }
+}
+
 void MatchEngine::_resolve_slide_tackle_contact(int p_defender_idx) {
     if (p_defender_idx < 0 || p_defender_idx >= 22) return;
     SimPlayer& defender = sim_players[p_defender_idx];
@@ -2149,13 +2430,20 @@ void MatchEngine::_resolve_slide_tackle_contact(int p_defender_idx) {
             : Vector2(attacker.is_home ? 1.0f : -1.0f, 0.0f);
         float from_behind = defender.slide_dir.dot(atk_facing); // > 0.45 means tackling from behind
 
+        int def_mentality = defender.is_home ? home_mentality : away_mentality;
+        int def_pressing = defender.is_home ? home_pressing : away_pressing;
+        float tactic_aggression = 0.72f + (static_cast<float>(def_mentality) * 0.10f) + (static_cast<float>(def_pressing) * 0.14f);
+
         float foul_risk = std::clamp(
-            0.09f + std::max(0.0f, from_behind - 0.30f) * 0.36f - ((defender.defending * def_fatigue - 65.0f) * 0.0022f),
-            0.04f, 0.46f
+            (0.09f + std::max(0.0f, from_behind - 0.30f) * 0.36f - ((defender.defending * def_fatigue - 65.0f) * 0.0022f)) * tactic_aggression,
+            0.03f, 0.55f
         );
         if (UtilityFunctions::randf() < foul_risk) {
             defender.recovery_timer = 0.45f;
+            int fouled_idx = ball_carrier_index;
+            float challenge_force = 0.85f + (defender.physical / 200.0f);
             _award_defensive_free_kick(attacker.is_home, attacker.position, defender.name);
+            _evaluate_foul_and_discipline(p_defender_idx, fouled_idx, challenge_force, from_behind, true);
             return;
         }
 
@@ -2425,7 +2713,7 @@ int MatchEngine::_select_smart_presser(bool p_is_home, int p_exclude_idx) const 
     float best_score = 1e9f;
 
     for (int i = start_idx; i < end_idx; i++) {
-        if (i == p_exclude_idx) continue;
+        if (i == p_exclude_idx || sim_players[i].is_sent_off) continue;
         const SimPlayer& p = sim_players[i];
         float d = p.position.distance_to(ball_position);
         float iq = _get_defensive_positioning_iq(p);
@@ -2961,6 +3249,10 @@ void MatchEngine::_update_player_movement(float dt) {
 
     for (int i = 0; i < 22; i++) {
         SimPlayer& p = sim_players[i];
+        if (p.is_sent_off) {
+            p.velocity = Vector2(0.0f, 0.0f);
+            continue;
+        }
         if (p.slide_timer > 0.0f) {
             p.slide_timer = std::max(0.0f, p.slide_timer - dt);
             if (p.slide_timer <= 0.0f && p.is_sliding) {
@@ -3159,6 +3451,8 @@ void MatchEngine::_execute_pass(int p_passer_idx, int p_receiver_idx, bool p_is_
     ball_carrier_index = -1;
     pass_target_index = p_receiver_idx;
     is_through_ball_in_flight = p_is_through_ball;
+    pending_pass_offside = _evaluate_pass_offside(p_passer_idx, p_receiver_idx);
+    offside_spot = receiver.position;
     last_touch_index = p_passer_idx;
 
     if (passer.is_home) {
@@ -3595,7 +3889,7 @@ void MatchEngine::_update_ball_and_actions(float dt) {
 
         for (int j = opp_start; j < opp_start + 11; j++) {
             SimPlayer& defender = sim_players[j];
-            if (defender.recovery_timer > 0.0f || defender.tackle_cooldown > 0.0f) {
+            if (defender.is_sent_off || defender.recovery_timer > 0.0f || defender.tackle_cooldown > 0.0f) {
                 continue;
             }
 
@@ -3684,6 +3978,16 @@ void MatchEngine::_update_ball_and_actions(float dt) {
                 } else {
                     float phy_recovery = std::clamp(0.68f - (defender.physical / 100.0f) * 0.22f, 0.44f, 0.66f);
                     defender.recovery_timer = is_user_manual_dribble ? (phy_recovery * 1.35f) : phy_recovery;
+                    int def_mentality = defender.is_home ? home_mentality : away_mentality;
+                    float tactic_agg = 0.72f + (static_cast<float>(def_mentality) * 0.10f) + (static_cast<float>(def_pressing) * 0.14f);
+                    if (body_duel && defender.role != "GK" && UtilityFunctions::randf() < std::clamp(0.035f * tactic_agg, 0.015f, 0.09f)) {
+                        int fouled_idx = ball_carrier_index;
+                        Vector2 atk_face = (carrier.velocity.length() > 8.0f) ? carrier.velocity.normalized() : Vector2(carrier.is_home ? 1.0f : -1.0f, 0.0f);
+                        float from_behind = (defender.velocity.length() > 8.0f) ? defender.velocity.normalized().dot(atk_face) : 0.0f;
+                        _award_defensive_free_kick(carrier.is_home, carrier.position, defender.name);
+                        _evaluate_foul_and_discipline(j, fouled_idx, 0.75f + (defender.physical / 240.0f), from_behind, false);
+                        return;
+                    }
                 }
             }
         }
@@ -3719,7 +4023,7 @@ void MatchEngine::_update_ball_and_actions(float dt) {
 
         for (int j = opp_start; j < opp_start + 11; j++) {
             const SimPlayer& def = sim_players[j];
-            if (def.recovery_timer > 0.0f) continue;
+            if (def.is_sent_off || def.recovery_timer > 0.0f) continue;
 
             float def_fatigue = _get_fatigue_multiplier(def);
             float iq = _get_defensive_positioning_iq(def);
@@ -3751,6 +4055,7 @@ void MatchEngine::_update_ball_and_actions(float dt) {
                     last_touch_index = j;
                     pass_target_index = -1;
                     is_through_ball_in_flight = false;
+                    pending_pass_offside = false;
                     ball_state = BALL_CARRIED;
                     ball_velocity = Vector2(0.0f, 0.0f);
                     action_decision_timer = 0.32f;
@@ -3792,6 +4097,15 @@ void MatchEngine::_update_ball_and_actions(float dt) {
             }
 
             if (arrived) {
+                if (pending_pass_offside) {
+                    pending_pass_offside = false;
+                    if (passer_is_home) stats.home_offsides++;
+                    else stats.away_offsides++;
+                    _log_event("offside", passer_is_home, sim_players[pass_target_index].name,
+                        String("OFFSIDE! ") + sim_players[pass_target_index].name + String(" is caught offside — indirect free kick."));
+                    _begin_restart(RESTART_FREE_KICK, !passer_is_home, offside_spot);
+                    return;
+                }
                 if (passer_is_home) {
                     stats.home_passes_completed++;
                 } else {
@@ -3819,18 +4133,26 @@ void MatchEngine::_update_ball_and_actions(float dt) {
             }
         }
 
-        if (ball_position.x <= 10.0f || ball_position.x >= field_size.x - 10.0f ||
-            ball_position.y <= 10.0f || ball_position.y >= field_size.y - 10.0f) {
-            ball_position.x = std::clamp(ball_position.x, 12.0f, field_size.x - 12.0f);
-            ball_position.y = std::clamp(ball_position.y, 12.0f, field_size.y - 12.0f);
-            ball_velocity *= 0.25f;
-            ball_state = BALL_LOOSE;
-            possession_team = -1;
-            pass_target_index = -1;
-            is_through_ball_in_flight = false;
-            if (chance_state != CHANCE_NONE) {
-                _end_active_chance(false);
+        if (ball_position.y <= 10.0f || ball_position.y >= field_size.y - 10.0f) {
+            bool last_home = (last_touch_index >= 0 && last_touch_index < 11);
+            Vector2 spot(std::clamp(ball_position.x, 24.0f, field_size.x - 24.0f), (ball_position.y <= 10.0f) ? 14.0f : (field_size.y - 14.0f));
+            _begin_restart(RESTART_THROW_IN, !last_home, spot);
+            return;
+        }
+        if (ball_position.x <= 10.0f || ball_position.x >= field_size.x - 10.0f) {
+            bool left_goal_line = (ball_position.x <= 10.0f);
+            bool defending_is_home = left_goal_line;
+            bool last_home = (last_touch_index >= 0 && last_touch_index < 11);
+            if (last_home == defending_is_home) {
+                if (!defending_is_home) stats.home_corners++;
+                else stats.away_corners++;
+                Vector2 corner_spot(left_goal_line ? 16.0f : (field_size.x - 16.0f), (ball_position.y < field_size.y * 0.5f) ? 16.0f : (field_size.y - 16.0f));
+                _begin_restart(RESTART_CORNER, !defending_is_home, corner_spot);
+            } else {
+                Vector2 gk_spot(defending_is_home ? 48.0f : (field_size.x - 48.0f), field_size.y * 0.5f);
+                _begin_restart(RESTART_GOAL_KICK, defending_is_home, gk_spot);
             }
+            return;
         }
         return;
     }
@@ -3922,8 +4244,15 @@ void MatchEngine::_update_ball_and_actions(float dt) {
                     _log_event("shot_wide", shooter_is_home, shooter.name,
                         shooter.name + String("'s effort drifts wide of the post."));
                 }
-                _end_active_chance(false);
-                _give_gk_possession(!shooter_is_home);
+                if (near_gk) {
+                    if (shooter_is_home) stats.home_corners++;
+                    else stats.away_corners++;
+                    Vector2 corner_spot(shooter_is_home ? (field_size.x - 16.0f) : 16.0f, (ball_position.y < field_size.y * 0.5f) ? 16.0f : (field_size.y - 16.0f));
+                    _begin_restart(RESTART_CORNER, shooter_is_home, corner_spot);
+                } else {
+                    Vector2 gk_spot(!shooter_is_home ? 48.0f : (field_size.x - 48.0f), field_size.y * 0.5f);
+                    _begin_restart(RESTART_GOAL_KICK, !shooter_is_home, gk_spot);
+                }
                 return;
             }
 
@@ -3993,13 +4322,34 @@ void MatchEngine::_update_ball_and_actions(float dt) {
     // STATE 4: Loose Ball Recovery (Physical + Pace contest when two players reach a loose ball simultaneously)
     ball_position += ball_velocity * dt;
     ball_velocity *= std::exp(-2.8f * dt);
+    if (ball_position.y <= 10.0f || ball_position.y >= field_size.y - 10.0f) {
+        bool last_home = (last_touch_index >= 0 && last_touch_index < 11);
+        Vector2 spot(std::clamp(ball_position.x, 24.0f, field_size.x - 24.0f), (ball_position.y <= 10.0f) ? 14.0f : (field_size.y - 14.0f));
+        _begin_restart(RESTART_THROW_IN, !last_home, spot);
+        return;
+    }
+    if (ball_position.x <= 10.0f || ball_position.x >= field_size.x - 10.0f) {
+        bool left_goal_line = (ball_position.x <= 10.0f);
+        bool defending_is_home = left_goal_line;
+        bool last_home = (last_touch_index >= 0 && last_touch_index < 11);
+        if (last_home == defending_is_home) {
+            if (!defending_is_home) stats.home_corners++;
+            else stats.away_corners++;
+            Vector2 corner_spot(left_goal_line ? 16.0f : (field_size.x - 16.0f), (ball_position.y < field_size.y * 0.5f) ? 16.0f : (field_size.y - 16.0f));
+            _begin_restart(RESTART_CORNER, !defending_is_home, corner_spot);
+        } else {
+            Vector2 gk_spot(defending_is_home ? 48.0f : (field_size.x - 48.0f), field_size.y * 0.5f);
+            _begin_restart(RESTART_GOAL_KICK, defending_is_home, gk_spot);
+        }
+        return;
+    }
     ball_position.x = std::clamp(ball_position.x, 12.0f, field_size.x - 12.0f);
     ball_position.y = std::clamp(ball_position.y, 12.0f, field_size.y - 12.0f);
 
     int closest_idx = -1;
     float best_contest_score = -1e9f;
     for (int i = 0; i < 22; i++) {
-        if (sim_players[i].recovery_timer > 0.0f) continue;
+        if (sim_players[i].is_sent_off || sim_players[i].recovery_timer > 0.0f) continue;
         float d = sim_players[i].position.distance_to(ball_position);
         if (d < 16.5f) {
             float contest_score = (16.5f - d) * 2.2f + (sim_players[i].physical * 0.14f) + (sim_players[i].pace * 0.08f);
@@ -4186,6 +4536,7 @@ void MatchEngine::_step_simulation(float dt) {
     const Vector2 player_min(14.0f, 14.0f);
     const Vector2 player_max(field_size.x - 14.0f, field_size.y - 14.0f);
     for (SimPlayer& player : sim_players) {
+        if (player.is_sent_off) continue;
         player.position.x = std::clamp(player.position.x, player_min.x, player_max.x);
         player.position.y = std::clamp(player.position.y, player_min.y, player_max.y);
         player.anchor.x = std::clamp(player.anchor.x, player_min.x, player_max.x);
@@ -4226,6 +4577,16 @@ void MatchEngine::_physics_process(double delta) {
     }
 
     float dt = std::min(raw_dt, 0.05f);
+
+    if (restart_state != RESTART_NONE) {
+        restart_timer -= dt;
+        _sync_player_positions_array();
+        if (restart_timer <= 0.0f) {
+            _complete_restart();
+        }
+        _flush_deferred_signals();
+        return;
+    }
 
     if (chance_state == _user_defend_chance_state()) {
         dt *= defensive_chance_time_scale;
@@ -4312,6 +4673,15 @@ void MatchEngine::reset_standalone_match_setup() {
 void MatchEngine::start_match() {
     gk_rush_active = false;
     gk_rush_timer = 0.0f;
+    restart_state = RESTART_NONE;
+    restart_timer = 0.0f;
+    restart_taker_idx = -1;
+    pending_pass_offside = false;
+    match_injuries.clear();
+    for (SimPlayer& p : sim_players) {
+        p.yellow_cards = 0;
+        p.is_sent_off = false;
+    }
     if (sim_players.size() != 22) {
         UtilityFunctions::printerr("MatchEngine: Cannot start match; expected 22 initialized players.");
         match_active = false;
@@ -4581,6 +4951,15 @@ Dictionary MatchEngine::get_match_stats() const {
     d["away_clearances"] = stats.away_clearances;
     d["home_corners"] = stats.home_corners;
     d["away_corners"] = stats.away_corners;
+    d["home_fouls"] = stats.home_fouls;
+    d["away_fouls"] = stats.away_fouls;
+    d["home_offsides"] = stats.home_offsides;
+    d["away_offsides"] = stats.away_offsides;
+    d["home_yellow_cards"] = stats.home_yellow_cards;
+    d["away_yellow_cards"] = stats.away_yellow_cards;
+    d["home_red_cards"] = stats.home_red_cards;
+    d["away_red_cards"] = stats.away_red_cards;
+    d["match_injuries"] = match_injuries;
     d["home_subs_used"] = home_subs_used;
     d["away_subs_used"] = away_subs_used;
     d["home_sub_windows_used"] = home_sub_windows_used;

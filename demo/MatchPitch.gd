@@ -1480,8 +1480,13 @@ func _draw_pitch_scene() -> void:
 					_pitch_canvas.draw_line(run_canvas, tb_canvas, run_col, 2.4, true)
 					_pitch_canvas.draw_arc(run_canvas, 16.0 * eff_scale, 0.0, TAU, 28, run_col, 2.6)
 
+	var sent_off_flags: Array = match_engine.get_sent_off_flags() if match_engine.has_method("get_sent_off_flags") else []
+	var yellow_counts: Array = match_engine.get_yellow_card_counts() if match_engine.has_method("get_yellow_card_counts") else []
+
 	var p_radius: float = maxf(8.0, 10.0 * eff_scale)
 	for i in range(positions.size()):
+		if i < sent_off_flags.size() and bool(sent_off_flags[i]):
+			continue
 		var pos: Vector2 = _logical_to_canvas(Vector2(positions[i]))
 		var is_home: bool = i < 11
 		var is_gk: bool = (i == 0 or i == 11)
@@ -1507,6 +1512,10 @@ func _draw_pitch_scene() -> void:
 
 		_pitch_canvas.draw_circle(pos, p_radius, fill_col)
 		_pitch_canvas.draw_arc(pos, p_radius, 0.0, TAU, 32, Color.WHITE if is_home else Color(0.12, 0.14, 0.18), 1.6)
+		if i < yellow_counts.size() and int(yellow_counts[i]) > 0:
+			var yc_rect := Rect2(pos + Vector2(p_radius * 0.55, -p_radius * 0.95), Vector2(6.0, 8.0))
+			_pitch_canvas.draw_rect(yc_rect, Color(1.0, 0.86, 0.12), true)
+			_pitch_canvas.draw_rect(yc_rect, Color(0.12, 0.14, 0.18), false, 1.0)
 
 		var role_text: String = roles[i] if i < roles.size() else ("H" + str(i + 1) if is_home else "A" + str(i - 10))
 		var custom_name: String = _player_display_names[i] if i < _player_display_names.size() else ""
@@ -1544,7 +1553,20 @@ func _draw_pitch_scene() -> void:
 			_pitch_canvas.draw_string(default_font, card_pos + Vector2(0.0, 64.0), main_prompt, HORIZONTAL_ALIGNMENT_CENTER, int(card_w), 21, Color.WHITE)
 		return
 
-	if chance_state == user_atk:
+	if match_engine.has_method("is_restart_active") and match_engine.is_restart_active():
+		var r_type: int = match_engine.get_restart_state() if match_engine.has_method("get_restart_state") else 0
+		var r_label: String = "SET PIECE"
+		match r_type:
+			1: r_label = "THROW-IN"
+			2: r_label = "GOAL KICK"
+			3: r_label = "CORNER KICK"
+			4: r_label = "INDIRECT FREE KICK"
+		var r_rect := Rect2(Vector2(14.0, 12.0), Vector2(210.0, 28.0))
+		_pitch_canvas.draw_rect(r_rect, Color(0.06, 0.10, 0.16, 0.90), true)
+		_pitch_canvas.draw_rect(r_rect, Color(0.18, 0.86, 0.65, 0.95), false, 1.4)
+		if default_font != null:
+			_pitch_canvas.draw_string(default_font, r_rect.position + Vector2(10.0, 19.0), r_label, HORIZONTAL_ALIGNMENT_LEFT, 190, 11, Color.WHITE)
+	elif chance_state == user_atk:
 		var b_pos: Vector2 = match_engine.get_ball_position()
 		var target_goal_x: float = _user_target_goal_x(logical_size.x)
 		var dist_m: int = int(round(b_pos.distance_to(Vector2(target_goal_x, logical_size.y * 0.5)) * 0.1))

@@ -54,6 +54,8 @@ struct SimPlayer {
     bool is_sliding = false;
     float slide_timer = 0.0f;
     Vector2 slide_dir = Vector2(0.0f, 0.0f);
+    int yellow_cards = 0;
+    bool is_sent_off = false;
 
     Vector2 anchor;
     Vector2 position;
@@ -100,6 +102,12 @@ struct MatchStats {
     int away_corners = 0;
     int home_fouls = 0;
     int away_fouls = 0;
+    int home_offsides = 0;
+    int away_offsides = 0;
+    int home_yellow_cards = 0;
+    int away_yellow_cards = 0;
+    int home_red_cards = 0;
+    int away_red_cards = 0;
 };
 
 class MatchEngine : public Node2D {
@@ -313,6 +321,10 @@ public:
     PackedFloat32Array get_player_stamina() const;
     Vector2 get_ball_position() const;
     Dictionary get_match_stats() const;
+    int get_restart_state() const { return restart_state; }
+    bool is_restart_active() const { return restart_state != RESTART_NONE; }
+    Array get_sent_off_flags() const;
+    Array get_yellow_card_counts() const;
 
     void set_home_auto_shoot_enabled(bool p_enabled);
     bool is_home_auto_shoot_enabled() const;
@@ -330,6 +342,14 @@ private:
         BALL_IN_PASS = 1,
         BALL_IN_SHOT = 2,
         BALL_LOOSE = 3
+    };
+
+    enum RestartState {
+        RESTART_NONE = 0,
+        RESTART_THROW_IN = 1,
+        RESTART_GOAL_KICK = 2,
+        RESTART_CORNER = 3,
+        RESTART_FREE_KICK = 4
     };
 
     void _trigger_halftime();
@@ -355,11 +375,26 @@ private:
     bool _try_defensive_clearance(int p_defender_idx, float p_danger_score);
     void _execute_clearance(int p_defender_idx);
 
-    // Slide Tackle, Foul & Goalkeeper Rush Helpers (Phase 5F)
+    // Slide Tackle, Foul, Discipline, Offside & Restart Helpers (Phase 5F / 5G)
     void _resolve_slide_tackle_contact(int p_defender_idx);
     void _award_defensive_free_kick(bool p_to_home, Vector2 p_spot, const String& p_fouler_name);
+    void _evaluate_foul_and_discipline(int p_defender_idx, int p_attacker_idx, float p_challenge_force, float p_from_behind, bool p_is_slide);
+    bool _is_last_defender_dogso(const SimPlayer& p_defender, const SimPlayer& p_attacker) const;
+    bool _try_apply_tackle_injury(SimPlayer& p_attacker, float p_challenge_force, bool p_is_slide);
+    bool _evaluate_pass_offside(int p_passer_idx, int p_receiver_idx) const;
+    void _begin_restart(int p_restart_type, bool p_to_home, Vector2 p_spot);
+    void _complete_restart();
     bool _try_gk_rush_intercept();
     void _execute_gk_rush_clearance(int p_gk_idx);
+
+    int restart_state = RESTART_NONE;
+    bool restart_to_home = true;
+    int restart_taker_idx = -1;
+    Vector2 restart_spot = Vector2(0.0f, 0.0f);
+    float restart_timer = 0.0f;
+    bool pending_pass_offside = false;
+    Vector2 offside_spot = Vector2(0.0f, 0.0f);
+    Array match_injuries;
 
     bool gk_rush_active = false;
     float gk_rush_timer = 0.0f;
