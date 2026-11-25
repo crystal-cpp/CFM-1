@@ -325,6 +325,7 @@ public:
     bool is_restart_active() const { return restart_state != RESTART_NONE; }
     Array get_sent_off_flags() const;
     Array get_yellow_card_counts() const;
+    bool is_pass_offside(int p_passer_idx, int p_receiver_idx) const { return _evaluate_pass_offside(p_passer_idx, p_receiver_idx); }
 
     void set_home_auto_shoot_enabled(bool p_enabled);
     bool is_home_auto_shoot_enabled() const;
@@ -382,6 +383,7 @@ private:
     bool _is_last_defender_dogso(const SimPlayer& p_defender, const SimPlayer& p_attacker) const;
     bool _try_apply_tackle_injury(SimPlayer& p_attacker, float p_challenge_force, bool p_is_slide);
     bool _evaluate_pass_offside(int p_passer_idx, int p_receiver_idx) const;
+    void _snapshot_pass_offside_flags(int p_passer_idx);
     void _begin_restart(int p_restart_type, bool p_to_home, Vector2 p_spot);
     void _complete_restart();
     bool _try_gk_rush_intercept();
@@ -393,6 +395,7 @@ private:
     Vector2 restart_spot = Vector2(0.0f, 0.0f);
     float restart_timer = 0.0f;
     bool pending_pass_offside = false;
+    bool pass_offside_flags[22] = { false };
     Vector2 offside_spot = Vector2(0.0f, 0.0f);
     Array match_injuries;
 

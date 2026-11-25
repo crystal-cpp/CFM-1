@@ -173,6 +173,7 @@ void MatchEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("is_restart_active"), &MatchEngine::is_restart_active);
     ClassDB::bind_method(D_METHOD("get_sent_off_flags"), &MatchEngine::get_sent_off_flags);
     ClassDB::bind_method(D_METHOD("get_yellow_card_counts"), &MatchEngine::get_yellow_card_counts);
+    ClassDB::bind_method(D_METHOD("is_pass_offside", "passer_idx", "receiver_idx"), &MatchEngine::is_pass_offside);
 
     // Live-Position Chance & Manual Shooting Controls
     ClassDB::bind_method(D_METHOD("set_home_auto_shoot_enabled", "enabled"), &MatchEngine::set_home_auto_shoot_enabled);
@@ -2006,6 +2007,7 @@ bool MatchEngine::command_through_ball(Vector2 p_direction_or_target) {
     ball_carrier_index = -1;
     pass_target_index = best_runner;
     is_through_ball_in_flight = true;
+    _snapshot_pass_offside_flags(passer_idx);
     pending_pass_offside = _evaluate_pass_offside(passer_idx, best_runner);
     offside_spot = runner.position;
     last_touch_index = passer_idx;
@@ -2278,6 +2280,20 @@ bool MatchEngine::_evaluate_pass_offside(int p_passer_idx, int p_receiver_idx) c
     }
 }
 
+void MatchEngine::_snapshot_pass_offside_flags(int p_passer_idx) {
+    for (int i = 0; i < 22; i++) {
+        pass_offside_flags[i] = false;
+    }
+    if (p_passer_idx < 0 || p_passer_idx >= 22) return;
+    bool atk_home = sim_players[p_passer_idx].is_home;
+    int start = atk_home ? 1 : 12;
+    int end = atk_home ? 11 : 22;
+    for (int i = start; i < end; i++) {
+        if (i == p_passer_idx || sim_players[i].is_sent_off) continue;
+        pass_offside_flags[i] = _evaluate_pass_offside(p_passer_idx, i);
+    }
+}
+
 void MatchEngine::_begin_restart(int p_restart_type, bool p_to_home, Vector2 p_spot) {
     if (!match_active || sim_players.size() != 22) return;
     if (chance_state != CHANCE_NONE) {
@@ -2320,6 +2336,7 @@ void MatchEngine::_begin_restart(int p_restart_type, bool p_to_home, Vector2 p_s
     pass_target_index = -1;
     is_through_ball_in_flight = false;
     pending_pass_offside = false;
+    for (int i = 0; i < 22; i++) pass_offside_flags[i] = false;
 
     String side_name = p_to_home ? home_club_name : away_club_name;
     if (p_restart_type == RESTART_THROW_IN) {
@@ -2377,6 +2394,7 @@ void MatchEngine::_complete_restart() {
         // No offside directly from a throw-in, goal kick, or corner
         if (prev_restart == RESTART_THROW_IN || prev_restart == RESTART_GOAL_KICK || prev_restart == RESTART_CORNER) {
             pending_pass_offside = false;
+            for (int i = 0; i < 22; i++) pass_offside_flags[i] = false;
         }
         if (prev_restart == RESTART_CORNER && chance_state == CHANCE_NONE) {
             _spawn_wide_range_chance(to_home);
@@ -3428,6 +3446,7 @@ void MatchEngine::_execute_pass(int p_passer_idx, int p_receiver_idx, bool p_is_
     ball_carrier_index = -1;
     pass_target_index = p_receiver_idx;
     is_through_ball_in_flight = p_is_through_ball;
+    _snapshot_pass_offside_flags(p_passer_idx);
     pending_pass_offside = _evaluate_pass_offside(p_passer_idx, p_receiver_idx);
     offside_spot = receiver.position;
     last_touch_index = p_passer_idx;
@@ -4009,6 +4028,18 @@ void MatchEngine::_update_ball_and_actions(float dt) {
             float effective_radius = base_intercept_radius * attr_radius_scale * def_fatigue * (is_user_attack_chance ? 0.82f : 1.0f);
 
             if (def.position.distance_to(ball_position) < effective_radius) {
+                int tm_start = passer_is_home ? 1 : 12;
+                for (int k = tm_start; k < tm_start + 10; k++) {
+                    if (pass_offside_flags[k] && !sim_players[k].is_sent_off &&
+                        sim_players[k].position.distance_to(ball_position) < 16.0f) {
+                        if (passer_is_home) stats.home_offsides++;
+                        else stats.away_offsides++;
+                        _log_event("offside", passer_is_home, sim_players[k].name,
+                            String("OFFSIDE! ") + sim_players[k].name + String(" interferes with play from an offside position."));
+                        _begin_restart(RESTART_FREE_KICK, !passer_is_home, sim_players[k].position);
+                        return;
+                    }
+                }
                 float role_read = (def.role == "CDM") ? 2.2f : ((def.role == "CB") ? 1.5f : (_is_backline_role(def.role) ? 1.1f : -1.2f));
                 float skill_edge = ((def.defending * def_fatigue) - (passer_passing * 0.65f)) * 0.08f;
                 // Continuous hazard rate (per-second) so 60Hz tick rate doesn't inflate interception frequency
@@ -4033,6 +4064,7 @@ void MatchEngine::_update_ball_and_actions(float dt) {
                     pass_target_index = -1;
                     is_through_ball_in_flight = false;
                     pending_pass_offside = false;
+                    for (int k = 0; k < 22; k++) pass_offside_flags[k] = false;
                     ball_state = BALL_CARRIED;
                     ball_velocity = Vector2(0.0f, 0.0f);
                     action_decision_timer = 0.32f;
@@ -4654,6 +4686,7 @@ void MatchEngine::start_match() {
     restart_timer = 0.0f;
     restart_taker_idx = -1;
     pending_pass_offside = false;
+    for (int i = 0; i < 22; i++) pass_offside_flags[i] = false;
     match_injuries.clear();
     for (SimPlayer& p : sim_players) {
         p.yellow_cards = 0;

@@ -420,6 +420,10 @@ func _test_phase_5g_match_laws() -> void:
 	_assert(stats.has("home_yellow_cards") and stats.has("away_yellow_cards"), "get_match_stats() exports yellow card totals")
 	_assert(stats.has("home_red_cards") and stats.has("away_red_cards"), "get_match_stats() exports red card totals")
 	_assert(stats.has("match_injuries") and stats["match_injuries"] is Array, "get_match_stats() exports match_injuries Array")
+	_assert(engine.has_method("is_pass_offside"), "MatchEngine exposes is_pass_offside(passer, receiver)")
+	_assert(not engine.is_pass_offside(6, 9), "Kickoff formation HOME pass is onside")
+	_assert(not engine.is_pass_offside(17, 20), "Kickoff formation AWAY pass is onside")
+	_assert(not engine.is_pass_offside(0, 0), "Self-pass / GK is never flagged offside")
 
 	engine.free()
 
