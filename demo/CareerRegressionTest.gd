@@ -47,6 +47,9 @@ func run_all_career_tests() -> Dictionary:
 	# Phase 5D-2 Database, ClubID, League Isolation & Odd-Round-Robin Suite
 	_test_phase_5d_database_and_league_isolation()
 
+	# Phase 5G Match Laws, Restarts, Cards & Injury Telemetry Suite
+	_test_phase_5g_match_laws()
+
 	print("========================================================")
 	print("  TOTAL CAREER TESTS: %d PASSED, %d FAILED" % [_passed, _failed])
 	print("========================================================\n")
@@ -387,4 +390,36 @@ func _test_phase_3c_views_and_modal(career: CareerState) -> void:
 	modal.close_modal()
 	_assert(not modal.visible, "PlayerProfileModal closes cleanly")
 	modal.queue_free()
+
+func _test_phase_5g_match_laws() -> void:
+	print("\n--- 10. Phase 5G: Match Laws, Restarts, Discipline & Injury Telemetry ---")
+	var engine := MatchEngine.new()
+	engine.start_match()
+
+	_assert(engine.has_method("get_restart_state"), "MatchEngine exposes get_restart_state()")
+	_assert(engine.has_method("is_restart_active"), "MatchEngine exposes is_restart_active()")
+	_assert(engine.has_method("get_sent_off_flags"), "MatchEngine exposes get_sent_off_flags()")
+	_assert(engine.has_method("get_yellow_card_counts"), "MatchEngine exposes get_yellow_card_counts()")
+	_assert(engine.has_signal("restart_state_changed"), "MatchEngine exposes restart_state_changed signal")
+
+	_assert(not engine.is_restart_active(), "Restart state starts inactive at kickoff")
+	_assert(engine.get_restart_state() == 0, "Initial restart state is RESTART_NONE (0)")
+
+	var sent_off: Array = engine.get_sent_off_flags()
+	var yellows: Array = engine.get_yellow_card_counts()
+	_assert(sent_off.size() == 22, "Sent-off flags array has 22 players")
+	_assert(yellows.size() == 22, "Yellow-card counts array has 22 players")
+	if sent_off.size() == 22:
+		_assert(not bool(sent_off[0]) and not bool(sent_off[21]), "All players start eligible (not sent off)")
+	if yellows.size() == 22:
+		_assert(int(yellows[0]) == 0 and int(yellows[21]) == 0, "All players start with 0 yellow cards")
+
+	var stats: Dictionary = engine.get_match_stats()
+	_assert(stats.has("home_fouls") and stats.has("away_fouls"), "get_match_stats() exports home_fouls and away_fouls")
+	_assert(stats.has("home_offsides") and stats.has("away_offsides"), "get_match_stats() exports home_offsides and away_offsides")
+	_assert(stats.has("home_yellow_cards") and stats.has("away_yellow_cards"), "get_match_stats() exports yellow card totals")
+	_assert(stats.has("home_red_cards") and stats.has("away_red_cards"), "get_match_stats() exports red card totals")
+	_assert(stats.has("match_injuries") and stats["match_injuries"] is Array, "get_match_stats() exports match_injuries Array")
+
+	engine.free()
 

@@ -1866,7 +1866,7 @@ bool MatchEngine::command_pass(int p_target_player_idx) {
         return false;
     }
     const int resolved_target = p_target_player_idx;
-    if (!_is_user_player_idx(resolved_target)) {
+    if (!_is_user_player_idx(resolved_target) || sim_players[resolved_target].is_sent_off) {
         return false;
     }
 
@@ -1945,7 +1945,7 @@ bool MatchEngine::command_through_ball(Vector2 p_direction_or_target) {
     float best_runner_score = -1e9f;
 
     for (int t = outfield_start; t < end_idx; t++) {
-        if (t == passer_idx) continue;
+        if (t == passer_idx || sim_players[t].is_sent_off) continue;
         Vector2 to_tm = sim_players[t].position - passer.position;
         float dist_from_passer = to_tm.length();
         if (dist_from_passer < 18.0f || dist_from_passer > 460.0f) continue;
@@ -1964,7 +1964,7 @@ bool MatchEngine::command_through_ball(Vector2 p_direction_or_target) {
     if (best_runner == -1) {
         float best_prog_x = user_is_home ? -1.0f : (field_size.x + 1.0f);
         for (int t = outfield_start; t < end_idx; t++) {
-            if (t == passer_idx) continue;
+            if (t == passer_idx || sim_players[t].is_sent_off) continue;
             bool further = user_is_home ? (sim_players[t].position.x > best_prog_x) : (sim_players[t].position.x < best_prog_x);
             if (further) {
                 best_prog_x = sim_players[t].position.x;
@@ -2006,6 +2006,8 @@ bool MatchEngine::command_through_ball(Vector2 p_direction_or_target) {
     ball_carrier_index = -1;
     pass_target_index = best_runner;
     is_through_ball_in_flight = true;
+    pending_pass_offside = _evaluate_pass_offside(passer_idx, best_runner);
+    offside_spot = runner.position;
     last_touch_index = passer_idx;
     if (user_is_home) stats.home_passes++;
     else stats.away_passes++;
