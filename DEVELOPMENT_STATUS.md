@@ -176,9 +176,7 @@ Source-only corrective changes have been committed after the Phase 5E implementa
 1. Run the Windows MinGW/UCRT64 SCons build: scons platform=windows target=template_debug api_version=4.7.
 2. Open the Godot 4.7 project, confirm scripts parse, run CareerRegressionTest.gd with F10, and fix any runtime or assertion failures.
 3. Manually verify New Career League -> Club selection, displayed club metadata, player-to-club assignment, league-only standings/fixtures, odd-team byes, pre-season pairings and Save/Load persistence.
-4. Implement and test 5D-3: merge Tuesday League into Premier League, include 11A7 once, resolve all registry/fixture/standings conflicts, and validate legacy-save migration.
-5. Test New Career league filtering with 7-, 8- and 9-club leagues.
-6. Complete the historical 15 July 2006 data audit. Dataset coverage is complete at the club level, but historical correctness is not yet certified.
+4. Complete the historical 15 July 2006 data audit. Dataset coverage is complete at the club level, but historical correctness is not yet certified.
 
 ### Phase 5E User-Side Identity & HOME/AWAY UI Integration Follow-Up [IMPLEMENTED & USER-VERIFIED]
 
