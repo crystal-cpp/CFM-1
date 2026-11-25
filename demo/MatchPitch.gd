@@ -246,6 +246,8 @@ func _ready() -> void:
 		match_engine.controlled_player_changed.connect(_on_controlled_player_changed)
 	if match_engine.has_signal("goal_kickoff_resumed") and not match_engine.goal_kickoff_resumed.is_connected(_on_goal_kickoff_resumed):
 		match_engine.goal_kickoff_resumed.connect(_on_goal_kickoff_resumed)
+	if match_engine.has_signal("gk_rush_changed") and not match_engine.gk_rush_changed.is_connected(_on_gk_rush_changed):
+		match_engine.gk_rush_changed.connect(_on_gk_rush_changed)
 
 	# MatchScene owns match lifecycle; do not start the same engine twice.
 	reset_for_new_match()
@@ -265,6 +267,8 @@ func _exit_tree() -> void:
 		match_engine.controlled_player_changed.disconnect(_on_controlled_player_changed)
 	if match_engine.has_signal("goal_kickoff_resumed") and match_engine.goal_kickoff_resumed.is_connected(_on_goal_kickoff_resumed):
 		match_engine.goal_kickoff_resumed.disconnect(_on_goal_kickoff_resumed)
+	if match_engine.has_signal("gk_rush_changed") and match_engine.gk_rush_changed.is_connected(_on_gk_rush_changed):
+		match_engine.gk_rush_changed.disconnect(_on_gk_rush_changed)
 
 func _resolve_match_engine() -> MatchEngine:
 	var candidate: Node = get_node_or_null("../../MatchEngine")
@@ -464,21 +468,38 @@ func get_base_pitch_rect() -> Rect2:
 func is_attack_decision_paused() -> bool:
 	return _atk_decision_paused and _atk_phase == AttackPhase.DECIDING
 
+func _cancel_gk_rush_if_active() -> void:
+	if _gk_rush_active and is_instance_valid(match_engine) and match_engine.has_method("cancel_gk_rush"):
+		match_engine.cancel_gk_rush()
+	_gk_rush_active = false
+
+func _on_gk_rush_changed(active: bool, _gk_idx: int) -> void:
+	if not is_inside_tree():
+		return
+	_gk_rush_active = active
+
 func is_gk_rush_active() -> bool:
 	return _gk_rush_active
 
 func toggle_gk_rush() -> bool:
 	if not is_instance_valid(match_engine) or match_engine.get_chance_state() != _user_defend_chance():
-		_gk_rush_active = false
+		_cancel_gk_rush_if_active()
 		return false
-	_gk_rush_active = not _gk_rush_active
 	var gk_idx: int = _user_gk_idx()
-	if _gk_rush_active:
-		match_engine.set_controlled_player(gk_idx)
-		var positions: Array = match_engine.get_player_positions()
-		if gk_idx < positions.size():
-			_show_marker(Vector2(positions[gk_idx]), Color(1.0, 0.78, 0.18), "GK RUSH")
+	if not _gk_rush_active:
+		var started: bool = true
+		if match_engine.has_method("command_gk_rush"):
+			started = bool(match_engine.command_gk_rush())
+		_gk_rush_active = started
+		if _gk_rush_active:
+			match_engine.set_controlled_player(gk_idx)
+			var positions: Array = match_engine.get_player_positions()
+			if gk_idx >= 0 and gk_idx < positions.size():
+				_show_marker(Vector2(positions[gk_idx]), Color(1.0, 0.78, 0.18), "GK RUSH")
 	else:
+		if match_engine.has_method("cancel_gk_rush"):
+			match_engine.cancel_gk_rush()
+		_gk_rush_active = false
 		match_engine.select_nearest_defender()
 	return _gk_rush_active
 
@@ -725,18 +746,18 @@ func _update_attack_stop_and_go(delta: float) -> void:
 func _update_defend_realtime() -> void:
 	if not _gk_rush_active:
 		return
+	if not is_instance_valid(match_engine) or (match_engine.has_method("is_gk_rush_active") and not match_engine.is_gk_rush_active()):
+		_gk_rush_active = false
+		return
 	var positions: Array = match_engine.get_player_positions()
 	if positions.size() != 22:
-		_gk_rush_active = false
+		_cancel_gk_rush_if_active()
 		return
 	var carrier_idx: int = match_engine.get_ball_carrier_index()
 	var gk_idx: int = _user_gk_idx()
 	var target_pos: Vector2 = Vector2(positions[carrier_idx]) if (_is_opp_idx(carrier_idx) and carrier_idx < positions.size()) else match_engine.get_ball_position()
 	match_engine.set_controlled_player(gk_idx)
 	match_engine.command_move_player(target_pos)
-
-	if gk_idx < positions.size() and Vector2(positions[gk_idx]).distance_to(target_pos) <= 34.0:
-		match_engine.command_tackle()
 
 func _update_camera_framing(delta: float) -> void:
 	if not is_instance_valid(match_engine):
@@ -1207,7 +1228,7 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 	elif chance_state == _user_defend_chance():
 		var gk_idx: int = _user_gk_idx()
 		if drag_dist_screen >= 24.0 or _gesture_mode == "SLIDE_TACKLE":
-			_gk_rush_active = false
+			_cancel_gk_rush_if_active()
 			var carrier_idx: int = match_engine.get_ball_carrier_index()
 			var target_pt: Vector2 = Vector2(positions[carrier_idx]) if (_is_opp_idx(carrier_idx) and carrier_idx < positions.size()) else match_engine.get_ball_position()
 			var ctrl_def: int = match_engine.get_controlled_player_index()
@@ -1231,7 +1252,7 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 
 		var clicked_def: int = _find_nearest_player_in_range(end_pitch, positions, _user_gk_idx() + 1, _user_end_idx() - 1, 32.0, -1)
 		if clicked_def != -1:
-			_gk_rush_active = false
+			_cancel_gk_rush_if_active()
 			match_engine.set_controlled_player(clicked_def)
 			_show_marker(Vector2(positions[clicked_def]), Color(0.35, 0.82, 1.0), "SWITCH")
 			_gesture_mode = "NONE"
@@ -1241,7 +1262,7 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 		if _is_opp_idx(opp_carrier) and opp_carrier < positions.size():
 			var opp_pos := Vector2(positions[opp_carrier])
 			if end_pitch.distance_to(opp_pos) <= 32.0:
-				_gk_rush_active = false
+				_cancel_gk_rush_if_active()
 				var ctrl_d: int = match_engine.get_controlled_player_index()
 				if not _is_user_outfield_idx(ctrl_d) or ctrl_d < 0 or ctrl_d >= positions.size():
 					ctrl_d = match_engine.select_nearest_defender()
@@ -1255,7 +1276,7 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 					_gesture_mode = "NONE"
 					return
 
-		_gk_rush_active = false
+		_cancel_gk_rush_if_active()
 		if match_engine.command_move_player(end_pitch):
 			_show_marker(end_pitch, Color(0.35, 0.80, 1.0), "COVER")
 

@@ -2734,12 +2734,14 @@ Vector2 MatchEngine::_compute_tactical_target(
             return p_player.position;
         }
         if (gk_rush_active && p_index == _user_gk_idx()) {
-            Vector2 intercept = ball_position + (ball_velocity * 0.16f);
+            Vector2 desired = (manual_control_active && p_index == user_controlled_index && has_user_move_target)
+                ? user_move_target
+                : (ball_position + (ball_velocity * 0.16f));
             float max_rush_x = is_home ? std::min(field_size.x * 0.34f, 260.0f)
                                        : std::max(field_size.x * 0.66f, field_size.x - 260.0f);
-            float clamped_x = is_home ? std::clamp(intercept.x, 14.0f, max_rush_x)
-                                      : std::clamp(intercept.x, max_rush_x, field_size.x - 14.0f);
-            float clamped_y = std::clamp(intercept.y, field_size.y * 0.22f, field_size.y * 0.78f);
+            float clamped_x = is_home ? std::clamp(desired.x, 14.0f, max_rush_x)
+                                      : std::clamp(desired.x, max_rush_x, field_size.x - 14.0f);
+            float clamped_y = std::clamp(desired.y, field_size.y * 0.22f, field_size.y * 0.78f);
             return Vector2(clamped_x, clamped_y);
         }
         float gk_depth = 18.0f + (ball_prog * 14.0f);
