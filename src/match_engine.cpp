@@ -2107,34 +2107,9 @@ void MatchEngine::_award_defensive_free_kick(bool p_to_home, Vector2 p_spot, con
     if (p_to_home) stats.away_fouls++;
     else stats.home_fouls++;
 
-    int team_start = p_to_home ? 1 : 12;
-    int taker_idx = team_start;
-    float best_d = 1e9f;
-    for (int i = team_start; i < team_start + 10; i++) {
-        float d = sim_players[i].position.distance_to(p_spot);
-        if (d < best_d) {
-            best_d = d;
-            taker_idx = i;
-        }
-    }
-
-    sim_players[taker_idx].position = p_spot;
-    sim_players[taker_idx].velocity = Vector2(0.0f, 0.0f);
-    possession_team = p_to_home ? 0 : 1;
-    ball_carrier_index = taker_idx;
-    last_touch_index = taker_idx;
-    pass_target_index = -1;
-    is_through_ball_in_flight = false;
-    ball_state = BALL_CARRIED;
-    ball_position = p_spot;
-    ball_velocity = Vector2(0.0f, 0.0f);
-    action_decision_timer = 0.55f;
-
     _log_event("foul", !p_to_home, p_fouler_name,
-        p_fouler_name + String(" commits a late sliding foul — free kick awarded!"));
-    if (chance_state != CHANCE_NONE) {
-        _end_active_chance(false);
-    }
+        p_fouler_name + String(" commits a foul — free kick awarded!"));
+    _begin_restart(RESTART_FREE_KICK, p_to_home, p_spot);
 }
 
 Array MatchEngine::get_sent_off_flags() const {
