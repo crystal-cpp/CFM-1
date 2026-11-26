@@ -100,9 +100,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				_manager_profile_modal.visible = false
 				get_viewport().set_input_as_handled()
 		elif ke.keycode == KEY_C and get_parent() != get_tree().root:
-			visible = not visible
-			if visible:
-				refresh_all_views()
+			var ms := _find_match_scene()
+			if is_instance_valid(ms) and ms.has_method("_toggle_career_shell"):
+				ms.call("_toggle_career_shell")
+			else:
+				visible = not visible
+				if visible:
+					refresh_all_views()
 			get_viewport().set_input_as_handled()
 
 func _on_viewport_resized() -> void:
