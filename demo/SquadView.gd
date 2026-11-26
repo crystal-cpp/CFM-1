@@ -188,11 +188,11 @@ func _ensure_ui_built() -> void:
 	_team_ovr_pill = _create_badge("XI OVR: 75", Color(0.06, 0.67, 0.52), Color(0.35, 1.0, 0.72))
 	top_hbox.add_child(_team_ovr_pill)
 
-	_avg_cond_pill = _create_badge("Avg Fitness: 100%", Color(0.55, 0.42, 0.12), Color(1.0, 0.85, 0.35))
+	_avg_cond_pill = _create_badge("Fitness: 100%", Color(0.55, 0.42, 0.12), Color(1.0, 0.85, 0.35))
 	top_hbox.add_child(_avg_cond_pill)
 
 	var tactics_shortcut := Button.new()
-	tactics_shortcut.text = "📋 Tactics"
+	tactics_shortcut.text = "Tactics"
 	tactics_shortcut.focus_mode = Control.FOCUS_NONE
 	_style_btn(tactics_shortcut, Color(0.07, 0.12, 0.20, 0.95), Color(0.18, 0.28, 0.44, 0.85))
 	tactics_shortcut.pressed.connect(func() -> void: route_requested.emit("tactics"))
@@ -226,7 +226,7 @@ func _ensure_ui_built() -> void:
 	tb_hbox.add_child(_selection_banner)
 
 	_captain_btn = Button.new()
-	_captain_btn.text = "© Make Captain"
+	_captain_btn.text = "Make Captain"
 	_captain_btn.disabled = true
 	_captain_btn.focus_mode = Control.FOCUS_NONE
 	_style_btn(_captain_btn, Color(0.45, 0.34, 0.08, 0.95), Color(0.85, 0.68, 0.20, 0.90), Color(1.0, 0.90, 0.45))
@@ -234,7 +234,7 @@ func _ensure_ui_built() -> void:
 	tb_hbox.add_child(_captain_btn)
 
 	_inspect_btn = Button.new()
-	_inspect_btn.text = "🔍 Profile"
+	_inspect_btn.text = "Profile"
 	_inspect_btn.disabled = true
 	_inspect_btn.focus_mode = Control.FOCUS_NONE
 	_style_btn(_inspect_btn, Color(0.06, 0.42, 0.30, 0.95), Color(0.11, 0.82, 0.63, 0.90))
@@ -312,7 +312,7 @@ func _ensure_ui_built() -> void:
 	right_scroll.add_child(lists_vbox)
 
 	var bench_hdr := Label.new()
-	bench_hdr.text = "SUBSTITUTE BENCH (7)"
+	bench_hdr.text = "BENCH (7)"
 	bench_hdr.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	bench_hdr.add_theme_font_size_override("font_size", 13)
 	lists_vbox.add_child(bench_hdr)
@@ -390,14 +390,14 @@ func refresh_squad() -> void:
 	if has_sel:
 		var sel_prof: Dictionary = career_state.get_player_profile(_selected_player_id)
 		_selection_banner.add_theme_color_override("font_color", Color(0.75, 0.84, 0.95))
-		_selection_banner.text = "Selected: %s (%s · OVR %d) — Click another player to SWAP positions." % [
+		_selection_banner.text = "Selected: %s (%s · OVR %d)" % [
 			String(sel_prof.get("name", "Player")),
 			String(sel_prof.get("position", "CM")),
 			int(sel_prof.get("ovr", 70))
 		]
 	elif not injured_active_names.is_empty():
 		_selection_banner.add_theme_color_override("font_color", Color(1.0, 0.42, 0.45))
-		_selection_banner.text = "Injured in XI/Bench: %s — Swap to Reserves before matchday." % ", ".join(injured_active_names)
+		_selection_banner.text = "Injured: %s" % ", ".join(injured_active_names)
 	else:
 		_selection_banner.add_theme_color_override("font_color", Color(0.75, 0.84, 0.95))
 		_selection_banner.text = "Manage your squad here."
@@ -466,7 +466,7 @@ func _create_pitch_player_node(p: Dictionary, slot_role: String) -> Button:
 	btn.focus_mode = Control.FOCUS_NONE
 	if is_injured:
 		btn.text = "%s%s\n%s · INJ %dd" % [cap_prefix, short_name, slot_role, inj_days]
-		btn.tooltip_text = "%s Injury (%d days left) — Must be replaced before kickoff" % [inj_tier, inj_days]
+		btn.tooltip_text = "%s Injury (%d days left)" % [inj_tier, inj_days]
 	else:
 		btn.text = "%s%s\n%s/%s · %d (%d%%)" % [cap_prefix, short_name, slot_role, p_pos, ovr, cond]
 	btn.add_theme_font_size_override("font_size", 10)

@@ -126,7 +126,7 @@ func _ensure_ui_built() -> void:
 	sub_hbox.add_child(_pos_pill)
 
 	_meta_lbl = Label.new()
-	_meta_lbl.text = "Age: 24 · Debut: 16"
+	_meta_lbl.text = "Age: 24"
 	_meta_lbl.add_theme_color_override("font_color", Color(0.70, 0.80, 0.92))
 	_meta_lbl.add_theme_font_size_override("font_size", 12)
 	sub_hbox.add_child(_meta_lbl)
