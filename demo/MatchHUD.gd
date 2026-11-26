@@ -7,6 +7,8 @@ signal tactic_screen_opened
 signal tactic_screen_closed
 
 var match_engine: MatchEngine
+var _active_restart_type: int = 0
+var _active_restart_is_home: bool = true
 
 var _score_label: Label
 var _minute_label: Label
@@ -125,6 +127,8 @@ func _ready() -> void:
 		match_engine.goal_kickoff_resumed.connect(_on_goal_kickoff_resumed)
 	if match_engine.has_signal("squad_updated") and not match_engine.squad_updated.is_connected(_on_squad_updated):
 		match_engine.squad_updated.connect(_on_squad_updated)
+	if match_engine.has_signal("restart_state_changed") and not match_engine.restart_state_changed.is_connected(on_restart_state_changed):
+		match_engine.restart_state_changed.connect(on_restart_state_changed)
 
 	_set_sim_speed(1.0)
 	refresh_all()
@@ -147,6 +151,22 @@ func _exit_tree() -> void:
 		match_engine.goal_kickoff_resumed.disconnect(_on_goal_kickoff_resumed)
 	if match_engine.has_signal("squad_updated") and match_engine.squad_updated.is_connected(_on_squad_updated):
 		match_engine.squad_updated.disconnect(_on_squad_updated)
+	if match_engine.has_signal("restart_state_changed") and match_engine.restart_state_changed.is_connected(on_restart_state_changed):
+		match_engine.restart_state_changed.disconnect(on_restart_state_changed)
+
+func on_restart_state_changed(restart_type: int, is_home_team: bool) -> void:
+	_active_restart_type = restart_type
+	_active_restart_is_home = is_home_team
+	refresh_all()
+
+func _format_restart_label(restart_type: int) -> String:
+	match restart_type:
+		1: return "FREE KICK"
+		2: return "GOAL KICK"
+		3: return "CORNER"
+		4: return "THROW-IN"
+		5: return "PENALTY"
+		_: return "RESTART"
 
 func _process(_delta: float) -> void:
 	_sync_right_panel_geometry()
@@ -386,7 +406,7 @@ func _build_ui() -> void:
 	_nearest_def_button.focus_mode = Control.FOCUS_NONE
 	_nearest_def_button.visible = false
 	_nearest_def_button.pressed.connect(func() -> void:
-		if is_instance_valid(match_engine):
+		if _can_use_defensive_controls():
 			match_engine.select_nearest_defender()
 	)
 	rp_vbox.add_child(_nearest_def_button)
@@ -397,7 +417,7 @@ func _build_ui() -> void:
 	_slide_tackle_btn.focus_mode = Control.FOCUS_NONE
 	_slide_tackle_btn.visible = false
 	_slide_tackle_btn.pressed.connect(func() -> void:
-		if is_instance_valid(match_engine):
+		if _can_use_defensive_controls():
 			match_engine.command_tackle()
 	)
 	rp_vbox.add_child(_slide_tackle_btn)
@@ -414,7 +434,7 @@ func _build_ui() -> void:
 	_gk_rush_btn.add_theme_color_override("font_color", Color.WHITE)
 	_gk_rush_btn.pressed.connect(func() -> void:
 		var pitch_node: Node = _get_match_pitch()
-		if pitch_node and pitch_node.has_method("toggle_gk_rush"):
+		if _can_use_defensive_controls() and pitch_node and pitch_node.has_method("toggle_gk_rush"):
 			pitch_node.toggle_gk_rush()
 	)
 	rp_vbox.add_child(_gk_rush_btn)
@@ -643,20 +663,38 @@ func _add_stat_text_row(parent: VBoxContainer, title_text: String, initial_val: 
 	row.add_child(val_lbl)
 	return val_lbl
 
+func _can_use_defensive_controls() -> bool:
+	if not is_instance_valid(match_engine):
+		return false
+	var restart_type: int = int(match_engine.call("get_restart_state")) if match_engine.has_method("get_restart_state") else _active_restart_type
+	return match_engine.get_chance_state() == _user_defend_chance() \
+		and restart_type == 0 \
+		and not match_engine.is_match_paused() \
+		and not match_engine.is_waiting_for_kickoff_resume() \
+		and not _manual_paused \
+		and not is_tactical_screen_open()
+
 func _update_chance_controls() -> void:
 	if not is_instance_valid(match_engine):
 		return
 	var c_state: int = match_engine.get_chance_state()
+	var restart_type: int = int(match_engine.call("get_restart_state")) if match_engine.has_method("get_restart_state") else _active_restart_type
+	var is_paused: bool = match_engine.is_match_paused() or match_engine.is_waiting_for_kickoff_resume() or _manual_paused or is_tactical_screen_open()
+	var show_def_controls: bool = (c_state == _user_defend_chance()) and (restart_type == 0) and not is_paused
+
 	var pitch_node: Node = _get_match_pitch()
 	var decision_paused: bool = pitch_node != null and pitch_node.has_method("is_attack_decision_paused") and bool(pitch_node.is_attack_decision_paused())
 	var gk_rushing: bool = pitch_node != null and pitch_node.has_method("is_gk_rush_active") and bool(pitch_node.is_gk_rush_active())
 
 	if _nearest_def_button:
-		_nearest_def_button.visible = (c_state == _user_defend_chance())
+		_nearest_def_button.visible = show_def_controls
+		_nearest_def_button.disabled = not show_def_controls
 	if _slide_tackle_btn:
-		_slide_tackle_btn.visible = (c_state == _user_defend_chance())
+		_slide_tackle_btn.visible = show_def_controls
+		_slide_tackle_btn.disabled = not show_def_controls
 	if _gk_rush_btn:
-		_gk_rush_btn.visible = (c_state == _user_defend_chance())
+		_gk_rush_btn.visible = show_def_controls
+		_gk_rush_btn.disabled = not show_def_controls
 		_gk_rush_btn.text = "Cancel GK Rush [G]" if gk_rushing else "GK Rush [G]"
 
 	if _chance_status_label:
@@ -665,6 +703,13 @@ func _update_chance_controls() -> void:
 			_status_pill.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
 			_chance_status_label.text = "Click anywhere to resume."
 			_chance_status_label.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
+		elif restart_type != 0:
+			var side_name: String = _home_club_name if _active_restart_is_home else _away_club_name
+			_chance_status_label.text = "%s — %s" % [side_name, _format_restart_label(restart_type)]
+			_chance_status_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
+		elif is_paused:
+			_chance_status_label.text = "Match paused."
+			_chance_status_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.30))
 		elif c_state == _user_attack_chance():
 			if decision_paused:
 				_chance_status_label.text = "Tap to pass, drag slow for through ball, tap pitch to dribble, or swipe fast to shoot."
@@ -764,12 +809,16 @@ func refresh_all() -> void:
 	_minute_label.text = "%02d'" % match_engine.get_current_minute()
 
 	var c_state: int = match_engine.get_chance_state()
+	var restart_type: int = int(match_engine.call("get_restart_state")) if match_engine.has_method("get_restart_state") else _active_restart_type
 	if match_engine.is_waiting_for_kickoff_resume():
 		_status_pill.text = "HALF TIME" if match_engine.get_current_minute() == 45 else "KICKOFF"
 		_status_pill.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
 	elif is_tactical_screen_open() or _manual_paused or match_engine.is_match_paused():
 		_status_pill.text = "PAUSED"
 		_status_pill.add_theme_color_override("font_color", Color(1.0, 0.82, 0.30))
+	elif restart_type != 0:
+		_status_pill.text = _format_restart_label(restart_type)
+		_status_pill.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
 	elif c_state == _user_attack_chance():
 		_status_pill.text = "ATTACK CHANCE"
 		_status_pill.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
@@ -892,7 +941,7 @@ func _on_kickoff_overlay_gui_input(event: InputEvent) -> void:
 			_resume_kickoff_from_hud()
 			accept_event()
 
-func _on_match_event_logged(minute: int, _event_type: String, is_home_team: bool, _player_name: String, description: String) -> void:
+func _on_match_event_logged(minute: int, event_type: String, is_home_team: bool, _player_name: String, description: String) -> void:
 	var side_tag: String = "[HOME]" if is_home_team else "[AWAY]"
 	var entry: String = "%02d'  %s %s" % [minute, side_tag, description]
 	_commentary_history.append(entry)
@@ -900,6 +949,16 @@ func _on_match_event_logged(minute: int, _event_type: String, is_home_team: bool
 		_commentary_history.remove_at(0)
 	if _commentary_label:
 		_commentary_label.text = entry
+
+	var upper_type: String = event_type.strip_edges().to_upper()
+	if upper_type == "OFFSIDE":
+		show_toast("OFFSIDE! Indirect Free Kick", 2.5)
+	elif upper_type == "RED_CARD" or upper_type == "DISMISSAL":
+		show_toast("RED CARD! %s" % description, 3.0)
+	elif upper_type == "YELLOW_CARD":
+		show_toast("YELLOW CARD — %s" % description, 2.2)
+	elif upper_type == "INJURY":
+		show_toast("INJURY — %s" % description, 2.8)
 	refresh_all()
 
 func show_fulltime_summary(final_home: int, final_away: int) -> void:
