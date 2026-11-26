@@ -1606,6 +1606,7 @@ void MatchEngine::_give_gk_possession(bool p_home_gk) {
     pass_target_index = -1;
     is_through_ball_in_flight = false;
     shot_hits_crossbar = false;
+    _clear_offside_tracking();
     ball_state = BALL_CARRIED;
     ball_position = sim_players[gk_idx].position + Vector2(p_home_gk ? 8.0f : -8.0f, 0.0f);
     ball_velocity = Vector2(0.0f, 0.0f);
@@ -3916,6 +3917,8 @@ void MatchEngine::_evaluate_carrier_action(int p_carrier_idx) {
                 _evaluate_foul_and_discipline(nearest_opp_idx, p_carrier_idx, challenge_force, from_behind, false);
                 return;
             }
+            _try_apply_tackle_injury(carrier, challenge_force, false);
+            _clear_offside_tracking();
             if (defender.is_home) {
                 stats.home_tackles++;
             } else {
