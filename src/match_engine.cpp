@@ -387,6 +387,9 @@ void MatchEngine::_execute_clearance(int p_defender_idx) {
     pass_target_index = -1;
     is_through_ball_in_flight = false;
     last_touch_index = p_defender_idx;
+    // A controlled defensive clearance is a deliberate play and resets
+    // the opponents' previous offside-position snapshot.
+    _clear_offside_tracking();
 
     _log_event("clearance", is_home, defender.name,
         defender.name + String(" hooks the danger clear upfield!"));
@@ -4803,6 +4806,8 @@ void MatchEngine::_execute_gk_rush_clearance(int p_gk_idx) {
     pass_target_index = -1;
     is_through_ball_in_flight = false;
     last_touch_index = p_gk_idx;
+    // The goalkeeper's deliberate clearance resets the previous offside phase.
+    _clear_offside_tracking();
 
     cancel_gk_rush();
     _log_event("gk_rush_clear", gk.is_home, gk.name,
