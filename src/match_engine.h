@@ -351,7 +351,8 @@ private:
         RESTART_THROW_IN = 1,
         RESTART_GOAL_KICK = 2,
         RESTART_CORNER = 3,
-        RESTART_FREE_KICK = 4
+        RESTART_FREE_KICK = 4,
+        RESTART_PENALTY = 5
     };
 
     void _trigger_halftime();
