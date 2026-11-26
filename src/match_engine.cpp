@@ -879,6 +879,12 @@ bool MatchEngine::apply_substitution(bool p_is_home, int p_pitch_slot, int p_ben
     outgoing.recovery_timer = 0.0f;
     outgoing.sprint_boost_timer = 0.0f;
     outgoing.dribble_boost_timer = 0.0f;
+    outgoing.dribble_carry_distance = 0.0f;
+    outgoing.is_sliding = false;
+    outgoing.slide_timer = 0.0f;
+    outgoing.slide_dir = Vector2(0.0f, 0.0f);
+    outgoing.yellow_cards = 0;
+    outgoing.is_sent_off = false;
 
     incoming.used = true;
     subs_used++;
@@ -920,6 +926,8 @@ Array MatchEngine::get_away_squad_snapshot() const {
         d["dribbling"] = p.dribbling;
         d["defending"] = p.defending;
         d["physical"] = p.physical;
+        d["yellow_cards"] = p.yellow_cards;
+        d["is_sent_off"] = p.is_sent_off;
         arr.append(d);
     }
     return arr;
@@ -3490,7 +3498,7 @@ void MatchEngine::_update_player_movement(float dt) {
         }
         if (p.is_sliding) {
             float slide_decay = std::clamp(p.slide_timer / 0.34f, 0.35f, 1.0f);
-            desired_vel = p.slide_dir * (max_speed * slide_decay);
+            p.velocity = p.slide_dir * (max_speed * slide_decay);
         }
         p.position += p.velocity * dt;
         p.position.x = std::clamp(p.position.x, margin, field_size.x - margin);
@@ -4183,18 +4191,6 @@ void MatchEngine::_update_ball_and_actions(float dt) {
             float effective_radius = base_intercept_radius * attr_radius_scale * def_fatigue * (is_user_attack_chance ? 0.82f : 1.0f);
 
             if (def.position.distance_to(ball_position) < effective_radius) {
-                int tm_start = passer_is_home ? 1 : 12;
-                for (int k = tm_start; k < tm_start + 10; k++) {
-                    if (pass_offside_flags[k] && !sim_players[k].is_sent_off &&
-                        sim_players[k].position.distance_to(ball_position) < 16.0f) {
-                        if (passer_is_home) stats.home_offsides++;
-                        else stats.away_offsides++;
-                        _log_event("offside", passer_is_home, sim_players[k].name,
-                            String("OFFSIDE! ") + sim_players[k].name + String(" interferes with play from an offside position."));
-                        _begin_restart(RESTART_FREE_KICK, !passer_is_home, sim_players[k].position);
-                        return;
-                    }
-                }
                 float role_read = (def.role == "CDM") ? 2.2f : ((def.role == "CB") ? 1.5f : (_is_backline_role(def.role) ? 1.1f : -1.2f));
                 float skill_edge = ((def.defending * def_fatigue) - (passer_passing * 0.65f)) * 0.08f;
                 // Continuous hazard rate (per-second) so 60Hz tick rate doesn't inflate interception frequency
@@ -4326,6 +4322,10 @@ void MatchEngine::_update_ball_and_actions(float dt) {
         int def_gk_idx = shooter_is_home ? 11 : 0;
         const SimPlayer& shooter = sim_players[shooter_idx];
         const SimPlayer& gk = sim_players[def_gk_idx];
+
+        if (gk_rush_active && (shooter_is_home != user_is_home)) {
+            cancel_gk_rush();
+        }
 
         int opp_start = shooter_is_home ? 11 : 0;
         bool is_user_attack_chance = ((shooter_is_home == user_is_home) && chance_state == _user_attack_chance_state());
