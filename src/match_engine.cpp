@@ -179,6 +179,7 @@ void MatchEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("debug_evaluate_offside_case", "test_case"), &MatchEngine::debug_evaluate_offside_case);
     ClassDB::bind_method(D_METHOD("debug_evaluate_offside_involvement_case", "test_case"), &MatchEngine::debug_evaluate_offside_involvement_case);
     ClassDB::bind_method(D_METHOD("debug_trigger_offside_stoppage", "attacking_is_home", "spot"), &MatchEngine::debug_trigger_offside_stoppage);
+    ClassDB::bind_method(D_METHOD("debug_trigger_offside_involvement_path_case", "attacking_is_home", "is_shot"), &MatchEngine::debug_trigger_offside_involvement_path_case);
 
     // Live-Position Chance & Manual Shooting Controls
     ClassDB::bind_method(D_METHOD("set_home_auto_shoot_enabled", "enabled"), &MatchEngine::set_home_auto_shoot_enabled);
@@ -2523,6 +2524,50 @@ void MatchEngine::debug_trigger_offside_stoppage(bool p_attacking_is_home, Vecto
     manual_control_active = true;
     _trigger_offside(p_attacking_is_home, offender_idx, p_spot,
         String(" is caught offside — indirect free kick."));
+}
+
+bool MatchEngine::debug_trigger_offside_involvement_path_case(bool p_attacking_is_home, bool p_is_shot) {
+    if (!match_active || sim_players.size() != 22 || waiting_for_kickoff_resume) return false;
+
+    _clear_offside_tracking();
+    const int attacking_start = p_attacking_is_home ? 0 : 11;
+    const int opponents_start = p_attacking_is_home ? 11 : 0;
+    const int passer_idx = attacking_start + 8;
+    const int offside_idx = attacking_start + 9;
+    const int opponent_idx = opponents_start + 5;
+    const float direction = p_attacking_is_home ? 1.0f : -1.0f;
+    const Vector2 shot_or_pass_origin(field_size.x * (p_attacking_is_home ? 0.70f : 0.30f),
+        field_size.y * 0.5f);
+
+    ball_position = shot_or_pass_origin;
+    ball_velocity = Vector2(0.0f, 0.0f);
+    ball_target = shot_or_pass_origin + Vector2(direction * 180.0f, 0.0f);
+    sim_players[passer_idx].position = shot_or_pass_origin - Vector2(direction * 50.0f, 0.0f);
+    sim_players[offside_idx].position = shot_or_pass_origin + Vector2(direction * 30.0f, 0.0f);
+    sim_players[opponent_idx].position = shot_or_pass_origin + Vector2(direction * 18.0f, 0.0f);
+
+    pass_offside_flags[offside_idx] = true;
+    pending_pass_offside = false;
+    last_touch_index = passer_idx;
+    ball_carrier_index = -1;
+    pass_target_index = p_is_shot ? -1 : (attacking_start + 7);
+    possession_team = -1;
+    is_through_ball_in_flight = false;
+    shot_hits_crossbar = false;
+    ball_state = p_is_shot ? BALL_IN_SHOT : BALL_IN_PASS;
+    chance_state = p_attacking_is_home ? CHANCE_HOME_ATTACK : CHANCE_AWAY_ATTACK;
+    active_chance_timer = 10.0f;
+    manual_control_active = false;
+    user_controlled_index = -1;
+    is_paused_for_manual = false;
+    gk_rush_active = false;
+    restart_state = RESTART_NONE;
+    restart_is_indirect = false;
+    _sync_player_positions_array();
+
+    _update_ball_and_actions(1.0f / 60.0f);
+    return restart_state == RESTART_FREE_KICK && restart_is_indirect &&
+        restart_to_home != p_attacking_is_home && chance_state == CHANCE_NONE;
 }
 
 void MatchEngine::_begin_restart(int p_restart_type, bool p_to_home, Vector2 p_spot, bool p_is_indirect) {
