@@ -2471,6 +2471,7 @@ bool MatchEngine::debug_evaluate_offside_case(const Dictionary& p_case) {
     for (size_t i = 0; i < sim_players.size(); i++) sim_players[i].position = saved_positions[i];
     ball_position = saved_ball_position;
     restart_offside_exempt = saved_restart_exempt;
+    _sync_player_positions_array();
     return result;
 }
 
@@ -2509,6 +2510,7 @@ bool MatchEngine::debug_evaluate_offside_involvement_case(const Dictionary& p_ca
     for (size_t i = 0; i < sim_players.size(); i++) sim_players[i].position = saved_positions[i];
     for (int i = 0; i < 22; i++) pass_offside_flags[i] = saved_flags[i];
     ball_position = saved_ball_position;
+    _sync_player_positions_array();
     return result;
 }
 
