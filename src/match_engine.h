@@ -323,6 +323,7 @@ public:
     Dictionary get_match_stats() const;
     int get_restart_state() const { return restart_state; }
     bool is_restart_active() const { return restart_state != RESTART_NONE; }
+    bool is_restart_indirect() const { return restart_is_indirect; }
     Array get_sent_off_flags() const;
     Array get_yellow_card_counts() const;
     bool is_pass_offside(int p_passer_idx, int p_receiver_idx) const { return _evaluate_pass_offside(p_passer_idx, p_receiver_idx); }
@@ -384,13 +385,17 @@ private:
     bool _try_apply_tackle_injury(SimPlayer& p_attacker, float p_challenge_force, bool p_is_slide);
     bool _evaluate_pass_offside(int p_passer_idx, int p_receiver_idx) const;
     void _snapshot_pass_offside_flags(int p_passer_idx);
-    void _begin_restart(int p_restart_type, bool p_to_home, Vector2 p_spot);
+    void _clear_offside_tracking();
+    void _trigger_offside(bool p_offending_is_home, int p_offender_idx, Vector2 p_spot, const String& p_reason);
+    void _begin_restart(int p_restart_type, bool p_to_home, Vector2 p_spot, bool p_is_indirect = false);
     void _complete_restart();
     bool _try_gk_rush_intercept();
     void _execute_gk_rush_clearance(int p_gk_idx);
 
     int restart_state = RESTART_NONE;
     bool restart_to_home = true;
+    bool restart_is_indirect = false;
+    bool restart_offside_exempt = false;
     int restart_taker_idx = -1;
     Vector2 restart_spot = Vector2(0.0f, 0.0f);
     float restart_timer = 0.0f;

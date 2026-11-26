@@ -171,6 +171,7 @@ void MatchEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_match_stats"), &MatchEngine::get_match_stats);
     ClassDB::bind_method(D_METHOD("get_restart_state"), &MatchEngine::get_restart_state);
     ClassDB::bind_method(D_METHOD("is_restart_active"), &MatchEngine::is_restart_active);
+    ClassDB::bind_method(D_METHOD("is_restart_indirect"), &MatchEngine::is_restart_indirect);
     ClassDB::bind_method(D_METHOD("get_sent_off_flags"), &MatchEngine::get_sent_off_flags);
     ClassDB::bind_method(D_METHOD("get_yellow_card_counts"), &MatchEngine::get_yellow_card_counts);
     ClassDB::bind_method(D_METHOD("is_pass_offside", "passer_idx", "receiver_idx"), &MatchEngine::is_pass_offside);
@@ -763,6 +764,8 @@ Array MatchEngine::get_home_squad_snapshot() const {
         d["dribbling"] = p.dribbling;
         d["defending"] = p.defending;
         d["physical"] = p.physical;
+        d["yellow_cards"] = p.yellow_cards;
+        d["is_sent_off"] = p.is_sent_off;
         arr.append(d);
     }
     return arr;
@@ -826,12 +829,16 @@ bool MatchEngine::apply_substitution(bool p_is_home, int p_pitch_slot, int p_ben
     bool at_ht = is_halftime_break();
     bool same_stoppage = (subs_used > 0 && !last_was_ht && current_minute == last_sub_min);
     if (!at_ht && !same_stoppage && windows_used >= MAX_SUB_WINDOWS) {
-        UtilityFunctions::push_warning("MatchEngine: Substitution rejected — all 3 stoppage windows used.");
+        UtilityFunctions::push_warning("Cannot make substitution");
         return false;
     }
 
     int sim_idx = p_is_home ? p_pitch_slot : (11 + p_pitch_slot);
     SimPlayer& outgoing = sim_players[sim_idx];
+    if (outgoing.is_sent_off) {
+        UtilityFunctions::push_warning("Sent-off player cannot be substituted");
+        return false;
+    }
     BenchPlayer& incoming = bench_vec[p_bench_slot];
 
     // Record subbed-off player's exact fatigue & ID so CareerState::commit_match_result() syncs them too
@@ -1481,6 +1488,7 @@ void MatchEngine::_give_kickoff(bool p_home_kickoff) {
 
     for (int i = 0; i < 22; i++) {
         SimPlayer& p = sim_players[i];
+        if (sim_players[i].is_sent_off) continue;
         p.velocity = Vector2(0.0f, 0.0f);
         p.recovery_timer = 0.0f;
         p.tackle_cooldown = 0.0f;
@@ -1529,6 +1537,7 @@ void MatchEngine::_give_kickoff(bool p_home_kickoff) {
 
     for (int i = kicking_start + 1; i < kicking_start + 11; i++) {
         const SimPlayer& p = sim_players[i];
+        if (sim_players[i].is_sent_off) continue;
         float dist_center = p.position.distance_to(center);
         float role_bonus = 0.0f;
         if (p.role == "ST" || p.role == "CF") role_bonus = -85.0f;
@@ -1549,6 +1558,7 @@ void MatchEngine::_give_kickoff(bool p_home_kickoff) {
     float best_partner_dist = 1e9f;
     for (int i = kicking_start + 1; i < kicking_start + 11; i++) {
         if (i == taker_idx) continue;
+        if (sim_players[i].is_sent_off) continue;
         float dist_center = sim_players[i].position.distance_to(center);
         if (dist_center < best_partner_dist) {
             best_partner_dist = dist_center;
@@ -1798,6 +1808,7 @@ Array MatchEngine::get_valid_pass_targets() const {
 
     for (int t = _user_gk_idx() + 1; t < _user_end_idx(); t++) {
         if (t == passer_idx) continue;
+        if (t == passer_idx || sim_players[t].is_sent_off) continue;
         Vector2 pass_vec = sim_players[t].position - passer.position;
         float dist = pass_vec.length();
         if (dist < 16.0f || dist > max_range) continue;
