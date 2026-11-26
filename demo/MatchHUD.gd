@@ -165,6 +165,7 @@ func _format_restart_label(restart_type: int) -> String:
 		2: return "GOAL KICK"
 		3: return "CORNER"
 		4: return "FREE KICK"
+		5: return "PENALTY"
 		_: return "RESTART"
 
 func _process(_delta: float) -> void:
@@ -172,6 +173,8 @@ func _process(_delta: float) -> void:
 	_update_chance_controls()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if is_tactical_screen_open():
+		return
 	if is_instance_valid(match_engine) and match_engine.is_waiting_for_kickoff_resume():
 		if (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT) \
 		or (event is InputEventScreenTouch and event.pressed) \
@@ -673,6 +676,26 @@ func _can_use_defensive_controls() -> bool:
 		and not _manual_paused \
 		and not is_tactical_screen_open()
 
+func _update_chance_controls() -> void:
+	if not is_instance_valid(match_engine):
+		return
+	if _manual_paused and not match_engine.is_match_paused() and not is_tactical_screen_open():
+		_manual_paused = false
+
+	var c_state: int = match_engine.get_chance_state()
+	var restart_type: int = int(match_engine.call("get_restart_state")) if match_engine.has_method("get_restart_state") else _active_restart_type
+	var is_paused: bool = is_tactical_screen_open() or _manual_paused or match_engine.is_match_paused()
+	var pitch_node: Node = _get_match_pitch()
+	var decision_paused: bool = pitch_node != null and pitch_node.has_method("is_attack_decision_paused") and bool(pitch_node.is_attack_decision_paused())
+	var show_def_controls: bool = _can_use_defensive_controls()
+
+	if _nearest_def_button:
+		_nearest_def_button.visible = show_def_controls
+	if _slide_tackle_btn:
+		_slide_tackle_btn.visible = show_def_controls
+	if _gk_rush_btn:
+		_gk_rush_btn.visible = show_def_controls
+
 	if _chance_status_label:
 		if match_engine.is_waiting_for_kickoff_resume():
 			_chance_status_label.text = "Click anywhere to resume."
@@ -698,7 +721,6 @@ func _can_use_defensive_controls() -> bool:
 			_chance_status_label.text = ""
 			_chance_status_label.add_theme_color_override("font_color", Color(0.68, 0.78, 0.90))
 
-func open_tactical_screen()
 func open_tactical_screen() -> void:
 	if not is_instance_valid(match_engine) or not _tactical_screen:
 		return
@@ -757,9 +779,9 @@ func is_manual_pause_active() -> bool:
 	return _manual_paused
 
 func _on_pause_btn_pressed() -> void:
-	if not is_instance_valid(match_engine) or not match_engine.is_match_active() or is_tactical_screen_open():
+	if not is_instance_valid(match_engine) or not match_engine.is_match_active() or is_tactical_screen_open() or match_engine.is_waiting_for_kickoff_resume():
 		return
-	_manual_paused = not _manual_paused
+	_manual_paused = not match_engine.is_match_paused()
 	match_engine.pause_match(_manual_paused)
 	refresh_all()
 
@@ -932,6 +954,8 @@ func _on_match_event_logged(minute: int, event_type: String, is_home_team: bool,
 	var upper_type: String = event_type.strip_edges().to_upper()
 	if upper_type == "OFFSIDE":
 		show_toast("OFFSIDE! Indirect Free Kick", 2.5)
+	elif upper_type == "PENALTY":
+		show_toast("PENALTY KICK! %s" % description, 3.0)
 	elif upper_type == "RED_CARD" or upper_type == "DISMISSAL":
 		show_toast("RED CARD! %s" % description, 3.0)
 	elif upper_type == "YELLOW_CARD":
