@@ -327,6 +327,10 @@ public:
     Array get_sent_off_flags() const;
     Array get_yellow_card_counts() const;
     bool is_pass_offside(int p_passer_idx, int p_receiver_idx) const { return _evaluate_pass_offside(p_passer_idx, p_receiver_idx); }
+    bool is_restart_for_home() const { return restart_to_home; }
+    bool debug_evaluate_offside_case(const Dictionary& p_case);
+    bool debug_evaluate_offside_involvement_case(const Dictionary& p_case);
+    void debug_trigger_offside_stoppage(bool p_attacking_is_home, Vector2 p_spot);
 
     void set_home_auto_shoot_enabled(bool p_enabled);
     bool is_home_auto_shoot_enabled() const;
@@ -385,6 +389,7 @@ private:
     bool _is_last_defender_dogso(const SimPlayer& p_defender, const SimPlayer& p_attacker) const;
     bool _try_apply_tackle_injury(SimPlayer& p_attacker, float p_challenge_force, bool p_is_slide);
     bool _evaluate_pass_offside(int p_passer_idx, int p_receiver_idx) const;
+    int _find_offside_active_involvement(bool p_attacking_is_home) const;
     void _snapshot_pass_offside_flags(int p_passer_idx);
     void _clear_offside_tracking();
     void _trigger_offside(bool p_offending_is_home, int p_offender_idx, Vector2 p_spot, const String& p_reason);
