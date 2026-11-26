@@ -219,12 +219,12 @@ func toggle_manual_pause() -> void:
 	if hud and hud.has_method("is_tactical_screen_open") and hud.is_tactical_screen_open():
 		return
 
-	var next_paused: bool = not match_engine.is_match_paused()
-	match_engine.pause_match(next_paused)
-	if hud and hud.has_method("refresh_all"):
-		hud.refresh_all()
 	if hud and hud.has_method("_on_pause_btn_pressed"):
 		hud._on_pause_btn_pressed()
+		return
+
+	var next_paused: bool = not match_engine.is_match_paused()
+	match_engine.pause_match(next_paused)
 
 func open_pre_match_center(p_career_state: CareerState) -> bool:
 	if not is_instance_valid(p_career_state):
@@ -457,14 +457,16 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	var kits: Dictionary = active_match_context.get("kits", {})
 	var default_home_col := Color(0.06, 0.78, 0.48)
 	var default_away_col := Color(0.92, 0.26, 0.30)
-	var home_primary: Color = match_engine.get_home_kit_color() if match_engine.has_method("get_home_kit_color") else _parse_color_safe(kits.get("home_primary", default_home_col), default_home_col)
-	var fallback_away: Color = match_engine.get_away_kit_color() if match_engine.has_method("get_away_kit_color") else _parse_color_safe(kits.get("away_primary", kits.get("away_default_primary", default_away_col)), default_away_col)
-	var away_primary: Color = _parse_color_safe(kits.get("active_away_primary", fallback_away), fallback_away)
+	var fallback_home: Color = match_engine.get_home_kit_color() if match_engine.has_method("get_home_kit_color") else default_home_col
+	var home_primary: Color = _parse_color_safe(kits.get("home_primary", fallback_home), fallback_home)
+	var fallback_away: Color = match_engine.get_away_kit_color() if match_engine.has_method("get_away_kit_color") else default_away_col
+	var away_primary: Color = _parse_color_safe(kits.get("active_away_primary", kits.get("away_primary", fallback_away)), fallback_away)
+	if match_engine.has_method("set_home_kit_color"):
+		match_engine.set_home_kit_color(home_primary)
 	if match_engine.has_method("set_away_kit_color"):
 		match_engine.set_away_kit_color(away_primary)
-	if is_instance_valid(match_pitch):
-		if match_pitch.has_method("set_kit_colors"):
-			match_pitch.set_kit_colors(home_primary, away_primary)
+	if is_instance_valid(match_pitch) and match_pitch.has_method("set_kit_colors"):
+		match_pitch.set_kit_colors(home_primary, away_primary)
 
 	if is_instance_valid(pre_match_view):
 		pre_match_view.queue_free()
@@ -629,6 +631,20 @@ func _process_final_whistle(final_home: int, final_away: int) -> void:
 
 	if hud and hud.has_method("show_fulltime_summary"):
 		hud.show_fulltime_summary(final_home, final_away)
+func _toggle_career_shell() -> void:
+	var shell := _resolve_career_shell()
+	if not is_instance_valid(shell):
+		career_shell = CareerShell.new()
+		career_shell.name = "CareerShell"
+		add_child(career_shell)
+		shell = career_shell
+
+	var next_visible: bool = not shell.visible
+	shell.visible = next_visible
+	if is_instance_valid(overview_2d):
+		overview_2d.visible = not next_visible
+	if next_visible and is_instance_valid(match_engine) and match_engine.is_match_active():
+		match_engine.pause_match(true)
 func _toggle_career_shell() -> void:
 	var shell := _resolve_career_shell()
 	if not is_instance_valid(shell):
