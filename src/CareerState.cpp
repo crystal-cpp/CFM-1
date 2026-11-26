@@ -1691,6 +1691,8 @@ void CareerState::_advance_single_day() {
 			_process_annual_rollover();
 		}
 	}
+	// Phase 5F: Daily stamina recovery & injury countdown
+	_process_daily_recovery_and_injuries();
 
 	// Official End of Competitive Season on May 31
 	if (_month == 5 && _day == 31) {
@@ -2195,6 +2197,7 @@ bool CareerState::set_starting_xi(int32_t p_club_id, const PackedInt32Array &p_x
 	std::vector<std::shared_ptr<Player>> new_xi;
 	new_xi.reserve(11);
 
+	// Validate everything BEFORE mutating roster or player flags
 	for (int i = 0; i < 11; i++) {
 		int32_t pid = p_xi_ids[i];
 		if (seen.count(pid)) return false;
@@ -2204,6 +2207,9 @@ bool CareerState::set_starting_xi(int32_t p_club_id, const PackedInt32Array &p_x
 		if (pit == _players_by_id.end() || !pit->second || pit->second->GetClubId() != p_club_id) {
 			return false;
 		}
+		if (pit->second->IsInjured()) return false;
+		if (i == 0 && pit->second->GetPosition() != Position::GK) return false;
+		if (i > 0 && pit->second->GetPosition() == Position::GK) return false;
 		new_xi.push_back(pit->second);
 	}
 
@@ -2218,22 +2224,6 @@ bool CareerState::set_starting_xi(int32_t p_club_id, const PackedInt32Array &p_x
 			p->SetIsStartingXI(false);
 			reordered.push_back(p);
 		}
-	}
-
-	// Inside set_starting_xi(): reject injured players or invalid GK Slot 0
-	for (int i = 0; i < 11; i++) {
-		int32_t pid = p_xi_ids[i];
-		if (seen.count(pid)) return false;
-		seen.insert(pid);
-
-		auto pit = _players_by_id.find(pid);
-		if (pit == _players_by_id.end() || !pit->second || pit->second->GetClubId() != p_club_id) {
-			return false;
-		}
-		if (pit->second->IsInjured()) return false;
-		if (i == 0 && pit->second->GetPosition() != Position::GK) return false;
-		if (i > 0 && pit->second->GetPosition() == Position::GK) return false;
-		new_xi.push_back(pit->second);
 	}
 
 	roster = std::move(reordered);
@@ -2259,7 +2249,20 @@ bool CareerState::swap_squad_players(int32_t p_club_id, int32_t p_player_a_id, i
 		if (roster[i]->GetId() == p_player_b_id) idx_b = i;
 	}
 
-	if (idx_a < 0 || idx_b < 0) return false;
+	if (idx_a < 0 || idx_b < 0 || !roster[idx_a] || !roster[idx_b]) return false;
+
+	// Validate injury locks & GK-only Slot 0 BEFORE mutating roster
+	if ((idx_a < 11 && roster[idx_b]->IsInjured()) || (idx_b < 11 && roster[idx_a]->IsInjured())) {
+		return false;
+	}
+	if ((idx_a == 0 && roster[idx_b]->GetPosition() != Position::GK) ||
+		(idx_b == 0 && roster[idx_a]->GetPosition() != Position::GK)) {
+		return false;
+	}
+	if ((idx_a > 0 && idx_a < 11 && roster[idx_b]->GetPosition() == Position::GK) ||
+		(idx_b > 0 && idx_b < 11 && roster[idx_a]->GetPosition() == Position::GK)) {
+		return false;
+	}
 
 	std::swap(roster[idx_a], roster[idx_b]);
 
@@ -2271,10 +2274,6 @@ bool CareerState::swap_squad_players(int32_t p_club_id, int32_t p_player_a_id, i
 		if (is_xi) {
 			new_xi.push_back(roster[i]);
 		}
-	}
-
-	if ((idx_a < 11 && roster[idx_b]->IsInjured()) || (idx_b < 11 && roster[idx_a]->IsInjured())) {
-		return false;
 	}
 
 	team->SetStartingXI(new_xi);
@@ -2602,7 +2601,7 @@ bool CareerState::prepare_next_match_payload(MatchEngine *p_engine) const {
 			if (sp) xi_ids.insert(sp->GetId());
 		}
 		for (const auto &rp : team->GetRoster()) {
-			if (!rp) continue;
+			if (!rp || rp->IsInjured()) continue;
 			if (xi_ids.find(rp->GetId()) != xi_ids.end()) continue;
 			bench.append(_player_to_dict(rp));
 			if (bench.size() >= 12) break;
@@ -2740,19 +2739,24 @@ bool CareerState::commit_match_result(MatchEngine *p_engine) {
 						xi[i]->SetCondition(std::max(40, xi[i]->GetCondition() - (fix.is_friendly ? 8 : 14)));
 					}
 				}
+				std::unordered_set<int32_t> injured_pids_this_match;
 				Array match_injuries = Array(m_stats.get("match_injuries", Array()));
 				for (int k = 0; k < match_injuries.size(); ++k) {
 					if (match_injuries[k].get_type() != Variant::DICTIONARY) continue;
 					Dictionary inj = match_injuries[k];
 					int32_t inj_pid = String(inj.get("player_id", inj.get("id", "0"))).to_int();
-					if (inj_pid <= 0) continue;
+					if (inj_pid <= 0 || injured_pids_this_match.count(inj_pid)) continue;
+
+					auto pit = _players_by_id.find(inj_pid);
+					if (pit == _players_by_id.end() || !pit->second || pit->second->IsInjured()) continue;
 
 					int32_t sev_int = static_cast<int32_t>(inj.get("severity", 0));
 					if (sev_int == 0 && inj.has("severity_label")) {
 						sev_int = static_cast<int32_t>(injury_severity_from_string(String(inj["severity_label"]).utf8().get_data()));
 					}
-					int32_t days_out = static_cast<int32_t>(inj.get("days", -1));
+					int32_t days_out = static_cast<int32_t>(inj.get("days", inj.get("days_remaining", -1)));
 					if (sev_int > 0) {
+						injured_pids_this_match.insert(inj_pid);
 						apply_player_injury(inj_pid, sev_int, days_out);
 					}
 				}

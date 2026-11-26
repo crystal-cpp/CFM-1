@@ -4260,7 +4260,7 @@ void MatchEngine::_update_ball_and_actions(float dt) {
             }
 
             if (arrived) {
-                const int receiver_idx = pass_target_index;
+                int receiver_idx = pass_target_index;
                 if (pending_pass_offside || pass_offside_flags[receiver_idx]) {
                     _trigger_offside(passer_is_home, receiver_idx, sim_players[receiver_idx].position,
                         String(" is caught offside — indirect free kick."));
@@ -4272,7 +4272,6 @@ void MatchEngine::_update_ball_and_actions(float dt) {
                 } else {
                     stats.away_passes_completed++;
                 }
-                int receiver_idx = pass_target_index;
                 bool rec_is_home = sim_players[receiver_idx].is_home;
                 possession_team = rec_is_home ? 0 : 1;
                 ball_carrier_index = receiver_idx;

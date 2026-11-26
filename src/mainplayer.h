@@ -155,7 +155,7 @@ public:
     }
 
     bool ApplyTrainingXP(int xpAmount) {
-        if (Retired || OVR >= Potential) return false;
+        if (Retired || IsInjured() || OVR >= Potential) return false;
 
         CurrentXP += xpAmount;
         int xpNeeded = OVR * 100; 
