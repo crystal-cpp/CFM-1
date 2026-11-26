@@ -673,33 +673,8 @@ func _can_use_defensive_controls() -> bool:
 		and not _manual_paused \
 		and not is_tactical_screen_open()
 
-func _update_chance_controls() -> void:
-	if not is_instance_valid(match_engine):
-		return
-	var c_state: int = match_engine.get_chance_state()
-	var restart_type: int = int(match_engine.call("get_restart_state")) if match_engine.has_method("get_restart_state") else _active_restart_type
-	var is_paused: bool = match_engine.is_match_paused() or match_engine.is_waiting_for_kickoff_resume() or _manual_paused or is_tactical_screen_open()
-	var show_def_controls: bool = (c_state == _user_defend_chance()) and (restart_type == 0) and not is_paused
-
-	var pitch_node: Node = _get_match_pitch()
-	var decision_paused: bool = pitch_node != null and pitch_node.has_method("is_attack_decision_paused") and bool(pitch_node.is_attack_decision_paused())
-	var gk_rushing: bool = pitch_node != null and pitch_node.has_method("is_gk_rush_active") and bool(pitch_node.is_gk_rush_active())
-
-	if _nearest_def_button:
-		_nearest_def_button.visible = show_def_controls
-		_nearest_def_button.disabled = not show_def_controls
-	if _slide_tackle_btn:
-		_slide_tackle_btn.visible = show_def_controls
-		_slide_tackle_btn.disabled = not show_def_controls
-	if _gk_rush_btn:
-		_gk_rush_btn.visible = show_def_controls
-		_gk_rush_btn.disabled = not show_def_controls
-		_gk_rush_btn.text = "Cancel GK Rush [G]" if gk_rushing else "GK Rush [G]"
-
 	if _chance_status_label:
 		if match_engine.is_waiting_for_kickoff_resume():
-			_status_pill.text = "HALF TIME" if match_engine.get_current_minute() == 45 else "KICKOFF"
-			_status_pill.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
 			_chance_status_label.text = "Click anywhere to resume."
 			_chance_status_label.add_theme_color_override("font_color", Color(0.20, 0.95, 0.55))
 		elif restart_type != 0:
@@ -723,6 +698,7 @@ func _update_chance_controls() -> void:
 			_chance_status_label.text = ""
 			_chance_status_label.add_theme_color_override("font_color", Color(0.68, 0.78, 0.90))
 
+func open_tactical_screen()
 func open_tactical_screen() -> void:
 	if not is_instance_valid(match_engine) or not _tactical_screen:
 		return
@@ -827,6 +803,10 @@ func refresh_all() -> void:
 	else:
 		_status_pill.text = "1ST HALF" if match_engine.get_current_minute() < 45 else "2ND HALF"
 		_status_pill.add_theme_color_override("font_color", Color(0.75, 0.84, 0.95))
+
+	var any_paused: bool = is_tactical_screen_open() or _manual_paused or match_engine.is_match_paused()
+	if _pause_btn:
+		_pause_btn.text = ">" if any_paused else "||"
 
 	var st: Dictionary = match_engine.get_match_stats()
 	var h_poss: int = int(st.get("home_possession", 50))
@@ -940,8 +920,8 @@ func _on_kickoff_overlay_gui_input(event: InputEvent) -> void:
 			_resume_kickoff_from_hud()
 			accept_event()
 
-func _on_match_event_logged(minute: int, event_type: String, is_home_team: bool, _player_name: String, description: String) -> void:
-	var side_tag: String = "[HOME]" if is_home_team else "[AWAY]"
+func _on_match_event_logged(minute: int, event_type: String, is_home_team: bool, player_name: String, description: String) -> void:
+	var side_tag: String = "[REF]" if player_name == "Referee" else ("[HOME]" if is_home_team else "[AWAY]")
 	var entry: String = "%02d'  %s %s" % [minute, side_tag, description]
 	_commentary_history.append(entry)
 	if _commentary_history.size() > 60:
