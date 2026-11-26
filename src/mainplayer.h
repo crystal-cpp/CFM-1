@@ -140,18 +140,57 @@ public:
     }
 
     void CalculateOVR() {
-        if (Pos == Position::GK) {
-            OVR = Attributes.Defending;
-        } else if (Pos == Position::ST || Pos == Position::CF || Pos == Position::LW || Pos == Position::RW) {
-            OVR = static_cast<int>((Attributes.Shooting * 0.4) + (Attributes.Pace * 0.3) + (Attributes.Dribbling * 0.3));
-        } else if (Pos == Position::CM || Pos == Position::CAM || Pos == Position::CDM || Pos == Position::LM || Pos == Position::RM) {
-            OVR = static_cast<int>((Attributes.Passing * 0.5) + (Attributes.Dribbling * 0.3) + (Attributes.Defending * 0.2));
-        } else if (Pos == Position::CB || Pos == Position::LB || Pos == Position::RB || Pos == Position::LWB || Pos == Position::RWB) {
-            OVR = static_cast<int>((Attributes.Defending * 0.6) + (Attributes.Physical * 0.3) + (Attributes.Pace * 0.1));
-        } else {
-            OVR = static_cast<int>((Attributes.Passing * 0.5) + (Attributes.Dribbling * 0.3) + (Attributes.Defending * 0.2));
+        // FC-style positional overall approximation using the six face attributes.
+        // EA Sports FC's complete calculation uses detailed sub-attributes and is
+        // not publicly documented; keep this shared six-stat model consistent
+        // with PlayerDatabase::compute_derived_ovr().
+        const double pac = static_cast<double>(Attributes.Pace);
+        const double sho = static_cast<double>(Attributes.Shooting);
+        const double pas = static_cast<double>(Attributes.Passing);
+        const double dri = static_cast<double>(Attributes.Dribbling);
+        const double def = static_cast<double>(Attributes.Defending);
+        const double phy = static_cast<double>(Attributes.Physical);
+        double raw = 0.0;
+
+        switch (Pos) {
+            case Position::GK:
+                // GK attributes are mapped to the six stored fields by CareerState:
+                // diving, kicking, positioning, reflexes, reactions, physical.
+                raw = pac * 0.22 + dri * 0.24 + pas * 0.22 +
+                      def * 0.18 + sho * 0.07 + phy * 0.07;
+                break;
+            case Position::CB:
+            case Position::UNKNOWN:
+                raw = def * 0.42 + phy * 0.26 + pas * 0.14 + pac * 0.10 + dri * 0.08;
+                break;
+            case Position::LB:
+            case Position::RB:
+            case Position::LWB:
+            case Position::RWB:
+                raw = pac * 0.22 + def * 0.28 + pas * 0.20 + dri * 0.16 + phy * 0.14;
+                break;
+            case Position::CDM:
+                raw = def * 0.30 + pas * 0.26 + phy * 0.20 + dri * 0.14 + pac * 0.10;
+                break;
+            case Position::CM:
+                raw = pas * 0.30 + dri * 0.24 + def * 0.16 + phy * 0.12 + sho * 0.10 + pac * 0.08;
+                break;
+            case Position::CAM:
+                raw = pas * 0.30 + dri * 0.30 + sho * 0.20 + pac * 0.12 + phy * 0.08;
+                break;
+            case Position::LM:
+            case Position::RM:
+            case Position::LW:
+            case Position::RW:
+                raw = pac * 0.26 + dri * 0.28 + pas * 0.20 + sho * 0.18 + phy * 0.08;
+                break;
+            case Position::ST:
+            case Position::CF:
+                raw = sho * 0.34 + pac * 0.22 + dri * 0.22 + phy * 0.14 + pas * 0.08;
+                break;
         }
-        OVR = std::clamp(OVR, 1, 99);
+
+        OVR = std::clamp(static_cast<int>(std::lround(raw)), 1, 99);
     }
 
     bool ApplyTrainingXP(int xpAmount) {
