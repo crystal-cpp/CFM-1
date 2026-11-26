@@ -2157,7 +2157,11 @@ bool MatchEngine::command_tackle() {
     has_user_move_target = false;
     is_paused_for_manual = false;
 
-    if (defender.position.distance_to(ball_position) <= 19.0f) {
+    float contact_dist = defender.position.distance_to(ball_position);
+    if (ball_state == BALL_CARRIED && ball_carrier_index >= 0 && ball_carrier_index < 22) {
+        contact_dist = std::min(contact_dist, defender.position.distance_to(sim_players[ball_carrier_index].position));
+    }
+    if (contact_dist <= 19.5f) {
         _resolve_slide_tackle_contact(user_controlled_index);
     }
     return true;
@@ -2166,6 +2170,18 @@ bool MatchEngine::command_tackle() {
 void MatchEngine::_award_defensive_free_kick(bool p_to_home, Vector2 p_spot, const String& p_fouler_name) {
     if (p_to_home) stats.away_fouls++;
     else stats.home_fouls++;
+
+    const float def_goal_x = p_to_home ? field_size.x : 0.0f;
+    const bool inside_penalty_area = std::abs(p_spot.x - def_goal_x) <= 140.0f &&
+        std::abs(p_spot.y - field_size.y * 0.5f) <= 168.0f;
+
+    if (inside_penalty_area) {
+        const Vector2 pen_spot(p_to_home ? (field_size.x - 110.0f) : 110.0f, field_size.y * 0.5f);
+        _log_event("penalty", !p_to_home, p_fouler_name,
+            p_fouler_name + String(" commits a foul inside the box — PENALTY KICK!"));
+        _begin_restart(RESTART_PENALTY, p_to_home, pen_spot, false);
+        return;
+    }
 
     _log_event("foul", !p_to_home, p_fouler_name,
         p_fouler_name + String(" commits a foul — direct free kick awarded!"));
@@ -2380,9 +2396,18 @@ void MatchEngine::_begin_restart(int p_restart_type, bool p_to_home, Vector2 p_s
     restart_state = p_restart_type;
     restart_to_home = p_to_home;
     restart_is_indirect = (p_restart_type == RESTART_FREE_KICK) ? p_is_indirect : false;
-    restart_spot.x = std::clamp(p_spot.x, 14.0f, field_size.x - 14.0f);
-    restart_spot.y = std::clamp(p_spot.y, 14.0f, field_size.y - 14.0f);
-    restart_timer = 0.72f;
+    if (p_restart_type == RESTART_PENALTY) {
+        restart_spot = Vector2(p_to_home ? (field_size.x - 110.0f) : 110.0f, field_size.y * 0.5f);
+        restart_timer = 0.95f;
+    } else if (p_restart_type == RESTART_FREE_KICK) {
+        restart_spot.x = std::clamp(p_spot.x, 58.0f, field_size.x - 58.0f);
+        restart_spot.y = std::clamp(p_spot.y, 18.0f, field_size.y - 18.0f);
+        restart_timer = 0.72f;
+    } else {
+        restart_spot.x = std::clamp(p_spot.x, 14.0f, field_size.x - 14.0f);
+        restart_spot.y = std::clamp(p_spot.y, 14.0f, field_size.y - 14.0f);
+        restart_timer = 0.72f;
+    }
 
     const int team_start = p_to_home ? 0 : 11;
     const int opp_start = p_to_home ? 11 : 0;
@@ -2405,17 +2430,33 @@ void MatchEngine::_begin_restart(int p_restart_type, bool p_to_home, Vector2 p_s
         return;
     }
 
-    const float retreat_radius = (p_restart_type == RESTART_THROW_IN) ? 24.0f : 58.0f;
-    for (int j = opp_start; j < opp_start + 11; j++) {
-        if (sim_players[j].is_sent_off) continue;
-        Vector2 diff = sim_players[j].position - restart_spot;
-        const float distance = diff.length();
-        if (distance < retreat_radius) {
-            Vector2 push = distance > 0.1f ? diff / distance : Vector2(p_to_home ? 1.0f : -1.0f, 0.0f);
-            sim_players[j].position = restart_spot + push * (retreat_radius + 4.0f);
-            sim_players[j].position.x = std::clamp(sim_players[j].position.x, 16.0f, field_size.x - 16.0f);
-            sim_players[j].position.y = std::clamp(sim_players[j].position.y, 16.0f, field_size.y - 16.0f);
-            sim_players[j].velocity = Vector2(0.0f, 0.0f);
+    if (p_restart_type == RESTART_PENALTY) {
+        if (!sim_players[opp_start].is_sent_off) {
+            sim_players[opp_start].position = Vector2(p_to_home ? (field_size.x - 14.0f) : 14.0f, field_size.y * 0.5f);
+            sim_players[opp_start].velocity = Vector2(0.0f, 0.0f);
+        }
+        const float box_edge_x = p_to_home ? (field_size.x - 148.0f) : 148.0f;
+        for (int k = 0; k < 22; k++) {
+            if (k == taker || k == opp_start || sim_players[k].is_sent_off) continue;
+            bool inside_box = p_to_home ? (sim_players[k].position.x > box_edge_x) : (sim_players[k].position.x < box_edge_x);
+            if (inside_box || sim_players[k].position.distance_to(restart_spot) < 92.0f) {
+                sim_players[k].position.x = box_edge_x + (p_to_home ? -12.0f : 12.0f);
+                sim_players[k].velocity = Vector2(0.0f, 0.0f);
+            }
+        }
+    } else {
+        const float retreat_radius = (p_restart_type == RESTART_THROW_IN) ? 24.0f : 58.0f;
+        for (int j = opp_start; j < opp_start + 11; j++) {
+            if (sim_players[j].is_sent_off) continue;
+            Vector2 diff = sim_players[j].position - restart_spot;
+            const float distance = diff.length();
+            if (distance < retreat_radius) {
+                Vector2 push = distance > 0.1f ? diff / distance : Vector2(p_to_home ? 1.0f : -1.0f, 0.0f);
+                sim_players[j].position = restart_spot + push * (retreat_radius + 4.0f);
+                sim_players[j].position.x = std::clamp(sim_players[j].position.x, 16.0f, field_size.x - 16.0f);
+                sim_players[j].position.y = std::clamp(sim_players[j].position.y, 16.0f, field_size.y - 16.0f);
+                sim_players[j].velocity = Vector2(0.0f, 0.0f);
+            }
         }
     }
 
@@ -2442,6 +2483,9 @@ void MatchEngine::_begin_restart(int p_restart_type, bool p_to_home, Vector2 p_s
     } else if (p_restart_type == RESTART_FREE_KICK) {
         const String label = restart_is_indirect ? String("Indirect free kick to ") : String("Direct free kick to ");
         _log_event("free_kick", p_to_home, sim_players[taker].name, label + side_name + String("."));
+    } else if (p_restart_type == RESTART_PENALTY) {
+        _log_event("penalty", p_to_home, sim_players[taker].name,
+            String("Penalty kick to ") + side_name + String(" — ") + sim_players[taker].name + String(" steps up!"));
     }
     emit_signal("restart_state_changed", restart_state, restart_to_home, restart_spot);
 }
@@ -2464,6 +2508,16 @@ void MatchEngine::_complete_restart() {
     if (taker == -1) {
         _clear_offside_tracking();
         action_decision_timer = 0.25f;
+        return;
+    }
+
+    if (previous_restart == RESTART_PENALTY) {
+        _clear_offside_tracking();
+        chance_state = to_home ? CHANCE_HOME_ATTACK : CHANCE_AWAY_ATTACK;
+        active_chance_timer = 4.0f;
+        const float goal_x = to_home ? field_size.x : 0.0f;
+        const float aim_y = (field_size.y * 0.5f) + static_cast<float>(UtilityFunctions::randf_range(-36.0, 36.0));
+        _execute_shot(taker, 0.78f, Vector2(goal_x, aim_y), 0.94f);
         return;
     }
 
@@ -3988,9 +4042,15 @@ void MatchEngine::_update_ball_and_actions(float dt) {
 
     if (manual_control_active && _is_user_outfield_idx(user_controlled_index)) {
         SimPlayer& ctrl_def = sim_players[user_controlled_index];
-        if (ctrl_def.is_sliding && ctrl_def.position.distance_to(ball_position) <= 19.5f) {
-            _resolve_slide_tackle_contact(user_controlled_index);
-            return;
+        if (ctrl_def.is_sliding) {
+            float slide_contact_dist = ctrl_def.position.distance_to(ball_position);
+            if (ball_state == BALL_CARRIED && ball_carrier_index >= 0 && ball_carrier_index < 22) {
+                slide_contact_dist = std::min(slide_contact_dist, ctrl_def.position.distance_to(sim_players[ball_carrier_index].position));
+            }
+            if (slide_contact_dist <= 19.5f) {
+                _resolve_slide_tackle_contact(user_controlled_index);
+                return;
+            }
         }
     }
 
