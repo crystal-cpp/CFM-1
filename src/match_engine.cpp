@@ -4513,6 +4513,12 @@ void MatchEngine::_update_ball_and_actions(float dt) {
         int opp_start = shooter_is_home ? 11 : 0;
         bool is_user_attack_chance = ((shooter_is_home == user_is_home) && chance_state == _user_attack_chance_state());
 
+        if (ball_position.y <= 10.0f || ball_position.y >= field_size.y - 10.0f) {
+            const Vector2 throw_spot(std::clamp(ball_position.x, 24.0f, field_size.x - 24.0f),
+                ball_position.y <= 10.0f ? 14.0f : field_size.y - 14.0f);
+            _begin_restart(RESTART_THROW_IN, !shooter_is_home, throw_spot);
+            return;
+        }
         // A shot is also a teammate's play of the ball under Law 11.
         // Check kick-time offside flags for touching the shot/rebound or
         // interfering with a defender/goalkeeper before resolving the shot.
@@ -4527,12 +4533,6 @@ void MatchEngine::_update_ball_and_actions(float dt) {
             return;
         }
 
-        if (ball_position.y <= 10.0f || ball_position.y >= field_size.y - 10.0f) {
-            const Vector2 throw_spot(std::clamp(ball_position.x, 24.0f, field_size.x - 24.0f),
-                ball_position.y <= 10.0f ? 14.0f : field_size.y - 14.0f);
-            _begin_restart(RESTART_THROW_IN, !shooter_is_home, throw_spot);
-            return;
-        }
         for (int j = opp_start + 1; j < opp_start + 11; j++) {
             const SimPlayer& def = sim_players[j];
             if (def.is_sent_off || def.recovery_timer > 0.0f) continue;
