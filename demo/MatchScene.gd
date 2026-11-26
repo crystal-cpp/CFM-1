@@ -636,6 +636,7 @@ func _toggle_career_shell() -> void:
 	if not is_instance_valid(shell):
 		career_shell = CareerShell.new()
 		career_shell.name = "CareerShell"
+		career_shell.visible = false
 		add_child(career_shell)
 		shell = career_shell
 
