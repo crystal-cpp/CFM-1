@@ -179,7 +179,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			or match_engine.is_match_paused() \
 			or match_engine.is_waiting_for_kickoff_resume() \
 			or (match_engine.has_method("is_restart_active") and bool(match_engine.call("is_restart_active")))
-		var def_state: int = 2 if (not match_engine.has_method("is_user_home") or match_engine.is_user_home()) else 1
+		var def_state: int = 2 if (not is_instance_valid(match_engine) or not match_engine.has_method("is_user_home") or match_engine.is_user_home()) else 1
 		if not blocked_state and match_engine.get_chance_state() == def_state:
 			if key_event.keycode == KEY_Q:
 				match_engine.select_nearest_defender()
