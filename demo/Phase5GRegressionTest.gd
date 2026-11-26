@@ -55,64 +55,73 @@ func _test_offside_laws_and_exceptions() -> void:
 		engine.set_user_is_home(user_home)
 		engine.start_match()
 
-		if engine.has_method("debug_evaluate_offside_case"):
-			# Case A: Attacker beyond 2nd-last defender in opponent half, actively involved -> OFFSIDE
-			var pos_offside: bool = bool(engine.call("debug_evaluate_offside_case", {
+		# Position and active involvement are separate Law 11 checks.
+		var offside_position: bool = bool(engine.call("debug_evaluate_offside_case", {
+			"attacker_is_home": user_home,
+			"in_opponent_half": true,
+			"beyond_second_last_defender": true,
+			"level_with_second_last": false,
+			"restart_source": "OPEN_PLAY"
+		}))
+		_assert_true(offside_position, "%s: Attacker beyond second-last opponent is in an offside position" % side_tag)
+
+		var passive_position: bool = bool(engine.call("debug_evaluate_offside_case", {
+			"attacker_is_home": user_home,
+			"in_opponent_half": true,
+			"beyond_second_last_defender": true,
+			"level_with_second_last": false,
+			"restart_source": "OPEN_PLAY"
+		}))
+		_assert_true(passive_position, "%s: A passive attacker can still be in an offside position" % side_tag)
+
+		var own_half: bool = bool(engine.call("debug_evaluate_offside_case", {
+			"attacker_is_home": user_home,
+			"in_opponent_half": false,
+			"beyond_second_last_defender": true,
+			"level_with_second_last": false,
+			"restart_source": "OPEN_PLAY"
+		}))
+		_assert_true(not own_half, "%s: Attacker in own half is not in an offside position" % side_tag)
+
+		var level_pos: bool = bool(engine.call("debug_evaluate_offside_case", {
+			"attacker_is_home": user_home,
+			"in_opponent_half": true,
+			"beyond_second_last_defender": true,
+			"level_with_second_last": true,
+			"restart_source": "OPEN_PLAY"
+		}))
+		_assert_true(not level_pos, "%s: Attacker level with second-last opponent is onside" % side_tag)
+
+		for restart_src in ["GOAL_KICK", "CORNER", "THROW_IN"]:
+			var from_restart: bool = bool(engine.call("debug_evaluate_offside_case", {
 				"attacker_is_home": user_home,
 				"in_opponent_half": true,
 				"beyond_second_last_defender": true,
 				"level_with_second_last": false,
-				"actively_involved": true,
-				"restart_source": "OPEN_PLAY"
+				"restart_source": restart_src
 			}))
-			_assert_true(pos_offside, "%s: Active attacker beyond 2nd-last defender is offside" % side_tag)
+			_assert_true(not from_restart, "%s: No offside directly from %s" % [side_tag, restart_src])
 
-			# Case B: Attacker in offside position at kick, but NOT actively involved -> ONSIDE
-			var passive_offside: bool = bool(engine.call("debug_evaluate_offside_case", {
-				"attacker_is_home": user_home,
-				"in_opponent_half": true,
-				"beyond_second_last_defender": true,
-				"level_with_second_last": false,
-				"actively_involved": false,
-				"restart_source": "OPEN_PLAY"
-			}))
-			_assert_true(not passive_offside, "%s: Passive offside teammate not actively involved is not penalized" % side_tag)
+		var passive_involvement: bool = bool(engine.call("debug_evaluate_offside_involvement_case", {
+			"attacker_is_home": user_home,
+			"touches_ball": false,
+			"interferes_with_opponent": false
+		}))
+		_assert_true(not passive_involvement, "%s: Passive offside-positioned teammate is not penalized" % side_tag)
 
-			# Case C: Own half -> ONSIDE
-			var own_half: bool = bool(engine.call("debug_evaluate_offside_case", {
-				"attacker_is_home": user_home,
-				"in_opponent_half": false,
-				"beyond_second_last_defender": true,
-				"level_with_second_last": false,
-				"actively_involved": true,
-				"restart_source": "OPEN_PLAY"
-			}))
-			_assert_true(not own_half, "%s: Attacker in own half is onside" % side_tag)
+		var ball_contact: bool = bool(engine.call("debug_evaluate_offside_involvement_case", {
+			"attacker_is_home": user_home,
+			"touches_ball": true,
+			"interferes_with_opponent": false
+		}))
+		_assert_true(ball_contact, "%s: Offside player touching the ball is penalized" % side_tag)
 
-			# Case D: Level with 2nd-last defender -> ONSIDE
-			var level_pos: bool = bool(engine.call("debug_evaluate_offside_case", {
-				"attacker_is_home": user_home,
-				"in_opponent_half": true,
-				"beyond_second_last_defender": false,
-				"level_with_second_last": true,
-				"actively_involved": true,
-				"restart_source": "OPEN_PLAY"
-			}))
-			_assert_true(not level_pos, "%s: Attacker level with 2nd-last opponent is onside" % side_tag)
-
-			# Case E: Direct from Goal Kick, Corner, Throw-In -> ONSIDE exception
-			for restart_src in ["GOAL_KICK", "CORNER", "THROW_IN"]:
-				var from_restart: bool = bool(engine.call("debug_evaluate_offside_case", {
-					"attacker_is_home": user_home,
-					"in_opponent_half": true,
-					"beyond_second_last_defender": true,
-					"level_with_second_last": false,
-					"actively_involved": true,
-					"restart_source": restart_src
-				}))
-				_assert_true(not from_restart, "%s: No offside directly from %s" % [side_tag, restart_src])
-		else:
-			_assert_true(engine.is_match_active(), "%s: MatchEngine started for offside baseline" % side_tag)
+		var opponent_interference: bool = bool(engine.call("debug_evaluate_offside_involvement_case", {
+			"attacker_is_home": user_home,
+			"touches_ball": false,
+			"interferes_with_opponent": true
+		}))
+		_assert_true(opponent_interference, "%s: Offside player interfering with an opponent is penalized" % side_tag)
 
 	engine.queue_free()
 
@@ -129,18 +138,17 @@ func _test_offside_stoppage_cancels_chance_and_awards_fk() -> void:
 
 		var home_before: int = engine.get_home_score()
 		var away_before: int = engine.get_away_score()
+		var field_size: Vector2 = engine.get_field_size()
+		var spot := Vector2(field_size.x * (0.75 if attacking_home else 0.25), field_size.y * 0.5)
 
-		if engine.has_method("debug_trigger_offside_stoppage"):
-			engine.call("debug_trigger_offside_stoppage", attacking_home, Vector2(0.75 if attacking_home else 0.25, 0.5))
-			_assert_eq(engine.get_chance_state(), 0, "%s: Offside immediately terminates active chance" % side_tag)
-			_assert_eq(engine.get_home_score(), home_before, "%s: Home score unchanged after offside stoppage" % side_tag)
-			_assert_eq(engine.get_away_score(), away_before, "%s: Away score unchanged after offside stoppage" % side_tag)
-			if engine.has_method("get_restart_type"):
-				_assert_eq(int(engine.call("get_restart_type")), 1, "%s: Indirect free kick restart active" % side_tag)
-			if engine.has_method("get_restart_is_home"):
-				_assert_eq(bool(engine.call("get_restart_is_home")), not attacking_home, "%s: Opponent awarded indirect FK" % side_tag)
-		else:
-			_assert_true(engine.is_match_active(), "%s: Engine active (bind debug_trigger_offside_stoppage for deterministic trigger)" % side_tag)
+		engine.call("debug_trigger_offside_stoppage", attacking_home, spot)
+		_assert_eq(engine.get_chance_state(), 0, "%s: Offside immediately terminates active chance" % side_tag)
+		_assert_eq(engine.get_home_score(), home_before, "%s: Home score unchanged after offside stoppage" % side_tag)
+		_assert_eq(engine.get_away_score(), away_before, "%s: Away score unchanged after offside stoppage" % side_tag)
+		_assert_true(engine.is_restart_active(), "%s: Restart is active after offside" % side_tag)
+		_assert_eq(engine.get_restart_state(), 4, "%s: Offside awards a free-kick restart" % side_tag)
+		_assert_true(engine.is_restart_indirect(), "%s: Offside restart is indirect" % side_tag)
+		_assert_eq(engine.is_restart_for_home(), not attacking_home, "%s: Opponent receives the indirect free kick" % side_tag)
 
 	engine.queue_free()
 
