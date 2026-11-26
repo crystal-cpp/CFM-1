@@ -123,6 +123,20 @@ func _test_offside_laws_and_exceptions() -> void:
 		}))
 		_assert_true(opponent_interference, "%s: Offside player interfering with an opponent is penalized" % side_tag)
 
+		# Drive the actual BALL_IN_PASS and BALL_IN_SHOT update branches.
+		for is_shot in [false, true]:
+			engine.reset_standalone_match_setup()
+			engine.set_user_is_home(user_home)
+			engine.start_match()
+			var path_label := "SHOT" if is_shot else "PASS"
+			var path_triggered: bool = bool(engine.call(
+				"debug_trigger_offside_involvement_path_case", user_home, is_shot
+			))
+			_assert_true(path_triggered, "%s: Offside involvement in %s flight triggers an indirect free kick" % [side_tag, path_label])
+			_assert_eq(engine.get_restart_state(), 4, "%s: %s offside path awards a free kick" % [side_tag, path_label])
+			_assert_true(engine.is_restart_indirect(), "%s: %s offside path is indirect" % [side_tag, path_label])
+			_assert_eq(engine.is_restart_for_home(), not user_home, "%s: %s offside path awards the opponent" % [side_tag, path_label])
+
 	engine.queue_free()
 
 # 2. Offside Stoppage: Active Chance Ends Immediately, No Follow-up Shot/Goal, Indirect FK Awarded
