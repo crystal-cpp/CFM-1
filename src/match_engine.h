@@ -331,6 +331,7 @@ public:
     bool debug_evaluate_offside_case(const Dictionary& p_case);
     bool debug_evaluate_offside_involvement_case(const Dictionary& p_case);
     void debug_trigger_offside_stoppage(bool p_attacking_is_home, Vector2 p_spot);
+    bool debug_trigger_offside_involvement_path_case(bool p_attacking_is_home, bool p_is_shot);
 
     void set_home_auto_shoot_enabled(bool p_enabled);
     bool is_home_auto_shoot_enabled() const;
