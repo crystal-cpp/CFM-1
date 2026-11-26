@@ -51,6 +51,8 @@ func _ready() -> void:
 
 	match_engine.chance_state_changed.connect(_on_chance_state_changed)
 	match_engine.match_ended.connect(_on_match_ended)
+	if match_engine.has_signal("restart_state_changed") and not match_engine.restart_state_changed.is_connected(_on_restart_state_changed):
+		match_engine.restart_state_changed.connect(_on_restart_state_changed)
 
 	if is_instance_valid(hud):
 		if hud.has_signal("skip_requested") and not hud.skip_requested.is_connected(_request_skip_match):
@@ -61,6 +63,16 @@ func _ready() -> void:
 	# Directly opened MatchScene instances still support standalone kickoff. AppRoot
 	# hides its persistent instance before this deferred check runs.
 	call_deferred("_start_standalone_match_if_visible")
+
+func _exit_tree() -> void:
+	if not is_instance_valid(match_engine):
+		return
+	if match_engine.chance_state_changed.is_connected(_on_chance_state_changed):
+		match_engine.chance_state_changed.disconnect(_on_chance_state_changed)
+	if match_engine.match_ended.is_connected(_on_match_ended):
+		match_engine.match_ended.disconnect(_on_match_ended)
+	if match_engine.has_signal("restart_state_changed") and match_engine.restart_state_changed.is_connected(_on_restart_state_changed):
+		match_engine.restart_state_changed.disconnect(_on_restart_state_changed)
 
 func _start_standalone_match_if_visible() -> void:
 	if not is_instance_valid(overview_2d) or not overview_2d.visible:
@@ -162,22 +174,26 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif key_event.keycode == KEY_C:
 		_toggle_career_shell()
 		get_viewport().set_input_as_handled()
-	elif key_event.keycode == KEY_Q:
+	elif key_event.keycode == KEY_Q or key_event.keycode == KEY_E or key_event.keycode == KEY_G:
+		var blocked_state: bool = not is_instance_valid(match_engine) \
+			or match_engine.is_match_paused() \
+			or match_engine.is_waiting_for_kickoff_resume() \
+			or (match_engine.has_method("is_restart_active") and bool(match_engine.call("is_restart_active")))
 		var def_state: int = 2 if (not match_engine.has_method("is_user_home") or match_engine.is_user_home()) else 1
-		if is_instance_valid(match_engine) and match_engine.get_chance_state() == def_state:
-			match_engine.select_nearest_defender()
-			get_viewport().set_input_as_handled()
-	elif key_event.keycode == KEY_E:
-		var def_state: int = 2 if (not match_engine.has_method("is_user_home") or match_engine.is_user_home()) else 1
-		if is_instance_valid(match_engine) and match_engine.get_chance_state() == def_state:
-			match_engine.command_tackle()
-			get_viewport().set_input_as_handled()
-	elif key_event.keycode == KEY_G:
-		var def_state: int = 2 if (not match_engine.has_method("is_user_home") or match_engine.is_user_home()) else 1
-		if is_instance_valid(match_engine) and match_engine.get_chance_state() == def_state:
-			if match_pitch and match_pitch.has_method("toggle_gk_rush"):
+		if not blocked_state and match_engine.get_chance_state() == def_state:
+			if key_event.keycode == KEY_Q:
+				match_engine.select_nearest_defender()
+			elif key_event.keycode == KEY_E:
+				match_engine.command_tackle()
+			elif key_event.keycode == KEY_G and match_pitch and match_pitch.has_method("toggle_gk_rush"):
 				match_pitch.toggle_gk_rush()
 			get_viewport().set_input_as_handled()
+	elif key_event.keycode == KEY_F9:
+		var test_5g := Phase5GRegressionTest.new()
+		add_child(test_5g)
+		test_5g.run_all_5g_tests()
+		test_5g.queue_free()
+		get_viewport().set_input_as_handled()
 	elif key_event.keycode == KEY_S:
 		_request_skip_match()
 		get_viewport().set_input_as_handled()
@@ -550,8 +566,19 @@ func _request_next_match() -> void:
 		hud.show_toast("KICK OFF! New Match Started", 2.0)
 
 func _on_chance_state_changed(new_state: int, _ctrl_idx: int) -> void:
-	if new_state == 0 and pending_match_ended:
-		_process_final_whistle(cached_final_home, cached_final_away)
+	if new_state == 0:
+		if is_instance_valid(match_pitch) and match_pitch.has_method("is_attack_decision_paused") and bool(match_pitch.is_attack_decision_paused()):
+			if match_pitch.has_method("continue_attack_play"):
+				match_pitch.continue_attack_play()
+		if pending_match_ended:
+			_process_final_whistle(cached_final_home, cached_final_away)
+
+func _on_restart_state_changed(restart_type: int, is_home_team: bool, _spot: Vector2) -> void:
+	if restart_type != 0 and is_instance_valid(match_pitch) and match_pitch.has_method("is_attack_decision_paused") and bool(match_pitch.is_attack_decision_paused()):
+		if match_pitch.has_method("continue_attack_play"):
+			match_pitch.continue_attack_play()
+	if is_instance_valid(hud) and hud.has_method("on_restart_state_changed"):
+		hud.call("on_restart_state_changed", restart_type, is_home_team)
 
 func _on_match_ended(final_home: int, final_away: int) -> void:
 	if is_instance_valid(match_engine) and match_engine.is_chance_active():
@@ -579,6 +606,8 @@ func _process_final_whistle(final_home: int, final_away: int) -> void:
 
 		var user_is_home: bool = bool(active_match_context.get("user_is_home", true))
 		var match_stats: Dictionary = match_engine.get_match_stats() if is_instance_valid(match_engine) else {}
+		var raw_injuries: Variant = match_stats.get("match_injuries", match_stats.get("new_injuries", []))
+		var reported_injuries: Array = raw_injuries if raw_injuries is Array else []
 		var summary: Dictionary = {
 			"home_club": String(active_match_context.get("home_club", "Home")),
 			"away_club": String(active_match_context.get("away_club", "Away")),
@@ -588,7 +617,7 @@ func _process_final_whistle(final_home: int, final_away: int) -> void:
 			"stats": match_stats,
 			"stamina_report": match_stats.get("home_player_stamina", []) if user_is_home else match_stats.get("away_player_stamina", []),
 			"bench": active_match_context.get("home_bench", []) if user_is_home else active_match_context.get("away_bench", []),
-			"new_injuries": [],
+			"new_injuries": reported_injuries,
 			"skip_tokens": match_engine.get_skip_tokens() if is_instance_valid(match_engine) else 0,
 			"manual_matches_played": match_engine.get_manual_matches_played() if is_instance_valid(match_engine) else 0,
 		}
