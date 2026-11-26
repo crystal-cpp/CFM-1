@@ -1779,7 +1779,10 @@ int MatchEngine::_resolve_user_action_player() const {
         ball_position.distance_to(sim_players[user_controlled_index].position) <= 48.0f) return user_controlled_index;
     if (ball_state == BALL_IN_PASS && pass_target_index >= outfield_start && pass_target_index < end_idx &&
         !sim_players[pass_target_index].is_sent_off &&
-        ball_position.distance_to(sim_players[pass_target_index].position) <= 48.0f) return pass_target_index;
+        ball_position.distance_to(sim_players[pass_target_index].position) <= 48.0f) {
+        if (pending_pass_offside || pass_offside_flags[pass_target_index]) return -1;
+        return pass_target_index;
+    }
     int best_idx = -1;
     float best_dist = 48.0f;
     for (int i = outfield_start; i < end_idx; i++) {
@@ -1882,10 +1885,21 @@ bool MatchEngine::command_pass(int p_target_player_idx) {
         return false;
     }
 
-    int passer_idx = _resolve_user_action_player();
-    if (!_is_user_player_idx(passer_idx) || passer_idx == resolved_target) {
+    if (ball_state == BALL_IN_PASS && pass_target_index >= 0 && pass_target_index < 22 &&
+        ball_position.distance_to(sim_players[pass_target_index].position) <= 48.0f &&
+        (pending_pass_offside || pass_offside_flags[pass_target_index])) {
+        _trigger_offside(sim_players[pass_target_index].is_home, pass_target_index,
+            sim_players[pass_target_index].position, String(" is caught offside while attempting to play the ball."));
         return false;
     }
+    int passer_idx = _resolve_user_action_player();
+    if (_is_user_player_idx(passer_idx) && (ball_state == BALL_IN_PASS || ball_state == BALL_LOOSE) &&
+        pass_offside_flags[passer_idx]) {
+        _trigger_offside(sim_players[passer_idx].is_home, passer_idx, sim_players[passer_idx].position,
+            String(" is caught offside while attempting to play the ball."));
+        return false;
+    }
+    if (!_is_user_player_idx(passer_idx) || passer_idx == resolved_target) return false;
 
     Vector2 to_rec = sim_players[resolved_target].position - sim_players[passer_idx].position;
     float dist = to_rec.length();
@@ -1920,10 +1934,21 @@ bool MatchEngine::command_through_ball(Vector2 p_direction_or_target) {
         return false;
     }
 
-    int passer_idx = _resolve_user_action_player();
-    if (!_is_user_player_idx(passer_idx)) {
+    if (ball_state == BALL_IN_PASS && pass_target_index >= 0 && pass_target_index < 22 &&
+        ball_position.distance_to(sim_players[pass_target_index].position) <= 48.0f &&
+        (pending_pass_offside || pass_offside_flags[pass_target_index])) {
+        _trigger_offside(sim_players[pass_target_index].is_home, pass_target_index,
+            sim_players[pass_target_index].position, String(" is caught offside while attempting to play the ball."));
         return false;
     }
+    int passer_idx = _resolve_user_action_player();
+    if (_is_user_player_idx(passer_idx) && (ball_state == BALL_IN_PASS || ball_state == BALL_LOOSE) &&
+        pass_offside_flags[passer_idx]) {
+        _trigger_offside(sim_players[passer_idx].is_home, passer_idx, sim_players[passer_idx].position,
+            String(" is caught offside while attempting to play the ball."));
+        return false;
+    }
+    if (!_is_user_player_idx(passer_idx)) return false;
 
     float atk_dir = _user_attack_dir();
     SimPlayer& passer = sim_players[passer_idx];
@@ -2047,10 +2072,21 @@ bool MatchEngine::command_shot(Vector2 p_aim_target, float p_power_ratio) {
         return false;
     }
 
-    int shooter_idx = _resolve_user_action_player();
-    if (!_is_user_player_idx(shooter_idx)) {
+    if (ball_state == BALL_IN_PASS && pass_target_index >= 0 && pass_target_index < 22 &&
+        ball_position.distance_to(sim_players[pass_target_index].position) <= 48.0f &&
+        (pending_pass_offside || pass_offside_flags[pass_target_index])) {
+        _trigger_offside(sim_players[pass_target_index].is_home, pass_target_index,
+            sim_players[pass_target_index].position, String(" is caught offside while attempting to play the ball."));
         return false;
     }
+    int shooter_idx = _resolve_user_action_player();
+    if (_is_user_player_idx(shooter_idx) && (ball_state == BALL_IN_PASS || ball_state == BALL_LOOSE) &&
+        pass_offside_flags[shooter_idx]) {
+        _trigger_offside(sim_players[shooter_idx].is_home, shooter_idx, sim_players[shooter_idx].position,
+            String(" is caught offside while attempting to play the ball."));
+        return false;
+    }
+    if (!_is_user_player_idx(shooter_idx)) return false;
 
     const SimPlayer& shooter = sim_players[shooter_idx];
     Vector2 shot_vec = p_aim_target - shooter.position;
@@ -2496,6 +2532,8 @@ void MatchEngine::_resolve_slide_tackle_contact(int p_defender_idx) {
         float win_prob = std::clamp(0.50f + 0.34f * std::tanh(skill_diff / 26.0f), 0.16f, 0.85f);
 
         if (UtilityFunctions::randf() < win_prob) {
+            _try_apply_tackle_injury(attacker, 0.85f + (defender.physical / 200.0f), true);
+            _clear_offside_tracking();
             if (defender.is_home) stats.home_tackles++;
             else stats.away_tackles++;
 
