@@ -158,15 +158,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not key_event.pressed or key_event.is_echo():
 		return
 
-	if not is_instance_valid(overview_2d) or not overview_2d.visible:
-		if key_event.keycode == KEY_C:
-			_toggle_career_shell()
-			get_viewport().set_input_as_handled()
-		return
+	var modal_blocking: bool = is_instance_valid(pre_match_view) \
+		or (is_instance_valid(post_match_modal) and post_match_modal.visible)
+	var tactics_open: bool = hud != null and hud.has_method("is_tactical_screen_open") and hud.is_tactical_screen_open()
 
-	if key_event.keycode == KEY_T and is_instance_valid(match_engine) and match_engine.is_match_active():
+	if key_event.keycode == KEY_T and not modal_blocking and is_instance_valid(match_engine) and match_engine.is_match_active():
 		if hud:
-			if hud.has_method("is_tactical_screen_open") and hud.is_tactical_screen_open():
+			if tactics_open:
 				hud.close_tactical_screen()
 			elif hud.has_method("open_tactical_screen"):
 				hud.open_tactical_screen()
@@ -175,7 +173,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle_career_shell()
 		get_viewport().set_input_as_handled()
 	elif key_event.keycode == KEY_Q or key_event.keycode == KEY_E or key_event.keycode == KEY_G:
-		var blocked_state: bool = not is_instance_valid(match_engine) \
+		var blocked_state: bool = modal_blocking or tactics_open \
+			or not is_instance_valid(match_engine) \
 			or match_engine.is_match_paused() \
 			or match_engine.is_waiting_for_kickoff_resume() \
 			or (match_engine.has_method("is_restart_active") and bool(match_engine.call("is_restart_active")))
@@ -194,10 +193,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		test_5g.run_all_5g_tests()
 		test_5g.queue_free()
 		get_viewport().set_input_as_handled()
-	elif key_event.keycode == KEY_S:
+	elif key_event.keycode == KEY_S and not modal_blocking and not tactics_open:
 		_request_skip_match()
 		get_viewport().set_input_as_handled()
-	elif key_event.keycode == KEY_R:
+	elif key_event.keycode == KEY_R and not modal_blocking and not tactics_open:
 		_request_next_match()
 		get_viewport().set_input_as_handled()
 	elif key_event.keycode == KEY_F10:
@@ -206,8 +205,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		career_test.run_all_career_tests()
 		career_test.queue_free()
 		get_viewport().set_input_as_handled()
-	elif key_event.keycode == KEY_SPACE:
-		if match_pitch and match_pitch.has_method("is_attack_decision_paused") and match_pitch.is_attack_decision_paused():
+	elif key_event.keycode == KEY_SPACE and not modal_blocking and not tactics_open:
+		if is_instance_valid(match_engine) and match_engine.is_waiting_for_kickoff_resume():
+			if match_pitch and match_pitch.has_method("confirm_kickoff_or_resume"):
+				match_pitch.confirm_kickoff_or_resume()
+			else:
+				match_engine.resume_from_goal_kickoff()
+		elif match_pitch and match_pitch.has_method("is_attack_decision_paused") and match_pitch.is_attack_decision_paused():
 			match_pitch.continue_attack_play()
 		else:
 			toggle_manual_pause()
@@ -215,6 +219,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func toggle_manual_pause() -> void:
 	if not is_instance_valid(match_engine) or not match_engine.is_match_active():
+		return
+	if match_engine.is_waiting_for_kickoff_resume():
 		return
 	if hud and hud.has_method("is_tactical_screen_open") and hud.is_tactical_screen_open():
 		return
@@ -461,6 +467,12 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 	var home_primary: Color = _parse_color_safe(kits.get("home_primary", fallback_home), fallback_home)
 	var fallback_away: Color = match_engine.get_away_kit_color() if match_engine.has_method("get_away_kit_color") else default_away_col
 	var away_primary: Color = _parse_color_safe(kits.get("active_away_primary", kits.get("away_primary", fallback_away)), fallback_away)
+	if Vector3(home_primary.r - away_primary.r, home_primary.g - away_primary.g, home_primary.b - away_primary.b).length() < 0.28:
+		var alt_away: Color = _parse_color_safe(kits.get("away_secondary", away_primary), away_primary)
+		if Vector3(home_primary.r - alt_away.r, home_primary.g - alt_away.g, home_primary.b - alt_away.b).length() >= 0.28:
+			away_primary = alt_away
+		else:
+			away_primary = Color(0.95, 0.95, 0.97) if home_primary.get_luminance() < 0.45 else Color(0.10, 0.14, 0.22)
 	if match_engine.has_method("set_home_kit_color"):
 		match_engine.set_home_kit_color(home_primary)
 	if match_engine.has_method("set_away_kit_color"):
@@ -636,13 +648,18 @@ func _toggle_career_shell() -> void:
 	if not is_instance_valid(shell):
 		career_shell = CareerShell.new()
 		career_shell.name = "CareerShell"
+		career_shell.match_scene = self
 		career_shell.visible = false
 		add_child(career_shell)
 		shell = career_shell
+	elif shell.match_scene == null:
+		shell.match_scene = self
 
 	var next_visible: bool = not shell.visible
 	shell.visible = next_visible
+	if next_visible:
+		shell.refresh_all_views()
 	if is_instance_valid(overview_2d):
-		overview_2d.visible = not next_visible
+		overview_2d.visible = not next_visible and not is_instance_valid(pre_match_view)
 	if next_visible and is_instance_valid(match_engine) and match_engine.is_match_active():
 		match_engine.pause_match(true)
