@@ -154,18 +154,17 @@ func _exit_tree() -> void:
 	if match_engine.has_signal("restart_state_changed") and match_engine.restart_state_changed.is_connected(on_restart_state_changed):
 		match_engine.restart_state_changed.disconnect(on_restart_state_changed)
 
-func on_restart_state_changed(restart_type: int, is_home_team: bool) -> void:
+func on_restart_state_changed(restart_type: int, is_home_team: bool, _spot: Vector2 = Vector2.ZERO) -> void:
 	_active_restart_type = restart_type
 	_active_restart_is_home = is_home_team
 	refresh_all()
 
 func _format_restart_label(restart_type: int) -> String:
 	match restart_type:
-		1: return "FREE KICK"
+		1: return "THROW-IN"
 		2: return "GOAL KICK"
 		3: return "CORNER"
-		4: return "THROW-IN"
-		5: return "PENALTY"
+		4: return "FREE KICK"
 		_: return "RESTART"
 
 func _process(_delta: float) -> void:
