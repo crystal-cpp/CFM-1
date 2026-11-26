@@ -175,6 +175,10 @@ void MatchEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_sent_off_flags"), &MatchEngine::get_sent_off_flags);
     ClassDB::bind_method(D_METHOD("get_yellow_card_counts"), &MatchEngine::get_yellow_card_counts);
     ClassDB::bind_method(D_METHOD("is_pass_offside", "passer_idx", "receiver_idx"), &MatchEngine::is_pass_offside);
+    ClassDB::bind_method(D_METHOD("is_restart_for_home"), &MatchEngine::is_restart_for_home);
+    ClassDB::bind_method(D_METHOD("debug_evaluate_offside_case", "test_case"), &MatchEngine::debug_evaluate_offside_case);
+    ClassDB::bind_method(D_METHOD("debug_evaluate_offside_involvement_case", "test_case"), &MatchEngine::debug_evaluate_offside_involvement_case);
+    ClassDB::bind_method(D_METHOD("debug_trigger_offside_stoppage", "attacking_is_home", "spot"), &MatchEngine::debug_trigger_offside_stoppage);
 
     // Live-Position Chance & Manual Shooting Controls
     ClassDB::bind_method(D_METHOD("set_home_auto_shoot_enabled", "enabled"), &MatchEngine::set_home_auto_shoot_enabled);
@@ -2387,6 +2391,135 @@ void MatchEngine::_snapshot_pass_offside_flags(int p_passer_idx) {
     }
 }
 
+int MatchEngine::_find_offside_active_involvement(bool p_attacking_is_home) const {
+    const int attacking_start = p_attacking_is_home ? 0 : 11;
+    const int opponents_start = p_attacking_is_home ? 11 : 0;
+    for (int i = attacking_start; i < attacking_start + 11; i++) {
+        if (sim_players[i].is_sent_off || !pass_offside_flags[i]) continue;
+
+        if (sim_players[i].position.distance_to(ball_position) < 16.0f) {
+            return i;
+        }
+
+        // Simulation approximation of interfering with an opponent:
+        // the offside attacker is close enough to challenge the opponent,
+        // and the opponent is close enough to the ball to be affected.
+        for (int j = opponents_start; j < opponents_start + 11; j++) {
+            if (sim_players[j].is_sent_off) continue;
+            if (sim_players[i].position.distance_to(sim_players[j].position) < 18.0f &&
+                ball_position.distance_to(sim_players[j].position) < 42.0f) {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+bool MatchEngine::debug_evaluate_offside_case(const Dictionary& p_case) {
+    if (!match_active || sim_players.size() != 22) return false;
+
+    std::vector<Vector2> saved_positions;
+    saved_positions.reserve(sim_players.size());
+    for (const SimPlayer& player : sim_players) saved_positions.push_back(player.position);
+    const Vector2 saved_ball_position = ball_position;
+    const bool saved_restart_exempt = restart_offside_exempt;
+
+    const bool attacking_home = static_cast<bool>(p_case.get("attacker_is_home", true));
+    const bool in_opponents_half = static_cast<bool>(p_case.get("in_opponent_half", true));
+    const bool beyond_second_last = static_cast<bool>(p_case.get("beyond_second_last_defender", true));
+    const bool level_with_second_last = static_cast<bool>(p_case.get("level_with_second_last", false));
+    const String restart_source = String(p_case.get("restart_source", String("OPEN_PLAY")));
+
+    const int attacking_start = attacking_home ? 0 : 11;
+    const int opponents_start = attacking_home ? 11 : 0;
+    const int passer_idx = attacking_start + 8;
+    const int receiver_idx = attacking_start + 9;
+    const float halfway_x = field_size.x * 0.5f;
+    const float center_y = field_size.y * 0.5f;
+    const float direction = attacking_home ? 1.0f : -1.0f;
+    const float second_last_x = halfway_x + direction * (field_size.x * 0.25f);
+
+    // Place all opponents behind a deterministic second-last defender.
+    for (int i = 0; i < 11; i++) {
+        sim_players[opponents_start + i].position = Vector2(
+            second_last_x - direction * (24.0f + static_cast<float>(i) * 4.0f),
+            center_y + static_cast<float>(i) * 3.0f
+        );
+    }
+    sim_players[opponents_start].position.x = second_last_x + direction * 50.0f;
+    sim_players[opponents_start + 1].position.x = second_last_x;
+
+    sim_players[passer_idx].position = Vector2(halfway_x + direction * 70.0f, center_y);
+    float receiver_x = second_last_x - direction * 32.0f;
+    if (!in_opponents_half) {
+        receiver_x = halfway_x - direction * 24.0f;
+    } else if (level_with_second_last) {
+        receiver_x = second_last_x;
+    } else if (beyond_second_last) {
+        receiver_x = second_last_x + direction * 32.0f;
+    }
+    sim_players[receiver_idx].position = Vector2(receiver_x, center_y);
+    ball_position = sim_players[passer_idx].position;
+
+    restart_offside_exempt = restart_source == "GOAL_KICK" ||
+        restart_source == "CORNER" || restart_source == "THROW_IN";
+    const bool result = _evaluate_pass_offside(passer_idx, receiver_idx);
+
+    for (size_t i = 0; i < sim_players.size(); i++) sim_players[i].position = saved_positions[i];
+    ball_position = saved_ball_position;
+    restart_offside_exempt = saved_restart_exempt;
+    return result;
+}
+
+bool MatchEngine::debug_evaluate_offside_involvement_case(const Dictionary& p_case) {
+    if (!match_active || sim_players.size() != 22) return false;
+
+    std::vector<Vector2> saved_positions;
+    saved_positions.reserve(sim_players.size());
+    for (const SimPlayer& player : sim_players) saved_positions.push_back(player.position);
+    bool saved_flags[22];
+    for (int i = 0; i < 22; i++) saved_flags[i] = pass_offside_flags[i];
+    const Vector2 saved_ball_position = ball_position;
+
+    const bool attacking_home = static_cast<bool>(p_case.get("attacker_is_home", true));
+    const bool touches_ball = static_cast<bool>(p_case.get("touches_ball", false));
+    const bool interferes = static_cast<bool>(p_case.get("interferes_with_opponent", false));
+    const int attacking_start = attacking_home ? 0 : 11;
+    const int opponents_start = attacking_home ? 11 : 0;
+    const int offender_idx = attacking_start + 9;
+    const int opponent_idx = opponents_start + 5;
+    const float x = attacking_home ? field_size.x * 0.70f : field_size.x * 0.30f;
+    const float y = field_size.y * 0.50f;
+
+    for (int i = 0; i < 22; i++) pass_offside_flags[i] = false;
+    pass_offside_flags[offender_idx] = true;
+    sim_players[offender_idx].position = Vector2(x, y);
+    sim_players[opponent_idx].position = interferes
+        ? Vector2(x + 12.0f, y)
+        : Vector2(x + 180.0f, y + 150.0f);
+    ball_position = touches_ball
+        ? sim_players[offender_idx].position
+        : (interferes ? Vector2(x + 30.0f, y) : Vector2(x + 100.0f, y));
+
+    const bool result = _find_offside_active_involvement(attacking_home) != -1;
+
+    for (size_t i = 0; i < sim_players.size(); i++) sim_players[i].position = saved_positions[i];
+    for (int i = 0; i < 22; i++) pass_offside_flags[i] = saved_flags[i];
+    ball_position = saved_ball_position;
+    return result;
+}
+
+void MatchEngine::debug_trigger_offside_stoppage(bool p_attacking_is_home, Vector2 p_spot) {
+    if (!match_active || sim_players.size() != 22) return;
+
+    const int offender_idx = p_attacking_is_home ? 9 : 20;
+    chance_state = p_attacking_is_home ? CHANCE_HOME_ATTACK : CHANCE_AWAY_ATTACK;
+    active_chance_timer = 10.0f;
+    manual_control_active = true;
+    _trigger_offside(p_attacking_is_home, offender_idx, p_spot,
+        String(" is caught offside — indirect free kick."));
+}
+
 void MatchEngine::_begin_restart(int p_restart_type, bool p_to_home, Vector2 p_spot, bool p_is_indirect) {
     if (!match_active || sim_players.size() != 22) return;
     if (chance_state != CHANCE_NONE) _end_active_chance(false);
@@ -4219,25 +4352,15 @@ void MatchEngine::_update_ball_and_actions(float dt) {
         float ball_speed = ball_velocity.length();
         float speed_evasion = std::clamp((ball_speed - 280.0f) / 180.0f, 0.0f, 1.0f);
 
-        const int attacking_start = passer_is_home ? 0 : 11;
-        for (int k = attacking_start; k < attacking_start + 11; k++) {
-            if (k == passer_idx || sim_players[k].is_sent_off || !pass_offside_flags[k]) continue;
-            const bool touches_ball = sim_players[k].position.distance_to(ball_position) < 16.0f;
-            bool interferes_with_opponent = false;
-            for (int j = opp_start; j < opp_start + 11; j++) {
-                if (sim_players[j].is_sent_off) continue;
-                if (sim_players[k].position.distance_to(sim_players[j].position) < 18.0f &&
-                    ball_position.distance_to(sim_players[j].position) < 42.0f) {
-                    interferes_with_opponent = true;
-                    break;
-                }
-            }
-            if (touches_ball || interferes_with_opponent) {
-                _trigger_offside(passer_is_home, k, sim_players[k].position,
-                    touches_ball ? String(" plays the ball from an offside position — indirect free kick.")
-                                 : String(" interferes with an opponent from an offside position — indirect free kick."));
-                return;
-            }
+        const int offside_involvement_idx = _find_offside_active_involvement(passer_is_home);
+        if (offside_involvement_idx != -1) {
+            const bool touches_ball =
+                sim_players[offside_involvement_idx].position.distance_to(ball_position) < 16.0f;
+            _trigger_offside(passer_is_home, offside_involvement_idx,
+                sim_players[offside_involvement_idx].position,
+                touches_ball ? String(" plays the ball from an offside position — indirect free kick.")
+                             : String(" interferes with an opponent from an offside position — indirect free kick."));
+            return;
         }
 
         for (int j = opp_start; j < opp_start + 11; j++) {
@@ -4389,6 +4512,21 @@ void MatchEngine::_update_ball_and_actions(float dt) {
 
         int opp_start = shooter_is_home ? 11 : 0;
         bool is_user_attack_chance = ((shooter_is_home == user_is_home) && chance_state == _user_attack_chance_state());
+
+        // A shot is also a teammate's play of the ball under Law 11.
+        // Check kick-time offside flags for touching the shot/rebound or
+        // interfering with a defender/goalkeeper before resolving the shot.
+        const int shot_offside_involvement_idx = _find_offside_active_involvement(shooter_is_home);
+        if (shot_offside_involvement_idx != -1) {
+            const bool touches_ball =
+                sim_players[shot_offside_involvement_idx].position.distance_to(ball_position) < 16.0f;
+            _trigger_offside(shooter_is_home, shot_offside_involvement_idx,
+                sim_players[shot_offside_involvement_idx].position,
+                touches_ball ? String(" plays the shot from an offside position — indirect free kick.")
+                             : String(" interferes with an opponent during a shot from an offside position — indirect free kick."));
+            return;
+        }
+
         if (ball_position.y <= 10.0f || ball_position.y >= field_size.y - 10.0f) {
             const Vector2 throw_spot(std::clamp(ball_position.x, 24.0f, field_size.x - 24.0f),
                 ball_position.y <= 10.0f ? 14.0f : field_size.y - 14.0f);
