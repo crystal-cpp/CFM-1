@@ -645,12 +645,3 @@ func _toggle_career_shell() -> void:
 		overview_2d.visible = not next_visible
 	if next_visible and is_instance_valid(match_engine) and match_engine.is_match_active():
 		match_engine.pause_match(true)
-func _toggle_career_shell() -> void:
-	var shell := _resolve_career_shell()
-	if not is_instance_valid(shell):
-		career_shell = CareerShell.new()
-		career_shell.name = "CareerShell"
-		add_child(career_shell)
-		career_shell.visible = true
-	else:
-		shell.visible = not shell.visible
