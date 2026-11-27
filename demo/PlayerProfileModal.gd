@@ -216,7 +216,7 @@ func _ensure_ui_built() -> void:
 	# Condition Bar
 	var cond_header := HBoxContainer.new()
 	var ch_lbl := Label.new()
-	ch_lbl.text = "Condition / Stamina"
+	ch_lbl.text = "Condition"
 	ch_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ch_lbl.add_theme_font_size_override("font_size", 12)
 	cond_header.add_child(ch_lbl)
