@@ -181,10 +181,12 @@ void MatchEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("debug_trigger_offside_stoppage", "attacking_is_home", "spot"), &MatchEngine::debug_trigger_offside_stoppage);
     ClassDB::bind_method(D_METHOD("debug_trigger_offside_involvement_path_case", "attacking_is_home", "is_shot"), &MatchEngine::debug_trigger_offside_involvement_path_case);
 
-    // Live-Position Chance & Manual Shooting Controls
+// Live-Position Chance & Manual Shooting Controls
     ClassDB::bind_method(D_METHOD("set_home_auto_shoot_enabled", "enabled"), &MatchEngine::set_home_auto_shoot_enabled);
     ClassDB::bind_method(D_METHOD("is_home_auto_shoot_enabled"), &MatchEngine::is_home_auto_shoot_enabled);
     ClassDB::bind_method(D_METHOD("trigger_wide_range_chance", "is_home_attacking"), &MatchEngine::trigger_wide_range_chance);
+    ClassDB::bind_method(D_METHOD("get_gk_stats", "is_home"), &MatchEngine::get_gk_stats);
+    ClassDB::bind_method(D_METHOD("evaluate_chance_trigger_prob", "is_home_attacking"), &MatchEngine::evaluate_chance_trigger_prob);
 
     // Inspector Properties
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "home_formation"), "set_home_formation", "get_home_formation");
@@ -480,6 +482,11 @@ void MatchEngine::_initialize_default_home_bench() {
         hb.dribbling = hb.ovr;
         hb.defending = hb.ovr;
         hb.physical = hb.ovr;
+        hb.gk_diving = (hb.role == "GK") ? std::clamp(hb.ovr + 2, 1, 99) : std::clamp(hb.ovr - 34, 1, 99);
+        hb.gk_reflex = (hb.role == "GK") ? std::clamp(hb.ovr + 3, 1, 99) : std::clamp(hb.ovr - 32, 1, 99);
+        hb.gk_positioning = (hb.role == "GK") ? std::clamp(hb.ovr + 1, 1, 99) : std::clamp(hb.ovr - 32, 1, 99);
+        hb.gk_reaction = (hb.role == "GK") ? std::clamp(hb.ovr + 2, 1, 99) : std::clamp(hb.ovr - 28, 1, 99);
+        hb.gk_kicking = (hb.role == "GK") ? std::clamp(hb.ovr - 2, 1, 99) : std::clamp(hb.ovr - 16, 1, 99);
         hb.stamina = 100.0f;
         hb.used = false;
         home_bench.push_back(hb);
@@ -502,6 +509,11 @@ void MatchEngine::_initialize_default_away_bench() {
         ab.dribbling = ab.ovr;
         ab.defending = ab.ovr;
         ab.physical = ab.ovr;
+        ab.gk_diving = (ab.role == "GK") ? std::clamp(ab.ovr + 2, 1, 99) : std::clamp(ab.ovr - 34, 1, 99);
+        ab.gk_reflex = (ab.role == "GK") ? std::clamp(ab.ovr + 3, 1, 99) : std::clamp(ab.ovr - 32, 1, 99);
+        ab.gk_positioning = (ab.role == "GK") ? std::clamp(ab.ovr + 1, 1, 99) : std::clamp(ab.ovr - 32, 1, 99);
+        ab.gk_reaction = (ab.role == "GK") ? std::clamp(ab.ovr + 2, 1, 99) : std::clamp(ab.ovr - 28, 1, 99);
+        ab.gk_kicking = (ab.role == "GK") ? std::clamp(ab.ovr - 2, 1, 99) : std::clamp(ab.ovr - 16, 1, 99);
         ab.stamina = 100.0f;
         ab.used = false;
         away_bench.push_back(ab);
@@ -516,12 +528,24 @@ void MatchEngine::_apply_role_profile(SimPlayer& p_player, int p_base_ovr) const
     p_player.starting_stamina = static_cast<float>(std::clamp(base, 40, 95));
     p_player.stamina = p_player.starting_stamina;
 
+    p_player.gk_diving = std::clamp(base - 34, 1, 99);
+    p_player.gk_reflex = std::clamp(base - 32, 1, 99);
+    p_player.gk_positioning = std::clamp(base - 32, 1, 99);
+    p_player.gk_reaction = std::clamp(base - 28, 1, 99);
+    p_player.gk_kicking = std::clamp(base - 16, 1, 99);
+
     if (r == "GK") {
-        p_player.pace = std::clamp(base - 18, 1, 99);
+        p_player.gk_diving = std::clamp(base + 2, 1, 99);
+        p_player.gk_reflex = std::clamp(base + 3, 1, 99);
+        p_player.gk_positioning = std::clamp(base + 1, 1, 99);
+        p_player.gk_reaction = std::clamp(base + 2, 1, 99);
+        p_player.gk_kicking = std::clamp(base - 2, 1, 99);
+
+        p_player.pace = std::clamp(base - 18, 32, 74);
         p_player.shooting = std::clamp(base - 25, 1, 99);
         p_player.passing = std::clamp(base - 6, 1, 99);
         p_player.dribbling = std::clamp(base - 15, 1, 99);
-        p_player.defending = std::clamp(base + 4, 1, 99);
+        p_player.defending = std::clamp(base - 18, 1, 99);
         p_player.physical = std::clamp(base + 2, 1, 99);
     } else if (r == "CB") {
         p_player.pace = std::clamp(base - 5, 1, 99);
@@ -615,12 +639,41 @@ void MatchEngine::_populate_sim_player_from_dict(SimPlayer& p_player, const Dict
             p_player.name = player_name;
         }
     }
-    if (p_dict.has("pace")) p_player.pace = std::clamp(static_cast<int>(p_dict["pace"]), 1, 99);
-    if (p_dict.has("shooting")) p_player.shooting = std::clamp(static_cast<int>(p_dict["shooting"]), 1, 99);
-    if (p_dict.has("passing")) p_player.passing = std::clamp(static_cast<int>(p_dict["passing"]), 1, 99);
-    if (p_dict.has("dribbling")) p_player.dribbling = std::clamp(static_cast<int>(p_dict["dribbling"]), 1, 99);
-    if (p_dict.has("defending")) p_player.defending = std::clamp(static_cast<int>(p_dict["defending"]), 1, 99);
-    if (p_dict.has("physical")) p_player.physical = std::clamp(static_cast<int>(p_dict["physical"]), 1, 99);
+    bool is_gk = (p_player.role == "GK") || bool(p_dict.get("is_gk", false));
+    if (is_gk) {
+        p_player.role = "GK";
+        if (p_dict.has("diving")) p_player.gk_diving = std::clamp(static_cast<int>(p_dict["diving"]), 1, 99);
+        else if (p_dict.has("pace")) p_player.gk_diving = std::clamp(static_cast<int>(p_dict["pace"]), 1, 99);
+
+        if (p_dict.has("reflex")) p_player.gk_reflex = std::clamp(static_cast<int>(p_dict["reflex"]), 1, 99);
+        else if (p_dict.has("shooting")) p_player.gk_reflex = std::clamp(static_cast<int>(p_dict["shooting"]), 1, 99);
+
+        if (p_dict.has("positioning")) p_player.gk_positioning = std::clamp(static_cast<int>(p_dict["positioning"]), 1, 99);
+        else if (p_dict.has("passing")) p_player.gk_positioning = std::clamp(static_cast<int>(p_dict["passing"]), 1, 99);
+
+        if (p_dict.has("reaction")) p_player.gk_reaction = std::clamp(static_cast<int>(p_dict["reaction"]), 1, 99);
+        else if (p_dict.has("dribbling")) p_player.gk_reaction = std::clamp(static_cast<int>(p_dict["dribbling"]), 1, 99);
+
+        if (p_dict.has("kicking")) p_player.gk_kicking = std::clamp(static_cast<int>(p_dict["kicking"]), 1, 99);
+        else if (p_dict.has("defending")) p_player.gk_kicking = std::clamp(static_cast<int>(p_dict["defending"]), 1, 99);
+
+        if (p_dict.has("physical")) p_player.physical = std::clamp(static_cast<int>(p_dict["physical"]), 1, 99);
+        p_player.passing = std::clamp(p_player.gk_kicking, 1, 99);
+        p_player.pace = std::clamp(base_ovr - 18, 32, 74);
+    } else {
+        if (p_dict.has("pace")) p_player.pace = std::clamp(static_cast<int>(p_dict["pace"]), 1, 99);
+        if (p_dict.has("shooting")) p_player.shooting = std::clamp(static_cast<int>(p_dict["shooting"]), 1, 99);
+        if (p_dict.has("passing")) p_player.passing = std::clamp(static_cast<int>(p_dict["passing"]), 1, 99);
+        if (p_dict.has("dribbling")) p_player.dribbling = std::clamp(static_cast<int>(p_dict["dribbling"]), 1, 99);
+        if (p_dict.has("defending")) p_player.defending = std::clamp(static_cast<int>(p_dict["defending"]), 1, 99);
+        if (p_dict.has("physical")) p_player.physical = std::clamp(static_cast<int>(p_dict["physical"]), 1, 99);
+
+        if (p_dict.has("diving")) p_player.gk_diving = std::clamp(static_cast<int>(p_dict["diving"]), 1, 99);
+        if (p_dict.has("reflex")) p_player.gk_reflex = std::clamp(static_cast<int>(p_dict["reflex"]), 1, 99);
+        if (p_dict.has("positioning")) p_player.gk_positioning = std::clamp(static_cast<int>(p_dict["positioning"]), 1, 99);
+        if (p_dict.has("reaction")) p_player.gk_reaction = std::clamp(static_cast<int>(p_dict["reaction"]), 1, 99);
+        if (p_dict.has("kicking")) p_player.gk_kicking = std::clamp(static_cast<int>(p_dict["kicking"]), 1, 99);
+    }
 
     if (p_dict.has("condition")) {
         float cond = std::clamp(static_cast<float>(p_dict["condition"]), 10.0f, 100.0f);
@@ -658,12 +711,38 @@ BenchPlayer MatchEngine::_parse_bench_player_from_dict(const Dictionary& p_dict,
         bp.ovr = std::clamp(static_cast<int>(p_dict["ovr"]), 40, 99);
     }
 
-    bp.pace = p_dict.has("pace") ? std::clamp(static_cast<int>(p_dict["pace"]), 1, 99) : bp.ovr;
-    bp.shooting = p_dict.has("shooting") ? std::clamp(static_cast<int>(p_dict["shooting"]), 1, 99) : bp.ovr;
-    bp.passing = p_dict.has("passing") ? std::clamp(static_cast<int>(p_dict["passing"]), 1, 99) : bp.ovr;
-    bp.dribbling = p_dict.has("dribbling") ? std::clamp(static_cast<int>(p_dict["dribbling"]), 1, 99) : bp.ovr;
-    bp.defending = p_dict.has("defending") ? std::clamp(static_cast<int>(p_dict["defending"]), 1, 99) : bp.ovr;
-    bp.physical = p_dict.has("physical") ? std::clamp(static_cast<int>(p_dict["physical"]), 1, 99) : bp.ovr;
+    bool bp_is_gk = (bp.role == "GK") || bool(p_dict.get("is_gk", false));
+    if (bp_is_gk) {
+        bp.role = "GK";
+        bp.gk_diving = p_dict.has("diving") ? std::clamp(static_cast<int>(p_dict["diving"]), 1, 99)
+            : (p_dict.has("pace") ? std::clamp(static_cast<int>(p_dict["pace"]), 1, 99) : std::clamp(bp.ovr + 2, 1, 99));
+        bp.gk_reflex = p_dict.has("reflex") ? std::clamp(static_cast<int>(p_dict["reflex"]), 1, 99)
+            : (p_dict.has("shooting") ? std::clamp(static_cast<int>(p_dict["shooting"]), 1, 99) : std::clamp(bp.ovr + 3, 1, 99));
+        bp.gk_positioning = p_dict.has("positioning") ? std::clamp(static_cast<int>(p_dict["positioning"]), 1, 99)
+            : (p_dict.has("passing") ? std::clamp(static_cast<int>(p_dict["passing"]), 1, 99) : std::clamp(bp.ovr + 1, 1, 99));
+        bp.gk_reaction = p_dict.has("reaction") ? std::clamp(static_cast<int>(p_dict["reaction"]), 1, 99)
+            : (p_dict.has("dribbling") ? std::clamp(static_cast<int>(p_dict["dribbling"]), 1, 99) : std::clamp(bp.ovr + 2, 1, 99));
+        bp.gk_kicking = p_dict.has("kicking") ? std::clamp(static_cast<int>(p_dict["kicking"]), 1, 99)
+            : (p_dict.has("defending") ? std::clamp(static_cast<int>(p_dict["defending"]), 1, 99) : std::clamp(bp.ovr - 2, 1, 99));
+        bp.physical = p_dict.has("physical") ? std::clamp(static_cast<int>(p_dict["physical"]), 1, 99) : bp.ovr;
+        bp.pace = std::clamp(bp.ovr - 18, 32, 74);
+        bp.shooting = std::clamp(bp.ovr - 25, 1, 99);
+        bp.passing = bp.gk_kicking;
+        bp.dribbling = std::clamp(bp.ovr - 15, 1, 99);
+        bp.defending = std::clamp(bp.ovr - 18, 1, 99);
+    } else {
+        bp.pace = p_dict.has("pace") ? std::clamp(static_cast<int>(p_dict["pace"]), 1, 99) : bp.ovr;
+        bp.shooting = p_dict.has("shooting") ? std::clamp(static_cast<int>(p_dict["shooting"]), 1, 99) : bp.ovr;
+        bp.passing = p_dict.has("passing") ? std::clamp(static_cast<int>(p_dict["passing"]), 1, 99) : bp.ovr;
+        bp.dribbling = p_dict.has("dribbling") ? std::clamp(static_cast<int>(p_dict["dribbling"]), 1, 99) : bp.ovr;
+        bp.defending = p_dict.has("defending") ? std::clamp(static_cast<int>(p_dict["defending"]), 1, 99) : bp.ovr;
+        bp.physical = p_dict.has("physical") ? std::clamp(static_cast<int>(p_dict["physical"]), 1, 99) : bp.ovr;
+        bp.gk_diving = p_dict.has("diving") ? std::clamp(static_cast<int>(p_dict["diving"]), 1, 99) : std::clamp(bp.ovr - 34, 1, 99);
+        bp.gk_reflex = p_dict.has("reflex") ? std::clamp(static_cast<int>(p_dict["reflex"]), 1, 99) : std::clamp(bp.ovr - 32, 1, 99);
+        bp.gk_positioning = p_dict.has("positioning") ? std::clamp(static_cast<int>(p_dict["positioning"]), 1, 99) : std::clamp(bp.ovr - 32, 1, 99);
+        bp.gk_reaction = p_dict.has("reaction") ? std::clamp(static_cast<int>(p_dict["reaction"]), 1, 99) : std::clamp(bp.ovr - 28, 1, 99);
+        bp.gk_kicking = p_dict.has("kicking") ? std::clamp(static_cast<int>(p_dict["kicking"]), 1, 99) : std::clamp(bp.ovr - 16, 1, 99);
+    }
 
     if (p_dict.has("condition")) {
         bp.stamina = std::clamp(static_cast<float>(p_dict["condition"]), 10.0f, 100.0f);
@@ -772,6 +851,12 @@ Array MatchEngine::get_home_squad_snapshot() const {
         d["dribbling"] = p.dribbling;
         d["defending"] = p.defending;
         d["physical"] = p.physical;
+        d["is_gk"] = (p.role == "GK");
+        d["diving"] = p.gk_diving;
+        d["reflex"] = p.gk_reflex;
+        d["positioning"] = p.gk_positioning;
+        d["reaction"] = p.gk_reaction;
+        d["kicking"] = p.gk_kicking;
         d["yellow_cards"] = p.yellow_cards;
         d["is_sent_off"] = p.is_sent_off;
         arr.append(d);
@@ -797,6 +882,12 @@ Array MatchEngine::get_home_bench_snapshot() const {
         d["dribbling"] = b.dribbling;
         d["defending"] = b.defending;
         d["physical"] = b.physical;
+        d["is_gk"] = (b.role == "GK");
+        d["diving"] = b.gk_diving;
+        d["reflex"] = b.gk_reflex;
+        d["positioning"] = b.gk_positioning;
+        d["reaction"] = b.gk_reaction;
+        d["kicking"] = b.gk_kicking;
         arr.append(d);
     }
     return arr;
@@ -882,6 +973,11 @@ bool MatchEngine::apply_substitution(bool p_is_home, int p_pitch_slot, int p_ben
     outgoing.dribbling = incoming.dribbling;
     outgoing.defending = incoming.defending;
     outgoing.physical = incoming.physical;
+    outgoing.gk_diving = incoming.gk_diving;
+    outgoing.gk_reflex = incoming.gk_reflex;
+    outgoing.gk_positioning = incoming.gk_positioning;
+    outgoing.gk_reaction = incoming.gk_reaction;
+    outgoing.gk_kicking = incoming.gk_kicking;
     outgoing.starting_stamina = std::clamp(incoming.stamina, 15.0f, 100.0f);
     outgoing.stamina = outgoing.starting_stamina;
     outgoing.recovery_timer = 0.0f;
@@ -934,6 +1030,12 @@ Array MatchEngine::get_away_squad_snapshot() const {
         d["dribbling"] = p.dribbling;
         d["defending"] = p.defending;
         d["physical"] = p.physical;
+        d["is_gk"] = (p.role == "GK");
+        d["diving"] = p.gk_diving;
+        d["reflex"] = p.gk_reflex;
+        d["positioning"] = p.gk_positioning;
+        d["reaction"] = p.gk_reaction;
+        d["kicking"] = p.gk_kicking;
         d["yellow_cards"] = p.yellow_cards;
         d["is_sent_off"] = p.is_sent_off;
         arr.append(d);
@@ -959,6 +1061,12 @@ Array MatchEngine::get_away_bench_snapshot() const {
         d["dribbling"] = b.dribbling;
         d["defending"] = b.defending;
         d["physical"] = b.physical;
+        d["is_gk"] = (b.role == "GK");
+        d["diving"] = b.gk_diving;
+        d["reflex"] = b.gk_reflex;
+        d["positioning"] = b.gk_positioning;
+        d["reaction"] = b.gk_reaction;
+        d["kicking"] = b.gk_kicking;
         arr.append(d);
     }
     return arr;
@@ -2912,6 +3020,176 @@ void MatchEngine::trigger_wide_range_chance(bool p_is_home_attacking) {
     _spawn_wide_range_chance(p_is_home_attacking);
 }
 
+Dictionary MatchEngine::get_gk_stats(bool p_is_home) const {
+    Dictionary d;
+    int gk_idx = p_is_home ? 0 : 11;
+    if (gk_idx < 0 || gk_idx >= static_cast<int>(sim_players.size())) {
+        return d;
+    }
+    const SimPlayer& gk = sim_players[gk_idx];
+    d["name"] = gk.name;
+    d["ovr"] = gk.ovr;
+    d["diving"] = gk.gk_diving;
+    d["reflex"] = gk.gk_reflex;
+    d["positioning"] = gk.gk_positioning;
+    d["reaction"] = gk.gk_reaction;
+    d["kicking"] = gk.gk_kicking;
+    d["physical"] = gk.physical;
+    return d;
+}
+
+float MatchEngine::evaluate_chance_trigger_prob(bool p_is_home_attacking) const {
+    int actor_idx = -1;
+    if (ball_carrier_index >= 0 && ball_carrier_index < 22 && sim_players[ball_carrier_index].is_home == p_is_home_attacking) {
+        actor_idx = ball_carrier_index;
+    }
+    return _evaluate_chance_trigger_probability(p_is_home_attacking, actor_idx, 0.50f);
+}
+
+float MatchEngine::_compute_active_xi_ovr(bool p_is_home) const {
+    if (sim_players.size() < 22) {
+        return static_cast<float>(p_is_home ? home_team_ovr : away_team_ovr);
+    }
+    int start_idx = p_is_home ? 0 : 11;
+    float sum = 0.0f;
+    int active_count = 0;
+    int sent_off_count = 0;
+    for (int i = start_idx; i < start_idx + 11; i++) {
+        if (sim_players[i].is_sent_off) {
+            sent_off_count++;
+            continue;
+        }
+        sum += static_cast<float>(sim_players[i].ovr);
+        active_count++;
+    }
+    if (active_count <= 0) {
+        return 40.0f;
+    }
+    float avg_ovr = (sum / static_cast<float>(active_count)) - (static_cast<float>(sent_off_count) * 2.5f);
+    return std::clamp(avg_ovr, 40.0f, 99.0f);
+}
+
+float MatchEngine::_evaluate_chance_trigger_probability(bool p_is_home_attacking, int p_actor_idx, float p_base_rate) const {
+    float atk_xi_ovr = _compute_active_xi_ovr(p_is_home_attacking);
+    float def_xi_ovr = _compute_active_xi_ovr(!p_is_home_attacking);
+    float ovr_diff = atk_xi_ovr - def_xi_ovr;
+
+    // Symmetric relative Starting XI OVR pacing: stronger XI creates more chances and concedes fewer,
+    // while keeping counter-attacks and underdog upsets viable.
+    float ovr_mult = std::clamp(1.0f + 0.46f * std::tanh(ovr_diff / 18.0f), 0.52f, 1.48f);
+
+    int atk_mentality = p_is_home_attacking ? home_mentality : away_mentality;
+    int def_mentality = p_is_home_attacking ? away_mentality : home_mentality;
+    int atk_tempo = p_is_home_attacking ? home_tempo : away_tempo;
+    int def_line = p_is_home_attacking ? away_defensive_line : home_defensive_line;
+
+    static const float MENTALITY_MULT[5] = { 0.76f, 0.88f, 1.00f, 1.14f, 1.28f };
+    static const float DEF_VULN_MULT[5]  = { 0.86f, 0.93f, 1.00f, 1.10f, 1.20f };
+    float tactic_mult = MENTALITY_MULT[std::clamp(atk_mentality, 0, 4)]
+                      * DEF_VULN_MULT[std::clamp(def_mentality, 0, 4)]
+                      * ((atk_tempo == TIER_HIGH) ? 1.06f : ((atk_tempo == TIER_LOW) ? 0.94f : 1.0f))
+                      * ((def_line == TIER_HIGH) ? 1.05f : ((def_line == TIER_LOW) ? 0.95f : 1.0f));
+
+    float atk_stam = 0.0f;
+    float def_stam = 0.0f;
+    int atk_cnt = 0;
+    int def_cnt = 0;
+    if (sim_players.size() >= 22) {
+        int atk_start = p_is_home_attacking ? 0 : 11;
+        int def_start = p_is_home_attacking ? 11 : 0;
+        for (int i = 0; i < 11; i++) {
+            if (!sim_players[atk_start + i].is_sent_off) {
+                atk_stam += sim_players[atk_start + i].stamina;
+                atk_cnt++;
+            }
+            if (!sim_players[def_start + i].is_sent_off) {
+                def_stam += sim_players[def_start + i].stamina;
+                def_cnt++;
+            }
+        }
+    }
+    float avg_atk_stam = (atk_cnt > 0) ? (atk_stam / static_cast<float>(atk_cnt)) : 85.0f;
+    float avg_def_stam = (def_cnt > 0) ? (def_stam / static_cast<float>(def_cnt)) : 85.0f;
+    float fatigue_mult = std::clamp(1.0f + ((avg_atk_stam - avg_def_stam) / 250.0f), 0.88f, 1.12f);
+
+    float matchup_mult = 1.0f;
+    if (sim_players.size() >= 22 && p_actor_idx >= 0 && p_actor_idx < 22) {
+        const SimPlayer& actor = sim_players[p_actor_idx];
+        float actor_skill = (actor.dribbling * 0.35f + actor.passing * 0.35f + actor.pace * 0.15f + actor.shooting * 0.15f)
+                          * _get_fatigue_multiplier(actor);
+        int opp_start = p_is_home_attacking ? 11 : 0;
+        float nearest_d = 1e9f;
+        float nearest_def_skill = 70.0f;
+        for (int j = opp_start; j < opp_start + 11; j++) {
+            if (sim_players[j].is_sent_off) continue;
+            float d = actor.position.distance_to(sim_players[j].position);
+            if (d < nearest_d) {
+                nearest_d = d;
+                nearest_def_skill = (sim_players[j].defending * 0.55f + sim_players[j].pace * 0.25f + sim_players[j].physical * 0.20f)
+                                  * _get_fatigue_multiplier(sim_players[j]);
+            }
+        }
+        float pressure_scale = (nearest_d < 70.0f) ? 1.0f : 0.45f;
+        matchup_mult = std::clamp(1.0f + ((actor_skill - nearest_def_skill) * 0.0045f * pressure_scale), 0.85f, 1.18f);
+    }
+
+    int team_goals = p_is_home_attacking ? home_score : away_score;
+    int opp_goals = p_is_home_attacking ? away_score : home_score;
+    float state_mult = (current_minute >= 70 && team_goals < opp_goals && (opp_goals - team_goals) <= 2) ? 1.08f : 1.0f;
+
+    return std::clamp(p_base_rate * ovr_mult * tactic_mult * fatigue_mult * matchup_mult * state_mult, 0.12f, 0.90f);
+}
+
+Vector2 MatchEngine::_compute_gk_positioning_target(const SimPlayer& p_gk) const {
+    bool is_home = p_gk.is_home;
+    float attack_dir = is_home ? 1.0f : -1.0f;
+    float own_goal_x = is_home ? 0.0f : field_size.x;
+    float center_y = field_size.y * 0.5f;
+    float ball_center_offset_y = ball_position.y - center_y;
+    float ball_dist_from_own_goal = std::abs(ball_position.x - own_goal_x);
+    float half_len = field_size.x * 0.5f;
+
+    float pos_iq = std::clamp((p_gk.gk_positioning * 0.65f + p_gk.gk_reaction * 0.35f) / 100.0f, 0.35f, 1.0f);
+    bool team_has_ball = (possession_team == (is_home ? 0 : 1));
+    int team_def_line = is_home ? home_defensive_line : away_defensive_line;
+    float line_bonus = (team_def_line == TIER_HIGH) ? 10.0f : ((team_def_line == TIER_LOW) ? -6.0f : 0.0f);
+
+    float gk_depth = 18.0f;
+    if (ball_dist_from_own_goal > half_len) {
+        // Ball in opponent's half: measured sweeper adjustment with counter-attack awareness
+        float opp_half_prog = std::clamp((ball_dist_from_own_goal - half_len) / half_len, 0.0f, 1.0f);
+        float sweeper_depth = 38.0f + (opp_half_prog * (26.0f + pos_iq * 14.0f)) + line_bonus;
+        if (!team_has_ball || is_through_ball_in_flight || ball_state == BALL_LOOSE) {
+            sweeper_depth *= 0.58f;
+        }
+        gk_depth = std::clamp(sweeper_depth, 26.0f, 86.0f);
+    } else if (ball_dist_from_own_goal > 175.0f) {
+        // Ball in keeper's half outside the box: transition smoothly toward goal line
+        float mid_ratio = std::clamp((ball_dist_from_own_goal - 175.0f) / std::max(1.0f, half_len - 175.0f), 0.0f, 1.0f);
+        float transition_depth = 24.0f + mid_ratio * (14.0f + pos_iq * 6.0f);
+        if (!team_has_ball) {
+            transition_depth *= 0.82f;
+        }
+        gk_depth = std::clamp(transition_depth, 18.0f, 44.0f);
+    } else {
+        // Danger zone / penalty area: retreat to goal line and tighten shooting angle
+        float danger_ratio = std::clamp(ball_dist_from_own_goal / 175.0f, 0.0f, 1.0f);
+        gk_depth = 13.0f + danger_ratio * 11.0f;
+    }
+
+    float target_x = own_goal_x + (attack_dir * gk_depth);
+
+    // Lateral tracking across goal mouth to bisect near-post angle without wandering
+    float lateral_gain = (ball_dist_from_own_goal < 210.0f)
+        ? (0.14f + pos_iq * 0.05f)
+        : (0.10f + pos_iq * 0.03f);
+    float max_lateral_shift = (ball_dist_from_own_goal < 210.0f) ? 35.0f : 26.0f;
+    float lateral_shift = std::clamp(ball_center_offset_y * lateral_gain, -max_lateral_shift, max_lateral_shift);
+    float target_y = std::clamp(center_y + lateral_shift, center_y - 36.0f, center_y + 36.0f);
+
+    return Vector2(target_x, target_y);
+}
+
 void MatchEngine::_spawn_wide_range_chance(bool p_is_home_attacking) {
     if (!match_active || sim_players.size() != 22 || waiting_for_kickoff_resume || chance_state != CHANCE_NONE) {
         return;
@@ -3363,10 +3641,7 @@ Vector2 MatchEngine::_compute_tactical_target(
             float clamped_y = std::clamp(desired.y, field_size.y * 0.22f, field_size.y * 0.78f);
             return Vector2(clamped_x, clamped_y);
         }
-        float gk_depth = 18.0f + (ball_prog * 14.0f);
-        float target_x = own_goal_x + (attack_dir * gk_depth);
-        float target_y = center_y + (ball_center_offset_y * 0.14f);
-        return Vector2(target_x, std::clamp(target_y, field_size.y * 0.40f, field_size.y * 0.60f));
+        return _compute_gk_positioning_target(p_player);
     }
 
     // 2. User-Controlled Player Target during Manual Chance
@@ -3633,9 +3908,10 @@ void MatchEngine::_update_player_movement(float dt) {
         float max_speed = (95.0f + p.pace * 0.88f) * fatigue_mult * tempo_speed_mult;
         if (p.role == "GK") {
             bool is_rushing_user_gk = (gk_rush_active && i == _user_gk_idx());
+            float gk_pos_mobility = 0.72f + (std::clamp(p.gk_positioning / 100.0f, 0.30f, 1.0f) * 0.16f);
             max_speed = is_rushing_user_gk
                 ? ((98.0f + p.pace * 0.92f) * fatigue_mult)
-                : (max_speed * 0.68f);
+                : (max_speed * gk_pos_mobility);
         } else if ((p.is_home == user_is_home) && chance_state == _user_attack_chance_state() && i != user_controlled_index && p.role != "CB") {
             max_speed *= 1.07f;
         } else if (is_user_defending_ctrl) {
@@ -3985,20 +4261,13 @@ void MatchEngine::_evaluate_carrier_action(int p_carrier_idx) {
             nearest_opp_idx = j;
         }
     }
-
-    // 0. LIVE-POSITION CHANCE TRIGGER
-    // 0. LIVE-POSITION CHANCE TRIGGER
+    // 0. LIVE-POSITION CHANCE TRIGGER (Symmetric relative Starting XI OVR pacing)
     if (chance_state == CHANCE_NONE && event_cooldown <= 0.0f && carrier.role != "GK") {
         bool in_attacking_half = is_home ? (carrier.position.x >= field_size.x * 0.48f)
                                          : (carrier.position.x <= field_size.x * 0.52f);
         if (in_attacking_half) {
-            float team_ovr = static_cast<float>(is_home ? home_team_ovr : away_team_ovr);
-            float opp_ovr = static_cast<float>(is_home ? away_team_ovr : home_team_ovr);
-            float ovr_edge = std::clamp((team_ovr - opp_ovr) * 0.012f, -0.25f, 0.25f);
-            float carrier_threat = ((carrier.dribbling * 0.40f + carrier.passing * 0.30f + carrier.shooting * 0.30f) - 65.0f) * 0.004f;
-            float trigger_prob = std::clamp((0.45f + ovr_edge + carrier_threat) * chance_creation_mult, 0.20f, 0.92f);
-
-            if ((is_home == user_is_home) || UtilityFunctions::randf() < trigger_prob) {
+            float trigger_prob = _evaluate_chance_trigger_probability(is_home, p_carrier_idx, 0.54f);
+            if (UtilityFunctions::randf() < trigger_prob) {
                 _spawn_wide_range_chance(is_home);
                 return;
             }
@@ -4514,7 +4783,8 @@ void MatchEngine::_update_ball_and_actions(float dt) {
                 if (chance_state == CHANCE_NONE && event_cooldown <= 0.0f && sim_players[receiver_idx].role != "GK") {
                     bool in_atk_half = rec_is_home ? (sim_players[receiver_idx].position.x >= field_size.x * 0.48f)
                                                    : (sim_players[receiver_idx].position.x <= field_size.x * 0.52f);
-                    if (in_atk_half && ((rec_is_home == user_is_home) || UtilityFunctions::randf() < 0.45f)) {
+                    float pass_chance_prob = _evaluate_chance_trigger_probability(rec_is_home, receiver_idx, 0.44f);
+                    if (in_atk_half && UtilityFunctions::randf() < pass_chance_prob) {
                         _spawn_wide_range_chance(rec_is_home);
                     }
                 }
@@ -4683,23 +4953,43 @@ void MatchEngine::_update_ball_and_actions(float dt) {
 
             float gk_fatigue = _get_fatigue_multiplier(gk);
             float shooter_fatigue = _get_fatigue_multiplier(shooter);
-            float gk_reach_offset = std::abs(ball_position.y - gk.position.y);
-            float corner_penalty = std::clamp(gk_reach_offset / 44.0f, 0.0f, 1.0f) * 0.22f;
-            float power_penalty = std::clamp((last_shot_power_ratio - 0.65f) * 0.16f, 0.0f, 0.11f);
+            float eff_diving = gk.gk_diving * gk_fatigue;
+            float eff_reflex = gk.gk_reflex * gk_fatigue;
+            float eff_positioning = gk.gk_positioning * gk_fatigue;
+            float eff_reaction = gk.gk_reaction * gk_fatigue;
 
+            // Diving expands lateral save reach across the goal mouth
+            float gk_reach_offset = std::abs(ball_position.y - gk.position.y);
+            float max_dive_reach = 36.0f + (eff_diving / 100.0f) * 16.0f;
+            float reach_ratio = std::clamp(gk_reach_offset / std::max(28.0f, max_dive_reach), 0.0f, 1.25f);
+            float corner_penalty = reach_ratio * (0.26f - (eff_diving / 100.0f) * 0.09f);
+
+            // Reflexes & Reaction mitigate high-velocity and close-range finishes
+            float shot_dist = shooter.position.distance_to(Vector2(shooter_is_home ? field_size.x : 0.0f, field_size.y * 0.5f));
+            float close_range_weight = std::clamp(1.0f - (shot_dist / 220.0f), 0.15f, 0.85f);
+            float reflex_mitigation = std::clamp(((eff_reflex * 0.55f + eff_reaction * 0.45f) - 50.0f) / 100.0f, -0.25f, 0.45f);
+            float power_penalty = std::clamp((last_shot_power_ratio - 0.65f) * 0.16f * (1.0f - reflex_mitigation * 0.55f), 0.0f, 0.12f);
+
+            // Positioning reduces off-line exposure penalties
             Vector2 def_goal_center(shooter_is_home ? field_size.x : 0.0f, field_size.y * 0.5f);
             float gk_off_line_dist = std::max(0.0f, gk.position.distance_to(def_goal_center) - 36.0f);
-            float exposed_goal_penalty = std::clamp(gk_off_line_dist / 150.0f, 0.0f, 0.32f);
+            float pos_awareness = std::clamp((eff_positioning - 50.0f) / 100.0f, -0.30f, 0.45f);
+            float exposed_goal_penalty = std::clamp((gk_off_line_dist / 150.0f) * (1.0f - pos_awareness * 0.35f), 0.0f, 0.32f);
+
+            float shot_stopping_rating = (eff_diving * (0.34f - close_range_weight * 0.10f))
+                                       + (eff_reflex * (0.32f + close_range_weight * 0.12f))
+                                       + (eff_positioning * 0.18f)
+                                       + (eff_reaction * 0.16f);
 
             float raw_save_prob = 0.34f
-                + (((gk.defending * gk_fatigue) - (shooter.shooting * shooter_fatigue)) * 0.0032f)
+                + ((shot_stopping_rating - (shooter.shooting * shooter_fatigue)) * 0.0036f)
                 - corner_penalty
                 - power_penalty
                 - exposed_goal_penalty;
 
             float save_prob = is_user_attack_chance
-                ? std::clamp(raw_save_prob * 0.82f, 0.06f, 0.42f)
-                : std::clamp(raw_save_prob, 0.04f, 0.52f);
+                ? std::clamp(raw_save_prob * 0.84f, 0.06f, 0.46f)
+                : std::clamp(raw_save_prob, 0.05f, 0.56f);
             
             if (gk_rush_active && !shooter_is_home == user_is_home) {
                 cancel_gk_rush();
@@ -4836,7 +5126,7 @@ void MatchEngine::_execute_gk_rush_clearance(int p_gk_idx) {
     float clear_dir = gk.is_home ? 1.0f : -1.0f;
     float center_y = field_size.y * 0.5f;
     float flank_sign = (gk.position.y >= center_y) ? 1.0f : -1.0f;
-    float kick_power = std::clamp(290.0f + gk.defending * 1.65f, 280.0f, 460.0f);
+    float kick_power = std::clamp(290.0f + gk.gk_kicking * 1.65f, 280.0f, 460.0f);
 
     Vector2 target(
         std::clamp(gk.position.x + clear_dir * 260.0f, 32.0f, field_size.x - 32.0f),
@@ -4891,7 +5181,7 @@ bool MatchEngine::_try_gk_rush_intercept() {
     }
 
     float gk_fatigue = _get_fatigue_multiplier(gk);
-    float gk_sweep_score = (gk.defending * 0.45f + gk.physical * 0.30f + gk.pace * 0.25f) * gk_fatigue;
+    float gk_sweep_score = (gk.gk_reaction * 0.38f + gk.gk_positioning * 0.32f + gk.physical * 0.18f + gk.pace * 0.12f) * gk_fatigue;
     float opp_race_score = (nearest_opp_idx != -1)
         ? ((sim_players[nearest_opp_idx].dribbling * 0.50f + sim_players[nearest_opp_idx].pace * 0.50f) * _get_fatigue_multiplier(sim_players[nearest_opp_idx]))
         : 55.0f;

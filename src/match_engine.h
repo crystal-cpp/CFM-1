@@ -44,6 +44,11 @@ struct SimPlayer {
     int dribbling = 70;
     int defending = 70;
     int physical = 70;
+    int gk_diving = 40;
+    int gk_reflex = 40;
+    int gk_positioning = 40;
+    int gk_reaction = 40;
+    int gk_kicking = 55;
     float starting_stamina = 100.0f;
     float stamina = 100.0f;
     float recovery_timer = 0.0f;
@@ -73,6 +78,11 @@ struct BenchPlayer {
     int dribbling = 70;
     int defending = 70;
     int physical = 70;
+    int gk_diving = 40;
+    int gk_reflex = 40;
+    int gk_positioning = 40;
+    int gk_reaction = 40;
+    int gk_kicking = 55;
     float stamina = 100.0f;
     bool used = false;
 };
@@ -336,6 +346,8 @@ public:
     void set_home_auto_shoot_enabled(bool p_enabled);
     bool is_home_auto_shoot_enabled() const;
     void trigger_wide_range_chance(bool p_is_home_attacking);
+    Dictionary get_gk_stats(bool p_is_home) const;
+    float evaluate_chance_trigger_prob(bool p_is_home_attacking) const;
 
 protected:
     static void _bind_methods();
@@ -423,6 +435,9 @@ private:
     Vector2 _compute_smart_attacking_run_target(const SimPlayer& p_player, int p_index, float p_widened_anchor_y, float p_ball_prog) const;
 
     // Coordinated 2D Football Simulation
+    float _compute_active_xi_ovr(bool p_is_home) const;
+    float _evaluate_chance_trigger_probability(bool p_is_home_attacking, int p_actor_idx, float p_base_rate) const;
+    Vector2 _compute_gk_positioning_target(const SimPlayer& p_gk) const;
     void _step_simulation(float dt);
     void _update_player_movement(float dt);
     Vector2 _compute_tactical_target(const SimPlayer& p_player, int p_index, int p_primary_presser, int p_secondary_presser, float p_team_backline_x) const;

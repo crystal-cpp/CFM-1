@@ -146,15 +146,23 @@ private:
 	std::unordered_map<int32_t, std::shared_ptr<Player>> _players_by_id;
 	int32_t _next_player_id = 1;
 
-	// Phase 5D: Clubs.csv registry, codes & lock state
+	// Phase 5D / 5H: Clubs.csv registry, league consolidation, UCL & unlock metadata
+	static constexpr int32_t CLUB_ID_11A7 = 1098;
 	std::unordered_map<std::string, int32_t> _club_id_by_name_lower;
 	std::unordered_map<int32_t, int32_t> _club_id_by_csv_id;
+	std::unordered_set<int32_t> _former_tuesday_league_club_ids;
+	std::vector<int32_t> _ucl_participant_ids;
 	std::unordered_set<std::string> _redeemed_codes;
 	bool _tuesday_league_unlocked = false;
 	void _load_unlock_persistence();
 	void _save_unlock_persistence() const;
+	bool _is_club_locked(int32_t p_club_id, const std::string &club_name, const std::string &league_name) const;
 	bool _is_club_or_league_locked(const std::string &club_name, const std::string &league_name) const;
 	static std::string _normalize_club_key(const String &p_club_name);
+	static std::string _normalize_league_name(const std::string &p_league_name);
+	int32_t _compute_starting_xi_ovr(const Team *p_team) const;
+	void _build_ucl_participants();
+	void _generate_ucl_fixtures(int32_t start_year, int32_t &next_fix_id);
 
 	double _stamina_recovery_rate_per_day = DEFAULT_STAMINA_RECOVERY_PER_DAY;
 
@@ -220,12 +228,14 @@ public:
 	TypedArray<Dictionary> get_league_standings() const;
 	Dictionary get_next_fixture() const;
 	Dictionary get_club_info(int32_t p_club_id) const;
-
-	// --- Phase 5A / 5B: Schedule & Fixture Queries ---
+	
+	// --- Phase 5A / 5B / 5H: Schedule, Fixture & UCL Queries ---
 	TypedArray<Dictionary> get_fixtures(const String &p_competition = "", int32_t p_matchday = -1, int32_t p_club_id = -1) const;
 	Dictionary get_fixture_details(int32_t p_fixture_id) const;
 	int32_t get_total_matchdays(const String &p_competition = "") const;
 	int32_t get_current_matchday() const;
+	TypedArray<Dictionary> get_ucl_participants() const;
+	bool is_club_in_ucl(int32_t p_club_id) const;
 
 	// --- Subsystem Read/Write Bridges (Zero Duplicate State) ---
 	TypedArray<Dictionary> get_club_squad(int32_t p_club_id) const;

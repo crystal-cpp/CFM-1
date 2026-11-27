@@ -120,7 +120,60 @@ static std::string compute_secondary_kit_color(const std::string &primary_hex) {
 	return "#F8FAFC";
 }
 
+static std::string trim_std_str(const std::string &s) {
+	size_t start = 0;
+	while (start < s.size() && std::isspace(static_cast<unsigned char>(s[start]))) {
+		start++;
+	}
+	size_t end = s.size();
+	while (end > start && std::isspace(static_cast<unsigned char>(s[end - 1]))) {
+		end--;
+	}
+	return s.substr(start, end - start);
+}
+
+static bool is_tuesday_league_label(const std::string &league_raw) {
+	return to_lower_str(trim_std_str(league_raw)) == "tuesday league";
+}
+
+static bool is_11a7_identity(int32_t club_id, const std::string &club_name) {
+	return club_id == 1098 || to_lower_str(trim_std_str(club_name)) == "11a7";
+}
+
+static std::string canonicalize_league_label(const std::string &league_raw) {
+	std::string trimmed = trim_std_str(league_raw);
+	std::string low = to_lower_str(trimmed);
+	if (low == "tuesday league" || low == "premier league") {
+		return "Premier League";
+	}
+	return trimmed;
+}
+
+static bool is_uefa_eligible_league(const std::string &league_name) {
+	std::string low = to_lower_str(canonicalize_league_label(league_name));
+	return low == "premier league" ||
+	       low == "la liga" ||
+	       low == "serie a" ||
+	       low == "bundesliga" ||
+	       low == "ligue 1" ||
+	       low == "primeira liga" ||
+	       low == "eredivisie" ||
+	       low == "scottish premiership" ||
+	       low == "belgian pro league" ||
+	       low == "ukrainian premier league" ||
+	       low == "danish superliga" ||
+	       low == "süper lig" ||
+	       low == "super lig" ||
+	       low == "croatian first football league" ||
+	       low == "eliteserien" ||
+	       low == "allsvenskan";
+}
+
 } // namespace
+
+std::string CareerState::_normalize_league_name(const std::string &p_league_name) {
+	return canonicalize_league_label(p_league_name);
+}
 
 std::string CareerState::_normalize_club_key(const String &p_club_name) {
 	const std::string raw = p_club_name.strip_edges().to_lower().utf8().get_data();
@@ -348,6 +401,8 @@ void CareerState::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_fixture_details", "fixture_id"), &CareerState::get_fixture_details);
 	ClassDB::bind_method(D_METHOD("get_total_matchdays", "competition"), &CareerState::get_total_matchdays, DEFVAL(""));
 	ClassDB::bind_method(D_METHOD("get_current_matchday"), &CareerState::get_current_matchday);
+	ClassDB::bind_method(D_METHOD("get_ucl_participants"), &CareerState::get_ucl_participants);
+	ClassDB::bind_method(D_METHOD("is_club_in_ucl", "club_id"), &CareerState::is_club_in_ucl);
 
 	// Subsystem Bridges
 	ClassDB::bind_method(D_METHOD("get_club_squad", "club_id"), &CareerState::get_club_squad);
@@ -489,10 +544,21 @@ Dictionary CareerState::prepare_match_context(const Dictionary &p_fixture, const
 	ctx["fixture"] = fix;
 	ctx["home_club_id"] = home_id;
 	ctx["away_club_id"] = away_id;
+	int home_xi_ovr = static_cast<int>(home_info.get("team_rating", 75));
+	int away_xi_ovr = static_cast<int>(away_info.get("team_rating", 75));
+	auto h_club_it = _clubs.find(home_id);
+	if (h_club_it != _clubs.end() && h_club_it->second) {
+		home_xi_ovr = _compute_starting_xi_ovr(h_club_it->second.get());
+	}
+	auto a_club_it = _clubs.find(away_id);
+	if (a_club_it != _clubs.end() && a_club_it->second) {
+		away_xi_ovr = _compute_starting_xi_ovr(a_club_it->second.get());
+	}
+
 	ctx["home_club"] = home_name;
 	ctx["away_club"] = away_name;
-	ctx["home_ovr"] = static_cast<int>(home_info.get("team_rating", 75));
-	ctx["away_ovr"] = static_cast<int>(away_info.get("team_rating", 75));
+	ctx["home_ovr"] = home_xi_ovr;
+	ctx["away_ovr"] = away_xi_ovr;
 	ctx["home_formation"] = home_fmt;
 	ctx["away_formation"] = away_fmt;
 	ctx["home_lineup"] = home_xi;
@@ -567,11 +633,16 @@ void CareerState::_save_unlock_persistence() const {
 	}
 }
 
-bool CareerState::_is_club_or_league_locked(const std::string &club_name, const std::string &league_name) const {
+bool CareerState::_is_club_locked(int32_t p_club_id, const std::string &club_name, const std::string &league_name) const {
 	if (_tuesday_league_unlocked) return false;
-	std::string c_low = to_lower_str(club_name);
-	std::string l_low = to_lower_str(league_name);
-	return (l_low == "tuesday league" || c_low == "11a7");
+	if (p_club_id > 0 && _former_tuesday_league_club_ids.count(p_club_id) > 0) {
+		return true;
+	}
+	return is_11a7_identity(p_club_id, club_name) || is_tuesday_league_label(league_name);
+}
+
+bool CareerState::_is_club_or_league_locked(const std::string &club_name, const std::string &league_name) const {
+	return _is_club_locked(-1, club_name, league_name);
 }
 
 bool CareerState::is_promo_code_redeemed(const String &p_code) const {
@@ -600,9 +671,9 @@ Dictionary CareerState::redeem_promo_code(const String &p_code) {
 		res["ok"] = true;
 		res["already_claimed"] = true;
 		res["code"] = String("NHHA72528");
-		res["unlocked_league"] = String("Tuesday League");
+		res["unlocked_league"] = String("Premier League");
 		res["unlocked_club"] = String("11A7");
-		res["message"] = String("Code NHHA72528 is already active. Tuesday League & 11A7 are unlocked.");
+		res["message"] = String("Code NHHA72528 is already active. Club 11A7 & its squad records are unlocked.");
 		return res;
 	}
 
@@ -627,7 +698,7 @@ Dictionary CareerState::redeem_promo_code(const String &p_code) {
 		}
 
 		push_inbox_message("BOARD", "Special Code Redeemed: NHHA72528",
-			"Code NHHA72528 activated! Unlocked Tuesday League & 11A7, credited +$50.0M Balance, +$35.0M Transfer Budget, +$250K/wk Wage Budget, +5 Skip/Training Tokens, and +10 Reputation.",
+			"Code NHHA72528 activated! Unlocked 11A7 & its squad records, credited +$50.0M Balance, +$35.0M Transfer Budget, +$250K/wk Wage Budget, and +10 Reputation.",
 			"transfers", -1);
 
 		emit_signal("balance_changed", _finances.total_balance, _finances.transfer_budget, _finances.wage_budget);
@@ -637,14 +708,13 @@ Dictionary CareerState::redeem_promo_code(const String &p_code) {
 	res["ok"] = true;
 	res["already_claimed"] = false;
 	res["code"] = String("NHHA72528");
-	res["unlocked_league"] = String("Tuesday League");
+	res["unlocked_league"] = String("Premier League");
 	res["unlocked_club"] = String("11A7");
 	res["bonus_balance"] = bonus_balance;
 	res["bonus_transfer_budget"] = bonus_transfer;
 	res["bonus_wage_budget"] = bonus_wage;
-	res["bonus_skip_tokens"] = 5;
 	res["bonus_reputation"] = bonus_reputation;
-	res["message"] = String("Redeemed NHHA72528! Unlocked Tuesday League & 11A7 plus +$50M Balance & +$35M Transfer Budget.");
+	res["message"] = String("Redeemed NHHA72528! Unlocked 11A7 & squad records plus +$50M Balance & +$35M Transfer Budget.");
 	return res;
 }
 
@@ -667,7 +737,8 @@ TypedArray<Dictionary> CareerState::get_leagues_and_clubs() const {
 			Dictionary c = all_c[i];
 			int32_t cid = static_cast<int32_t>(c.get("club_id", 1001 + i));
 			std::string cname = String(c.get("club", c.get("name", ""))).utf8().get_data();
-			std::string cleague = String(c.get("league", "Independent League")).utf8().get_data();
+			std::string raw_league = String(c.get("league", "Independent League")).utf8().get_data();
+			std::string cleague = canonicalize_league_label(raw_league);
 			std::string p_kit = String(c.get("primary_color", "#1E3A8A")).utf8().get_data();
 			std::string s_kit = String(c.get("secondary_color", "")).utf8().get_data();
 			if (s_kit.empty()) {
@@ -690,7 +761,7 @@ TypedArray<Dictionary> CareerState::get_leagues_and_clubs() const {
 			entry["primary_color"] = String(p_kit.c_str());
 			entry["secondary_color"] = String(s_kit.c_str());
 			entry["stadium"] = c.get("stadium", String((cname + " Stadium").c_str()));
-			entry["is_locked"] = _is_club_or_league_locked(cname, cleague);
+			entry["is_locked"] = _is_club_locked(cid, cname, raw_league);
 			out.append(entry);
 		}
 		return out;
@@ -705,11 +776,12 @@ TypedArray<Dictionary> CareerState::get_leagues_and_clubs() const {
 
 	for (int32_t cid : sorted_ids) {
 		const auto &team = _clubs.at(cid);
+		std::string cleague = canonicalize_league_label(team->League);
 		Dictionary entry;
 		entry["club_id"] = team->GetId();
 		entry["club_name"] = String(team->GetName().c_str());
 		entry["club"] = String(team->GetName().c_str());
-		entry["league"] = String(team->League.c_str());
+		entry["league"] = String(cleague.c_str());
 		entry["short_code"] = String(team->ShortCode.c_str());
 		entry["country"] = String(team->Country.c_str());
 		entry["reputation"] = team->Reputation;
@@ -722,7 +794,7 @@ TypedArray<Dictionary> CareerState::get_leagues_and_clubs() const {
 		entry["primary_color"] = String(team->KitColor.c_str());
 		entry["secondary_color"] = String(team->SecondaryColor.c_str());
 		entry["stadium"] = String(team->Stadium.c_str());
-		entry["is_locked"] = _is_club_or_league_locked(team->GetName(), team->League);
+		entry["is_locked"] = _is_club_locked(team->GetId(), team->GetName(), team->League);
 		out.append(entry);
 	}
 	return out;
@@ -808,7 +880,13 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 	}
 	std::sort(team_ids.begin(), team_ids.end());
 
-	// Strict league isolation: single-club leagues do not borrow clubs from other leagues
+	int fix_id = 1;
+
+	// Build UCL participant list (explicitly including 11A7 / ClubID 1098) and schedule midweek UCL fixtures
+	_build_ucl_participants();
+	_generate_ucl_fixtures(start_year, fix_id);
+
+	// Strict domestic league isolation: single-club leagues do not borrow clubs from other leagues
 	const int teams_count = static_cast<int>(team_ids.size());
 	if (teams_count < 2) {
 		return;
@@ -828,7 +906,6 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 		return "Main Stadium";
 	};
 
-	int fix_id = 1;
 
 	// -------------------------------------------------------------------------
 	// 1. PRE-SEASON WINDOW (Weeks 1–2 in July: Friendly 1 on Jul 18, Friendly 2 on Jul 25)
@@ -943,6 +1020,135 @@ void CareerState::_generate_season_fixtures(int32_t start_year) {
 	}
 }
 
+void CareerState::_build_ucl_participants() {
+	_ucl_participant_ids.clear();
+	std::unordered_set<int32_t> seen_ids;
+
+	// 1. Explicitly register 11A7 (ClubID 1098) in UCL after Premier League consolidation
+	int32_t club_11a7_id = -1;
+	for (const auto &kv : _clubs) {
+		if (!kv.second) continue;
+		if (is_11a7_identity(kv.first, kv.second->GetName())) {
+			club_11a7_id = kv.first;
+			break;
+		}
+	}
+	if (club_11a7_id > 0) {
+		_ucl_participant_ids.push_back(club_11a7_id);
+		seen_ids.insert(club_11a7_id);
+	}
+
+	// 2. Gather top clubs across European leagues by Reputation (and OVR tie-break)
+	std::unordered_map<std::string, std::vector<int32_t>> by_league;
+	for (const auto &kv : _clubs) {
+		if (!kv.second) continue;
+		std::string cleague = canonicalize_league_label(kv.second->League);
+		if (!is_uefa_eligible_league(cleague)) continue;
+		by_league[cleague].push_back(kv.first);
+	}
+
+	auto club_rank_cmp = [this](int32_t a, int32_t b) {
+		const Team *ta = _clubs.at(a).get();
+		const Team *tb = _clubs.at(b).get();
+		if (ta->Reputation != tb->Reputation) return ta->Reputation > tb->Reputation;
+		int ra = ta->GetTeamRating();
+		int rb = tb->GetTeamRating();
+		if (ra != rb) return ra > rb;
+		return a < b;
+	};
+
+	for (auto &lkv : by_league) {
+		std::sort(lkv.second.begin(), lkv.second.end(), club_rank_cmp);
+	}
+
+	std::vector<int32_t> candidate_pool;
+	for (const auto &lkv : by_league) {
+		const std::string low_l = to_lower_str(lkv.first);
+		size_t quota = 1;
+		if (low_l == "premier league" || low_l == "la liga" || low_l == "serie a" || low_l == "bundesliga" || low_l == "ligue 1") {
+			quota = 4;
+		} else if (low_l == "primeira liga" || low_l == "eredivisie" || low_l == "scottish premiership" || low_l == "belgian pro league") {
+			quota = 2;
+		}
+		for (size_t i = 0; i < std::min(quota, lkv.second.size()); ++i) {
+			candidate_pool.push_back(lkv.second[i]);
+		}
+	}
+	std::sort(candidate_pool.begin(), candidate_pool.end(), club_rank_cmp);
+
+	const size_t max_ucl_teams = 16;
+	for (int32_t cid : candidate_pool) {
+		if (_ucl_participant_ids.size() >= max_ucl_teams) break;
+		if (seen_ids.insert(cid).second) {
+			_ucl_participant_ids.push_back(cid);
+		}
+	}
+
+	// Ensure size is a multiple of 4 (minimum 4) for clean 4-club group scheduling
+	while (_ucl_participant_ids.size() > 4 && (_ucl_participant_ids.size() % 4) != 0) {
+		int32_t back_id = _ucl_participant_ids.back();
+		if (back_id == club_11a7_id) break;
+		seen_ids.erase(back_id);
+		_ucl_participant_ids.pop_back();
+	}
+}
+
+void CareerState::_generate_ucl_fixtures(int32_t start_year, int32_t &next_fix_id) {
+	if (_ucl_participant_ids.size() < 4) return;
+
+	auto resolve_stadium = [this](int home_id) -> std::string {
+		auto cit = _clubs.find(home_id);
+		if (cit != _clubs.end() && cit->second) {
+			if (!cit->second->Stadium.empty()) return cit->second->Stadium;
+			return cit->second->GetName() + " Stadium";
+		}
+		return "European Arena";
+	};
+
+	// 6 midweek UCL Group Stage matchdays (September -> December)
+	static const int UCL_MONTHS[6] = { 9, 9, 10, 11, 11, 12 };
+	static const int UCL_DAYS[6]   = { 13, 27, 18, 1, 22, 6 };
+	static const int UCL_WEEKS[6]  = { 11, 13, 16, 18, 21, 23 };
+
+	// Double round-robin pairings for each 4-team group (indices 0..3)
+	static const int PAIRINGS[6][2][2] = {
+		{ {0, 1}, {2, 3} },
+		{ {3, 0}, {1, 2} },
+		{ {0, 2}, {1, 3} },
+		{ {2, 0}, {3, 1} },
+		{ {1, 0}, {3, 2} },
+		{ {0, 3}, {2, 1} }
+	};
+
+	const size_t num_groups = _ucl_participant_ids.size() / 4;
+	for (int md = 0; md < 6; ++md) {
+		std::string ucl_date = format_ymd_iso(start_year, UCL_MONTHS[md], UCL_DAYS[md]);
+		for (size_t g = 0; g < num_groups; ++g) {
+			const size_t base = g * 4;
+			for (int m = 0; m < 2; ++m) {
+				int home = _ucl_participant_ids[base + PAIRINGS[md][m][0]];
+				int away = _ucl_participant_ids[base + PAIRINGS[md][m][1]];
+
+				FixtureRecord fix;
+				fix.fixture_id = next_fix_id++;
+				fix.week = UCL_WEEKS[md];
+				fix.matchday = md + 1;
+				fix.date_iso = ucl_date;
+				fix.competition = "UEFA Champions League";
+				fix.home_club_id = home;
+				fix.away_club_id = away;
+				fix.home_goals = -1;
+				fix.away_goals = -1;
+				fix.played = false;
+				fix.is_friendly = false;
+				fix.stadium = resolve_stadium(home);
+				fix.match_importance = "TOP_CLASH";
+				_fixtures.push_back(fix);
+			}
+		}
+	}
+}
+
 void CareerState::_seed_default_objectives() {
 	_board_objectives.clear();
 
@@ -999,9 +1205,15 @@ void CareerState::_recalculate_standings() {
 		club_to_idx[_standings[i].club_id] = i;
 	}
 
+	std::string domestic_comp = "Premier League";
+	auto managed_it = _clubs.find(_managed_club_id);
+	if (managed_it != _clubs.end() && managed_it->second && !managed_it->second->League.empty()) {
+		domestic_comp = canonicalize_league_label(managed_it->second->League);
+	}
+
 	for (const auto &fix : _fixtures) {
-		// Pre-season friendlies do not award competitive league points
-		if (!fix.played || fix.is_friendly) continue;
+		// Pre-season friendlies and continental UCL fixtures do not award domestic league points
+		if (!fix.played || fix.is_friendly || canonicalize_league_label(fix.competition) != domestic_comp) continue;
 		if (club_to_idx.find(fix.home_club_id) == club_to_idx.end() ||
 			club_to_idx.find(fix.away_club_id) == club_to_idx.end()) {
 			continue;
@@ -1257,6 +1469,19 @@ Dictionary CareerState::_player_to_dict(const std::shared_ptr<Player> &p) const 
 	d["defending"] = attrs.Defending;
 	d["physical"] = attrs.Physical;
 
+	const bool is_gk = (p->GetPosition() == Position::GK);
+	d["is_gk"] = is_gk;
+	if (is_gk) {
+		// Matches GK import mapping in start_new_career():
+		// Pace=diving, Shooting=kicking, Passing=positioning, Dribbling=reflex, Defending=reaction
+		d["diving"] = attrs.Pace;
+		d["kicking"] = attrs.Shooting;
+		d["positioning"] = attrs.Passing;
+		d["reflex"] = attrs.Dribbling;
+		d["reaction"] = attrs.Defending;
+		d["gk_physical"] = attrs.Physical;
+	}
+
 	d["condition"] = p->GetCondition();
 	d["morale"] = p->GetMorale();
 	d["wage"] = p->GetWage();
@@ -1319,6 +1544,10 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 
 	_clubs.clear();
 	_club_id_by_name_lower.clear();
+	_club_id_by_csv_id.clear();
+	_former_tuesday_league_club_ids.clear();
+	_ucl_participant_ids.clear();
+	_former_tuesday_league_club_ids.insert(CLUB_ID_11A7);
 	_captain_by_club.clear();
 	_players_by_id.clear();
 	_fixtures.clear();
@@ -1374,7 +1603,11 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 			std::string cname = String(cdict.get("club", cdict.get("name", ""))).utf8().get_data();
 			if (cname.empty()) continue;
 
-			std::string cleague = String(cdict.get("league", "Independent League")).utf8().get_data();
+			std::string raw_league = String(cdict.get("league", "Independent League")).utf8().get_data();
+			if (is_tuesday_league_label(raw_league) || is_11a7_identity(cid, cname)) {
+				_former_tuesday_league_club_ids.insert(cid);
+			}
+			std::string cleague = canonicalize_league_label(raw_league);
 			std::string cshort = String(cdict.get("short_code", String(cname.c_str()).substr(0, 3).to_upper())).utf8().get_data();
 			std::string ccountry = String(cdict.get("country", "Unknown")).utf8().get_data();
 			int crep = static_cast<int>(cdict.get("reputation", 50));
@@ -1426,7 +1659,7 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 		}
 	}
 
-	// Resolve the managed club before importing CSV youth so only its prospects enter this academy.
+	// Resolve the managed club (11A7 / ClubID 1098 is unconditionally eligible in Premier League)
 	int32_t chosen_id = p_club_id;
 	auto chosen_it = _clubs.find(chosen_id);
 	if (chosen_it == _clubs.end() || !chosen_it->second) {
@@ -1436,20 +1669,12 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 			if (kv.second) sorted_cids.push_back(kv.first);
 		}
 		std::sort(sorted_cids.begin(), sorted_cids.end());
-		for (int32_t cid : sorted_cids) {
-			if (!_is_club_or_league_locked(_clubs[cid]->GetName(), _clubs[cid]->League)) {
-				chosen_id = cid;
-				break;
-			}
+		if (!sorted_cids.empty()) {
+			chosen_id = sorted_cids.front();
 		}
-		if (chosen_id < 0 && !sorted_cids.empty()) chosen_id = sorted_cids.front();
 	}
 	if (chosen_id < 0 || _clubs.find(chosen_id) == _clubs.end() || !_clubs[chosen_id]) {
 		UtilityFunctions::printerr("CareerState: No valid club available to start career.");
-		return false;
-	}
-	if (_is_club_or_league_locked(_clubs[chosen_id]->GetName(), _clubs[chosen_id]->League)) {
-		UtilityFunctions::printerr("CareerState: Attempted to start career with locked club/league without redeeming NHHA72528.");
 		return false;
 	}
 	_managed_club_id = chosen_id;
@@ -1510,7 +1735,7 @@ bool CareerState::start_new_career(int32_t p_club_id, const String &p_manager_na
 			p_ptr->SetId(pid);
 			p_ptr->SetStamina(std::clamp(src.stamina, 1, 99));
 
-			std::string p_league = src.league.strip_edges().utf8().get_data();
+			std::string p_league = canonicalize_league_label(src.league.strip_edges().utf8().get_data());
 			std::string p_nat = src.nationality.strip_edges().utf8().get_data();
 
 			p_ptr->SetClubName(p_club.empty() ? "Free Agent" : p_club);
@@ -2052,17 +2277,59 @@ int32_t CareerState::get_current_matchday() const {
 	return get_total_matchdays(managed_league_str);
 }
 
+int32_t CareerState::_compute_starting_xi_ovr(const Team *p_team) const {
+	if (!p_team) return 75;
+	const auto &xi = p_team->GetStartingXI();
+	int64_t sum = 0;
+	int32_t count = 0;
+	for (size_t i = 0; i < std::min<size_t>(11, xi.size()); ++i) {
+		if (xi[i]) {
+			sum += xi[i]->GetOVR();
+			count++;
+		}
+	}
+	if (count == 0) {
+		const auto &roster = p_team->GetRoster();
+		for (size_t i = 0; i < std::min<size_t>(11, roster.size()); ++i) {
+			if (roster[i]) {
+				sum += roster[i]->GetOVR();
+				count++;
+			}
+		}
+	}
+	if (count > 0) {
+		return static_cast<int32_t>(std::llround(static_cast<double>(sum) / static_cast<double>(count)));
+	}
+	return p_team->GetTeamRating();
+}
+
+TypedArray<Dictionary> CareerState::get_ucl_participants() const {
+	TypedArray<Dictionary> out;
+	for (int32_t cid : _ucl_participant_ids) {
+		Dictionary info = get_club_info(cid);
+		if (!info.is_empty()) {
+			out.append(info);
+		}
+	}
+	return out;
+}
+
+bool CareerState::is_club_in_ucl(int32_t p_club_id) const {
+	return std::find(_ucl_participant_ids.begin(), _ucl_participant_ids.end(), p_club_id) != _ucl_participant_ids.end();
+}
+
 Dictionary CareerState::get_club_info(int32_t p_club_id) const {
 	Dictionary d;
 	auto it = _clubs.find(p_club_id);
 	if (it == _clubs.end() || !it->second) return d;
 	const Team &team = *it->second;
+	std::string cleague = canonicalize_league_label(team.League);
 	d["id"] = team.GetId();
 	d["club_id"] = team.GetId();
 	d["club"] = String(team.GetName().c_str());
 	d["name"] = String(team.GetName().c_str());
 	d["club_name"] = String(team.GetName().c_str());
-	d["league"] = String(team.League.c_str());
+	d["league"] = String(cleague.c_str());
 	d["short_code"] = String(team.ShortCode.c_str());
 	d["country"] = String(team.Country.c_str());
 	d["reputation"] = team.Reputation;
@@ -2075,8 +2342,10 @@ Dictionary CareerState::get_club_info(int32_t p_club_id) const {
 	d["primary_color"] = String(team.KitColor.c_str());
 	d["secondary_color"] = String(team.SecondaryColor.c_str());
 	d["stadium"] = String(team.Stadium.c_str());
-	d["is_locked"] = _is_club_or_league_locked(team.GetName(), team.League);
+	d["is_locked"] = _is_club_locked(team.GetId(), team.GetName(), team.League);
+	d["is_ucl_participant"] = is_club_in_ucl(team.GetId());
 	d["team_rating"] = team.GetTeamRating();
+	d["starting_xi_ovr"] = _compute_starting_xi_ovr(&team);
 	d["squad_size"] = static_cast<int32_t>(team.GetRoster().size());
 	d["captain_id"] = get_club_captain(p_club_id);
 	return d;
@@ -2609,8 +2878,8 @@ bool CareerState::prepare_next_match_payload(MatchEngine *p_engine) const {
 		return bench;
 	};
 
-	p_engine->set_home_team_ovr(home_team->GetTeamRating());
-	p_engine->set_away_team_ovr(away_team->GetTeamRating());
+	p_engine->set_home_team_ovr(_compute_starting_xi_ovr(home_team));
+	p_engine->set_away_team_ovr(_compute_starting_xi_ovr(away_team));
 
 	p_engine->set_home_lineup(build_lineup(home_team));
 	p_engine->set_away_lineup(build_lineup(away_team));
@@ -3006,6 +3275,14 @@ bool CareerState::save_career(const String &p_slot_name) {
 	Array saved_codes;
 	for (const auto &c : _redeemed_codes) saved_codes.append(String(c.c_str()));
 	root["redeemed_codes"] = saved_codes;
+
+	PackedInt32Array former_tl_ids;
+	for (int32_t cid : _former_tuesday_league_club_ids) former_tl_ids.append(cid);
+	root["former_tuesday_league_club_ids"] = former_tl_ids;
+
+	PackedInt32Array ucl_ids;
+	for (int32_t cid : _ucl_participant_ids) ucl_ids.append(cid);
+	root["ucl_participant_ids"] = ucl_ids;
 	root["timestamp_unix"] = static_cast<int64_t>(Time::get_singleton()->get_unix_time_from_system());
 
 	Dictionary meta;
@@ -3323,6 +3600,9 @@ bool CareerState::load_career(const String &p_slot_name) {
 	_clubs.clear();
 	_club_id_by_name_lower.clear();
 	_club_id_by_csv_id.clear();
+	_former_tuesday_league_club_ids.clear();
+	_ucl_participant_ids.clear();
+	_former_tuesday_league_club_ids.insert(CLUB_ID_11A7);
 	_captain_by_club.clear();
 	_players_by_id.clear();
 	_fixtures.clear();
@@ -3388,6 +3668,13 @@ bool CareerState::load_career(const String &p_slot_name) {
 	}
 	_save_unlock_persistence();
 
+	if (root.has("former_tuesday_league_club_ids")) {
+		PackedInt32Array saved_ftl = root["former_tuesday_league_club_ids"];
+		for (int i = 0; i < saved_ftl.size(); ++i) {
+			if (saved_ftl[i] > 0) _former_tuesday_league_club_ids.insert(saved_ftl[i]);
+		}
+	}
+
 	if (root.has("metadata")) {
 		Dictionary meta = root["metadata"];
 		_managed_club_id = meta.get("managed_club_id", 1);
@@ -3420,7 +3707,7 @@ bool CareerState::load_career(const String &p_slot_name) {
 
 			auto player_ptr = std::make_shared<Player>(name, pos, attrs, age, potential, debut_age, ret_age);
 			player_ptr->SetClubName(String(pd.get("club_name", "Free Agent")).utf8().get_data());
-			player_ptr->SetLeagueName(String(pd.get("league", "Free Agent")).utf8().get_data());
+			player_ptr->SetLeagueName(canonicalize_league_label(String(pd.get("league", "Free Agent")).utf8().get_data()));
 			player_ptr->SetNationality(String(pd.get("nationality", "Unknown")).utf8().get_data());
 			std::vector<std::string> loaded_playstyles;
 			Array playstyle_array = pd.get("playstyles", Array());
@@ -3469,7 +3756,11 @@ bool CareerState::load_career(const String &p_slot_name) {
 			auto team = std::make_unique<Team>(cname, budget);
 			team->SetId(cid);
 			team->ShortCode = String(cd.get("short_code", "")).utf8().get_data();
-			team->League = String(cd.get("league", "Independent League")).utf8().get_data();
+			std::string raw_saved_league = String(cd.get("league", "Independent League")).utf8().get_data();
+			if (is_tuesday_league_label(raw_saved_league) || is_11a7_identity(cid, cname)) {
+				_former_tuesday_league_club_ids.insert(cid);
+			}
+			team->League = canonicalize_league_label(raw_saved_league);
 			team->Country = String(cd.get("country", "Unknown")).utf8().get_data();
 			team->Reputation = static_cast<int>(cd.get("reputation", 50));
 			team->TotalBalance = static_cast<int64_t>(cd.get("total_balance", budget));
@@ -3639,6 +3930,65 @@ bool CareerState::load_career(const String &p_slot_name) {
 			row.goals_against = sd.get("goals_against", 0);
 			row.points = sd.get("points", 0);
 			_standings.push_back(row);
+		}
+	}
+
+	// Migrate legacy Tuesday League fixtures/standings into canonical Premier League without duplicates
+	for (auto &fix : _fixtures) {
+		fix.competition = canonicalize_league_label(fix.competition);
+	}
+
+	if (root.has("ucl_participant_ids")) {
+		PackedInt32Array saved_ucl = root["ucl_participant_ids"];
+		std::unordered_set<int32_t> seen_ucl;
+		for (int i = 0; i < saved_ucl.size(); ++i) {
+			int32_t ucid = saved_ucl[i];
+			if (ucid > 0 && _clubs.count(ucid) && seen_ucl.insert(ucid).second) {
+				_ucl_participant_ids.push_back(ucid);
+			}
+		}
+	}
+	if (_ucl_participant_ids.empty()) {
+		_build_ucl_participants();
+	}
+
+	auto m_club_it = _clubs.find(_managed_club_id);
+	if (m_club_it != _clubs.end() && m_club_it->second) {
+		std::string active_league = canonicalize_league_label(m_club_it->second->League);
+		std::vector<int32_t> expected_league_cids;
+		for (const auto &kv : _clubs) {
+			if (kv.second && canonicalize_league_label(kv.second->League) == active_league) {
+				expected_league_cids.push_back(kv.first);
+			}
+		}
+		std::sort(expected_league_cids.begin(), expected_league_cids.end());
+
+		std::unordered_set<int32_t> standing_cids;
+		for (const auto &row : _standings) {
+			standing_cids.insert(row.club_id);
+		}
+		if (standing_cids.size() != expected_league_cids.size()) {
+			_standings.clear();
+			for (int32_t cid : expected_league_cids) {
+				LeagueStandingRow row;
+				row.club_id = cid;
+				row.club_name = _clubs[cid]->GetName();
+				_standings.push_back(row);
+			}
+			_recalculate_standings();
+		}
+
+		bool has_ucl_fixtures = false;
+		int32_t max_fix_id = 0;
+		for (const auto &fix : _fixtures) {
+			max_fix_id = std::max(max_fix_id, fix.fixture_id);
+			if (fix.competition == "UEFA Champions League") {
+				has_ucl_fixtures = true;
+			}
+		}
+		if (!has_ucl_fixtures && !_ucl_participant_ids.empty()) {
+			int32_t next_fid = max_fix_id + 1;
+			_generate_ucl_fixtures(_season_start_year, next_fid);
 		}
 	}
 
