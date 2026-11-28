@@ -52,15 +52,15 @@ func _ready() -> void:
 func _build_ui() -> void:
 	var bg := ColorRect.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(0.06, 0.08, 0.12)
+	bg.color = Color(0.024, 0.035, 0.055, 1.0)
 	add_child(bg)
 
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 28)
-	margin.add_theme_constant_override("margin_right", 28)
-	margin.add_theme_constant_override("margin_top", 22)
-	margin.add_theme_constant_override("margin_bottom", 22)
+	margin.add_theme_constant_override("margin_left", 20)
+	margin.add_theme_constant_override("margin_right", 20)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
 	add_child(margin)
 
 	var root_vbox := VBoxContainer.new()
@@ -78,6 +78,12 @@ func _build_ui() -> void:
 	_style_prematch_button(back_btn, false)
 	back_btn.pressed.connect(func() -> void: back_requested.emit())
 	top_bar.add_child(back_btn)
+
+	var page_title := Label.new()
+	page_title.text = "PRE-MATCH CENTER"
+	page_title.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
+	page_title.add_theme_font_size_override("font_size", 20)
+	top_bar.add_child(page_title)
 
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -184,21 +190,25 @@ func _build_ui() -> void:
 
 	var user_hdr := Label.new()
 	user_hdr.text = "YOUR SQUAD"
-	user_hdr.add_theme_font_size_override("font_size", 16)
+	user_hdr.add_theme_font_size_override("font_size", 14)
+	user_hdr.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	user_vbox.add_child(user_hdr)
 
 	var tac_hdr := Label.new()
 	tac_hdr.text = "TACTICAL INSTRUCTIONS"
-	tac_hdr.add_theme_font_size_override("font_size", 13)
+	tac_hdr.add_theme_font_size_override("font_size", 14)
+	tac_hdr.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	tac_hdr.add_theme_color_override("font_color", Color(0.70, 0.82, 0.96))
 	user_vbox.add_child(tac_hdr)
 
 	_formation_opt = OptionButton.new()
+	_style_prematch_button(_formation_opt, false)
 	_populate_formation_options()
 	_formation_opt.item_selected.connect(_on_tactics_changed)
 	user_vbox.add_child(_labeled_row("Formation:", _formation_opt))
 
 	_mentality_opt = OptionButton.new()
+	_style_prematch_button(_mentality_opt, false)
 	for m: String in ["Very Defensive", "Defensive", "Balanced", "Attacking", "Very Attacking"]:
 		_mentality_opt.add_item(m)
 	_mentality_opt.selected = 2
@@ -206,6 +216,7 @@ func _build_ui() -> void:
 	user_vbox.add_child(_labeled_row("Mentality:", _mentality_opt))
 
 	_pressing_opt = OptionButton.new()
+	_style_prematch_button(_pressing_opt, false)
 	for pr: String in ["Low Block", "Normal Press", "High Gegenpress"]:
 		_pressing_opt.add_item(pr)
 	_pressing_opt.selected = 1
@@ -222,6 +233,7 @@ func _build_ui() -> void:
 	var xi_hdr := Label.new()
 	xi_hdr.text = "YOUR STARTING XI & FITNESS (11)"
 	xi_hdr.add_theme_font_size_override("font_size", 14)
+	xi_hdr.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	user_vbox.add_child(xi_hdr)
 
 	_lineup_list = VBoxContainer.new()
@@ -233,7 +245,8 @@ func _build_ui() -> void:
 
 	_bench_header_lbl = Label.new()
 	_bench_header_lbl.text = "YOUR BENCH / SUBSTITUTES (0)"
-	_bench_header_lbl.add_theme_font_size_override("font_size", 13)
+	_bench_header_lbl.add_theme_font_size_override("font_size", 14)
+	_bench_header_lbl.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	_bench_header_lbl.add_theme_color_override("font_color", Color(0.75, 0.84, 0.96))
 	user_vbox.add_child(_bench_header_lbl)
 
@@ -259,7 +272,8 @@ func _build_ui() -> void:
 
 	_opponent_title_label = Label.new()
 	_opponent_title_label.text = "OPPONENT SCOUTING"
-	_opponent_title_label.add_theme_font_size_override("font_size", 16)
+	_opponent_title_label.add_theme_font_size_override("font_size", 14)
+	_opponent_title_label.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	opponent_vbox.add_child(_opponent_title_label)
 
 	_opponent_meta_label = Label.new()
@@ -269,7 +283,8 @@ func _build_ui() -> void:
 
 	var opp_xi_hdr := Label.new()
 	opp_xi_hdr.text = "EXPECTED OPPONENT LINEUP"
-	opp_xi_hdr.add_theme_font_size_override("font_size", 13)
+	opp_xi_hdr.add_theme_font_size_override("font_size", 14)
+	opp_xi_hdr.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	opponent_vbox.add_child(opp_xi_hdr)
 
 	_opponent_lineup_list = VBoxContainer.new()
@@ -626,7 +641,9 @@ func _create_player_row(p: Dictionary, is_starter: bool) -> HBoxContainer:
 	if pid > 0 and is_instance_valid(career_state) and career_state.has_method("swap_squad_players"):
 		var swap_btn := Button.new()
 		swap_btn.custom_minimum_size = Vector2(78, 24)
+		swap_btn.focus_mode = Control.FOCUS_NONE
 		swap_btn.text = "Cancel" if pid == _selected_swap_player_id else ("Swap In" if _selected_swap_player_id > 0 else "Swap")
+		_style_prematch_button(swap_btn, pid == _selected_swap_player_id)
 		swap_btn.pressed.connect(func() -> void: _on_player_swap_clicked(pid))
 		row.add_child(swap_btn)
 	return row
@@ -673,7 +690,7 @@ func _on_player_swap_clicked(player_id: int) -> void:
 		_sync_context_with_career_state()
 
 	_swap_hint_lbl.add_theme_color_override("font_color", Color(0.65, 0.78, 0.92))
-	_refresh_view
+	_refresh_view()
 
 func _refresh_view() -> void:
 	if match_context.is_empty():
@@ -849,10 +866,10 @@ func _on_kickoff_pressed() -> void:
 
 func _style_prematch_card(panel: PanelContainer) -> void:
 	var st := StyleBoxFlat.new()
-	st.bg_color = Color(0.085, 0.115, 0.17, 0.96)
-	st.border_color = Color(0.18, 0.25, 0.36, 0.85)
+	st.bg_color = Color(0.043, 0.063, 0.106, 0.95)
+	st.border_color = Color(0.12, 0.20, 0.32, 0.85)
 	st.set_border_width_all(1)
-	st.set_corner_radius_all(8)
+	st.set_corner_radius_all(10)
 	st.content_margin_left = 16
 	st.content_margin_right = 16
 	st.content_margin_top = 12
@@ -862,10 +879,10 @@ func _style_prematch_card(panel: PanelContainer) -> void:
 
 func _style_prematch_button(btn: Button, primary: bool) -> void:
 	var normal := StyleBoxFlat.new()
-	normal.bg_color = Color(0.08, 0.36, 0.26, 0.95) if primary else Color(0.095, 0.13, 0.195, 0.95)
-	normal.border_color = Color(0.11, 0.82, 0.63, 0.95) if primary else Color(0.20, 0.28, 0.40, 0.90)
+	normal.bg_color = Color(0.06, 0.45, 0.32, 0.95) if primary else Color(0.07, 0.12, 0.20, 0.95)
+	normal.border_color = Color(0.15, 0.92, 0.58, 0.90) if primary else Color(0.18, 0.30, 0.48, 0.85)
 	normal.set_border_width_all(1)
-	normal.set_corner_radius_all(8)
+	normal.set_corner_radius_all(6)
 	normal.content_margin_left = 12
 	normal.content_margin_right = 12
 	normal.content_margin_top = 6
@@ -875,13 +892,17 @@ func _style_prematch_button(btn: Button, primary: bool) -> void:
 	hover.bg_color = normal.bg_color.lightened(0.10)
 	hover.border_color = normal.border_color.lightened(0.12)
 
+	var pressed := normal.duplicate()
+	pressed.bg_color = normal.bg_color.darkened(0.10)
+
 	var disabled := normal.duplicate()
-	disabled.bg_color = Color(0.065, 0.088, 0.132, 0.70)
-	disabled.border_color = Color(0.14, 0.19, 0.28, 0.55)
+	disabled.bg_color = Color(0.05, 0.07, 0.11, 0.60)
+	disabled.border_color = Color(0.12, 0.16, 0.24, 0.50)
 
 	btn.add_theme_stylebox_override("normal", normal)
 	btn.add_theme_stylebox_override("hover", hover)
+	btn.add_theme_stylebox_override("pressed", pressed)
 	btn.add_theme_stylebox_override("disabled", disabled)
-	btn.add_theme_color_override("font_color", Color(0.35, 0.95, 0.55) if primary else Color.WHITE)
+	btn.add_theme_color_override("font_color", Color.WHITE)
 	btn.add_theme_color_override("font_hover_color", Color.WHITE)
-	btn.add_theme_color_override("font_disabled_color", Color(0.48, 0.56, 0.68))
+	btn.add_theme_color_override("font_disabled_color", Color(0.45, 0.52, 0.62))
