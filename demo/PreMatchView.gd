@@ -198,7 +198,7 @@ func _build_ui() -> void:
 	tac_hdr.text = "TACTICAL INSTRUCTIONS"
 	tac_hdr.add_theme_font_size_override("font_size", 14)
 	tac_hdr.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
-	tac_hdr.add_theme_color_override("font_color", Color(0.70, 0.82, 0.96))
+	tac_hdr.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	user_vbox.add_child(tac_hdr)
 
 	_formation_opt = OptionButton.new()
@@ -247,7 +247,7 @@ func _build_ui() -> void:
 	_bench_header_lbl.text = "YOUR BENCH / SUBSTITUTES (0)"
 	_bench_header_lbl.add_theme_font_size_override("font_size", 14)
 	_bench_header_lbl.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
-	_bench_header_lbl.add_theme_color_override("font_color", Color(0.75, 0.84, 0.96))
+	_bench_header_lbl.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	user_vbox.add_child(_bench_header_lbl)
 
 	_bench_list = VBoxContainer.new()
