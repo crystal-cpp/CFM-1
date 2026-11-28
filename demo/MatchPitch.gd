@@ -193,9 +193,9 @@ func _ready() -> void:
 
 	var pitch_frame_style := StyleBoxFlat.new()
 	pitch_frame_style.bg_color = Color(0.06, 0.36, 0.20, 1.0)
-	pitch_frame_style.border_color = Color(0.20, 0.28, 0.40, 0.95)
+	pitch_frame_style.border_color = Color(0.12, 0.20, 0.32, 0.90)
 	pitch_frame_style.set_border_width_all(2)
-	pitch_frame_style.set_corner_radius_all(14)
+	pitch_frame_style.set_corner_radius_all(10)
 	_viewport_clip.add_theme_stylebox_override("panel", pitch_frame_style)
 	add_child(_viewport_clip)
 
@@ -639,7 +639,7 @@ func _draw_stadium_backdrop() -> void:
 	if vp.x <= 1.0 or vp.y <= 1.0:
 		return
 
-	_backdrop_canvas.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.026, 0.040, 0.068, 1.0), true)
+	_backdrop_canvas.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.024, 0.035, 0.055, 1.0), true)
 
 	var pitch_rect: Rect2 = get_base_pitch_rect()
 	var glow_center: Vector2 = pitch_rect.get_center()
@@ -1540,7 +1540,7 @@ func _draw_pitch_scene() -> void:
 
 		var is_goal_card: bool = _waiting_for_goal_resume
 		var border_col: Color = Color(1.0, 0.85, 0.25, pulse) if is_goal_card else Color(0.15, 0.94, 0.56, pulse)
-		_pitch_canvas.draw_rect(card_rect, Color(0.05, 0.08, 0.14, 0.95), true)
+		_pitch_canvas.draw_rect(card_rect, Color(0.043, 0.063, 0.106, 0.96), true)
 		_pitch_canvas.draw_rect(card_rect, border_col, false, 2.4)
 
 		var sub_title: String = _last_goal_banner_text if is_goal_card else "MATCH READY · 00' KICK-OFF"
@@ -1562,8 +1562,8 @@ func _draw_pitch_scene() -> void:
 			3: r_label = "CORNER KICK"
 			4: r_label = "INDIRECT FREE KICK"
 		var r_rect := Rect2(Vector2(14.0, 12.0), Vector2(210.0, 28.0))
-		_pitch_canvas.draw_rect(r_rect, Color(0.06, 0.10, 0.16, 0.90), true)
-		_pitch_canvas.draw_rect(r_rect, Color(0.18, 0.86, 0.65, 0.95), false, 1.4)
+		_pitch_canvas.draw_rect(r_rect, Color(0.043, 0.063, 0.106, 0.92), true)
+		_pitch_canvas.draw_rect(r_rect, Color(0.11, 0.82, 0.63, 0.95), false, 1.4)
 		if default_font != null:
 			_pitch_canvas.draw_string(default_font, r_rect.position + Vector2(10.0, 19.0), r_label, HORIZONTAL_ALIGNMENT_LEFT, 190, 11, Color.WHITE)
 	elif chance_state == user_atk:
@@ -1574,8 +1574,8 @@ func _draw_pitch_scene() -> void:
 		var zone_tag: String = "IN BOX (%dm)" % dist_m if in_atk_box else "OUTSIDE BOX (%dm)" % dist_m
 
 		var banner_rect := Rect2(Vector2(14.0, 12.0), Vector2(minf(base_rect.size.x - 28.0, 520.0), 32.0))
-		var b_bg := Color(0.06, 0.24, 0.16, 0.92) if is_attack_decision_paused() else Color(0.06, 0.12, 0.20, 0.86)
-		var b_border := Color(1.0, 0.88, 0.25, 0.95) if is_attack_decision_paused() else Color(0.20, 0.92, 0.55, 0.85)
+		var b_bg := Color(0.043, 0.063, 0.106, 0.90)
+		var b_border := Color(0.11, 0.82, 0.63, 0.90)
 		_pitch_canvas.draw_rect(banner_rect, b_bg, true)
 		_pitch_canvas.draw_rect(banner_rect, b_border, false, 1.6)
 		var banner_txt: String = "%s · Tap=Dribble/Pass · Slow Drag=Through Ball · Fast Swipe=Shot" % zone_tag if is_attack_decision_paused() else "%s · Executing your move..." % zone_tag
