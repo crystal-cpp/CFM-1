@@ -193,16 +193,21 @@ func _style_shell_button(btn: Button, bg: Color, border: Color, text_col: Color 
 	var pressed := normal.duplicate()
 	pressed.bg_color = bg.darkened(0.10)
 
+	var disabled := normal.duplicate()
+	disabled.bg_color = Color(0.05, 0.07, 0.11, 0.60)
+	disabled.border_color = Color(0.12, 0.16, 0.24, 0.50)
 	btn.add_theme_stylebox_override("normal", normal)
 	btn.add_theme_stylebox_override("hover", hover)
 	btn.add_theme_stylebox_override("pressed", pressed)
+	btn.add_theme_stylebox_override("disabled", disabled)
 	btn.add_theme_color_override("font_color", text_col)
 	btn.add_theme_color_override("font_hover_color", Color.WHITE)
+	btn.add_theme_color_override("font_disabled_color", Color(0.45, 0.52, 0.62))
 
 func _build_ui() -> void:
 	var bg := ColorRect.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(0.06, 0.08, 0.12, 1.0)
+	bg.color = Color(0.024, 0.035, 0.055, 1.0)
 	add_child(bg)
 
 	var main_vbox := VBoxContainer.new()
@@ -231,8 +236,8 @@ func _build_header(parent: Control) -> void:
 	_header_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var hdr_style := StyleBoxFlat.new()
-	hdr_style.bg_color = Color(0.072, 0.098, 0.148, 0.98)
-	hdr_style.border_color = Color(0.18, 0.25, 0.36, 0.90)
+	hdr_style.bg_color = Color(0.043, 0.063, 0.106, 0.98)
+	hdr_style.border_color = Color(0.12, 0.20, 0.32, 0.85)
 	hdr_style.set_border_width_all(1)
 	hdr_style.content_margin_left = 10
 	hdr_style.content_margin_right = 10
@@ -249,13 +254,13 @@ func _build_header(parent: Control) -> void:
 	_menu_toggle_btn.text = "☰"
 	_menu_toggle_btn.custom_minimum_size = Vector2(32, 32)
 	_menu_toggle_btn.focus_mode = Control.FOCUS_NONE
-	_style_shell_button(_menu_toggle_btn, Color(0.095, 0.13, 0.195, 0.92), Color(0.20, 0.28, 0.40, 0.85))
+	_style_shell_button(_menu_toggle_btn, Color(0.07, 0.12, 0.20, 0.95), Color(0.18, 0.30, 0.48, 0.85))
 	_menu_toggle_btn.pressed.connect(_toggle_sidebar)
 	hbox.add_child(_menu_toggle_btn)
 
 	var badge_panel := PanelContainer.new()
 	var b_style := StyleBoxFlat.new()
-	b_style.bg_color = Color(0.08, 0.36, 0.26, 0.45)
+	b_style.bg_color = Color(0.06, 0.45, 0.32, 0.45)
 	b_style.border_color = Color(0.11, 0.82, 0.63, 0.92)
 	b_style.set_border_width_all(1)
 	b_style.set_corner_radius_all(6)
@@ -296,7 +301,7 @@ func _build_header(parent: Control) -> void:
 	_advance_day_btn.text = "+1 Day"
 	_advance_day_btn.custom_minimum_size = Vector2(78, 32)
 	_advance_day_btn.focus_mode = Control.FOCUS_NONE
-	_style_shell_button(_advance_day_btn, Color(0.08, 0.22, 0.38, 0.9), Color(0.20, 0.48, 0.80, 0.85))
+	_style_shell_button(_advance_day_btn, Color(0.08, 0.24, 0.42, 0.95), Color(0.22, 0.52, 0.85, 0.90))
 	_advance_day_btn.pressed.connect(_on_advance_day_pressed)
 	hbox.add_child(_advance_day_btn)
 
@@ -312,7 +317,7 @@ func _build_header(parent: Control) -> void:
 	_save_btn.text = "Save"
 	_save_btn.custom_minimum_size = Vector2(68, 32)
 	_save_btn.focus_mode = Control.FOCUS_NONE
-	_style_shell_button(_save_btn, Color(0.08, 0.42, 0.25, 0.9), Color(0.16, 0.85, 0.50, 0.85))
+	_style_shell_button(_save_btn, Color(0.06, 0.45, 0.32, 0.95), Color(0.15, 0.92, 0.58, 0.90))
 	_save_btn.pressed.connect(_on_save_pressed)
 	hbox.add_child(_save_btn)
 
@@ -323,7 +328,7 @@ func _build_header(parent: Control) -> void:
 	_inbox_btn.text = "Inbox"
 	_inbox_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_inbox_btn.focus_mode = Control.FOCUS_NONE
-	_style_shell_button(_inbox_btn, Color(0.095, 0.13, 0.195, 0.92), Color(0.20, 0.28, 0.40, 0.85))
+	_style_shell_button(_inbox_btn, Color(0.07, 0.12, 0.20, 0.95), Color(0.18, 0.30, 0.48, 0.85))
 	_inbox_btn.pressed.connect(func() -> void: navigate_to("inbox"))
 	inbox_container.add_child(_inbox_btn)
 
@@ -350,7 +355,7 @@ func _build_header(parent: Control) -> void:
 	_manager_btn.custom_minimum_size = Vector2(92, 32)
 	_manager_btn.clip_text = true
 	_manager_btn.focus_mode = Control.FOCUS_NONE
-	_style_shell_button(_manager_btn, Color(0.095, 0.13, 0.195, 0.92), Color(0.20, 0.28, 0.40, 0.85))
+	_style_shell_button(_manager_btn, Color(0.07, 0.12, 0.20, 0.95), Color(0.18, 0.30, 0.48, 0.85))
 	_manager_btn.pressed.connect(_open_manager_profile)
 	hbox.add_child(_manager_btn)
 
@@ -358,7 +363,7 @@ func _build_header(parent: Control) -> void:
 	_menu_btn.text = "Menu"
 	_menu_btn.custom_minimum_size = Vector2(74, 32)
 	_menu_btn.focus_mode = Control.FOCUS_NONE
-	_style_shell_button(_menu_btn, Color(0.14, 0.10, 0.16, 0.9), Color(0.45, 0.25, 0.35, 0.85))
+	_style_shell_button(_menu_btn, Color(0.16, 0.09, 0.14, 0.95), Color(0.52, 0.24, 0.34, 0.88))
 	_menu_btn.pressed.connect(func() -> void: main_menu_requested.emit())
 	hbox.add_child(_menu_btn)
 
@@ -385,8 +390,8 @@ func _build_sidebar(parent: Control) -> void:
 	_sidebar_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
 	var sb_style := StyleBoxFlat.new()
-	sb_style.bg_color = Color(0.068, 0.092, 0.138, 0.98)
-	sb_style.border_color = Color(0.18, 0.25, 0.36, 0.85)
+	sb_style.bg_color = Color(0.036, 0.052, 0.088, 0.98)
+	sb_style.border_color = Color(0.12, 0.20, 0.32, 0.85)
 	sb_style.border_width_right = 1
 	sb_style.content_margin_left = 10
 	sb_style.content_margin_right = 10
@@ -421,7 +426,7 @@ func _build_sidebar(parent: Control) -> void:
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		btn.custom_minimum_size = Vector2(190, 40)
 		btn.focus_mode = Control.FOCUS_NONE
-		_style_shell_button(btn, Color(0.085, 0.115, 0.175, 0.85), Color(0.17, 0.24, 0.35, 0.75), Color(0.85, 0.90, 0.96))
+		_style_shell_button(btn, Color(0.055, 0.082, 0.135, 0.90), Color(0.12, 0.20, 0.32, 0.80), Color(0.85, 0.90, 0.96))
 
 		btn.pressed.connect(func() -> void: navigate_to(r_id))
 		_sidebar_vbox.add_child(btn)
@@ -506,11 +511,11 @@ func _create_placeholder_panel(route_id: String, route_title: String) -> Control
 	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
 	var p_style := StyleBoxFlat.new()
-	p_style.bg_color = Color(0.06, 0.08, 0.12, 0.96)
-	p_style.content_margin_left = 28
-	p_style.content_margin_right = 28
-	p_style.content_margin_top = 22
-	p_style.content_margin_bottom = 22
+	p_style.bg_color = Color(0.024, 0.035, 0.055, 1.0)
+	p_style.content_margin_left = 20
+	p_style.content_margin_right = 20
+	p_style.content_margin_top = 16
+	p_style.content_margin_bottom = 16
 	panel.add_theme_stylebox_override("panel", p_style)
 
 	var scroll := ScrollContainer.new()
@@ -552,10 +557,10 @@ func _build_route_specific_content(route_id: String) -> Control:
 func _create_info_card(header: String, body: String) -> PanelContainer:
 	var pc := PanelContainer.new()
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.085, 0.115, 0.17, 0.96)
-	style.border_color = Color(0.18, 0.25, 0.36, 0.85)
+	style.bg_color = Color(0.043, 0.063, 0.106, 0.95)
+	style.border_color = Color(0.12, 0.20, 0.32, 0.85)
 	style.set_border_width_all(1)
-	style.set_corner_radius_all(8)
+	style.set_corner_radius_all(10)
 	style.content_margin_left = 16
 	style.content_margin_right = 16
 	style.content_margin_top = 14
@@ -597,10 +602,10 @@ func _build_manager_modal() -> void:
 	_manager_profile_modal.visible = false
 
 	var modal_style := StyleBoxFlat.new()
-	modal_style.bg_color = Color(0.072, 0.098, 0.148, 0.99)
-	modal_style.border_color = Color(0.11, 0.82, 0.63, 0.95)
+	modal_style.bg_color = Color(0.043, 0.063, 0.106, 0.98)
+	modal_style.border_color = Color(0.15, 0.92, 0.58, 0.90)
 	modal_style.set_border_width_all(2)
-	modal_style.set_corner_radius_all(8)
+	modal_style.set_corner_radius_all(10)
 	modal_style.set_content_margin_all(22)
 	_manager_profile_modal.add_theme_stylebox_override("panel", modal_style)
 	add_child(_manager_profile_modal)
@@ -630,7 +635,7 @@ func _build_manager_modal() -> void:
 	close_btn.custom_minimum_size = Vector2(110, 34)
 	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	close_btn.focus_mode = Control.FOCUS_NONE
-	_style_shell_button(close_btn, Color(0.09, 0.14, 0.22, 0.95), Color(0.20, 0.32, 0.48, 0.9))
+	_style_shell_button(close_btn, Color(0.07, 0.12, 0.20, 0.95), Color(0.18, 0.30, 0.48, 0.85))
 	close_btn.pressed.connect(func() -> void: _manager_profile_modal.visible = false)
 	vb.add_child(close_btn)
 
@@ -730,10 +735,10 @@ func _build_toast() -> void:
 	_toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
 	var t_style := StyleBoxFlat.new()
-	t_style.bg_color = Color(0.072, 0.098, 0.148, 0.97)
-	t_style.border_color = Color(0.11, 0.82, 0.63, 0.92)
+	t_style.bg_color = Color(0.043, 0.063, 0.106, 0.97)
+	t_style.border_color = Color(0.15, 0.92, 0.58, 0.90)
 	t_style.set_border_width_all(1)
-	t_style.set_corner_radius_all(8)
+	t_style.set_corner_radius_all(10)
 	_toast_label.add_theme_stylebox_override("normal", t_style)
 	_toast_label.add_theme_color_override("font_color", Color(0.35, 0.95, 0.55))
 	_toast_label.add_theme_font_size_override("font_size", 13)
@@ -789,9 +794,9 @@ func navigate_to(route_id: String) -> void:
 		var btn: Button = _route_buttons[r_id]
 		var is_active: bool = (r_id == normalized)
 		if is_active:
-			_style_shell_button(btn, Color(0.08, 0.36, 0.26, 0.95), Color(0.11, 0.82, 0.63, 0.95), Color(0.35, 0.95, 0.55))
+			_style_shell_button(btn, Color(0.06, 0.45, 0.32, 0.95), Color(0.15, 0.92, 0.58, 0.90), Color.WHITE)
 		else:
-			_style_shell_button(btn, Color(0.085, 0.115, 0.175, 0.85), Color(0.17, 0.24, 0.35, 0.75), Color(0.85, 0.90, 0.96))
+			_style_shell_button(btn, Color(0.055, 0.082, 0.135, 0.90), Color(0.12, 0.20, 0.32, 0.80), Color(0.85, 0.90, 0.96))
 
 	route_changed.emit(normalized)
 
