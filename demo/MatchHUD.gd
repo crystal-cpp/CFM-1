@@ -223,6 +223,36 @@ func _sync_right_panel_geometry() -> void:
 	_right_panel.position = Vector2(vp.x - panel_w - 16.0, 72.0)
 	_right_panel.size = Vector2(panel_w, maxf(200.0, vp.y - 72.0 - 96.0))
 
+func _style_hud_btn(btn: Button, bg: Color, border: Color, fg: Color = Color.WHITE) -> void:
+	var n := StyleBoxFlat.new()
+	n.bg_color = bg
+	n.border_color = border
+	n.set_border_width_all(1)
+	n.set_corner_radius_all(6)
+	n.content_margin_left = 8
+	n.content_margin_right = 8
+	n.content_margin_top = 4
+	n.content_margin_bottom = 4
+
+	var h := n.duplicate()
+	h.bg_color = bg.lightened(0.10)
+	h.border_color = border.lightened(0.15)
+
+	var p := n.duplicate()
+	p.bg_color = bg.darkened(0.10)
+
+	var d := n.duplicate()
+	d.bg_color = Color(0.05, 0.07, 0.11, 0.65)
+	d.border_color = Color(0.12, 0.16, 0.24, 0.55)
+
+	btn.add_theme_stylebox_override("normal", n)
+	btn.add_theme_stylebox_override("hover", h)
+	btn.add_theme_stylebox_override("pressed", p)
+	btn.add_theme_stylebox_override("disabled", d)
+	btn.add_theme_color_override("font_color", fg)
+	btn.add_theme_color_override("font_hover_color", Color.WHITE)
+	btn.add_theme_color_override("font_disabled_color", Color(0.45, 0.52, 0.62))
+
 func _build_ui() -> void:
 	# 1. TOP HERO SCOREBOARD CARD
 	var top_bar := PanelContainer.new()
@@ -234,8 +264,8 @@ func _build_ui() -> void:
 	top_bar.mouse_filter = Control.MOUSE_FILTER_STOP
 
 	var bar_style := StyleBoxFlat.new()
-	bar_style.bg_color = Color(0.06, 0.09, 0.15, 0.95)
-	bar_style.border_color = Color(0.16, 0.22, 0.34, 0.85)
+	bar_style.bg_color = Color(0.043, 0.063, 0.106, 0.95)
+	bar_style.border_color = Color(0.12, 0.20, 0.32, 0.85)
 	bar_style.set_border_width_all(1)
 	bar_style.set_corner_radius_all(10)
 	bar_style.content_margin_left = 14.0
@@ -354,8 +384,8 @@ func _build_ui() -> void:
 	_right_panel = PanelContainer.new()
 	_right_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	var rp_style := StyleBoxFlat.new()
-	rp_style.bg_color = Color(0.06, 0.09, 0.15, 0.96)
-	rp_style.border_color = Color(0.16, 0.22, 0.34, 0.85)
+	rp_style.bg_color = Color(0.043, 0.063, 0.106, 0.95)
+	rp_style.border_color = Color(0.12, 0.20, 0.32, 0.85)
 	rp_style.set_border_width_all(1)
 	rp_style.set_corner_radius_all(10)
 	rp_style.set_content_margin_all(14)
@@ -451,8 +481,8 @@ func _build_ui() -> void:
 	_bottom_bar.mouse_filter = Control.MOUSE_FILTER_STOP
 
 	var bot_style := StyleBoxFlat.new()
-	bot_style.bg_color = Color(0.06, 0.09, 0.15, 0.96)
-	bot_style.border_color = Color(0.16, 0.22, 0.34, 0.85)
+	bot_style.bg_color = Color(0.043, 0.063, 0.106, 0.95)
+	bot_style.border_color = Color(0.12, 0.20, 0.32, 0.85)
 	bot_style.set_border_width_all(1)
 	bot_style.set_corner_radius_all(10)
 	bot_style.content_margin_left = 14.0
@@ -536,8 +566,8 @@ func _build_ui() -> void:
 	ko_card.custom_minimum_size = Vector2(340, 88)
 	ko_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var ko_style := StyleBoxFlat.new()
-	ko_style.bg_color = Color(0.06, 0.09, 0.15, 0.92)
-	ko_style.border_color = Color(0.12, 0.90, 0.55, 0.95)
+	ko_style.bg_color = Color(0.043, 0.063, 0.106, 0.95)
+	ko_style.border_color = Color(0.12, 0.20, 0.32, 0.85)
 	ko_style.set_border_width_all(2)
 	ko_style.set_corner_radius_all(12)
 	ko_style.set_content_margin_all(16)
@@ -563,8 +593,8 @@ func _build_ui() -> void:
 	_fulltime_panel.visible = false
 
 	var ft_style := StyleBoxFlat.new()
-	ft_style.bg_color = Color(0.06, 0.09, 0.15, 0.97)
-	ft_style.border_color = Color(0.12, 0.85, 0.50, 0.9)
+	ft_style.bg_color = Color(0.043, 0.063, 0.106, 0.95)
+	ft_style.border_color = Color(0.12, 0.20, 0.32, 0.85)
 	ft_style.set_border_width_all(2)
 	ft_style.set_corner_radius_all(12)
 	ft_style.set_content_margin_all(22)
@@ -609,6 +639,19 @@ func _build_ui() -> void:
 	_next_match_button.focus_mode = Control.FOCUS_NONE
 	_next_match_button.pressed.connect(func() -> void: emit_signal("next_match_requested"))
 	vbox.add_child(_next_match_button)
+
+	var sec_bg := Color(0.07, 0.12, 0.20, 0.95)
+	var sec_bd := Color(0.18, 0.30, 0.48, 0.85)
+	var pri_bg := Color(0.06, 0.45, 0.32, 0.95)
+	var pri_bd := Color(0.15, 0.92, 0.58, 0.90)
+
+	for b in [_pause_btn, _speed_1x_btn, _speed_2x_btn, _speed_4x_btn, _nearest_def_button, _slide_tackle_btn, _skip_button]:
+		_style_hud_btn(b, sec_bg, sec_bd)
+
+	_style_hud_btn(_gk_rush_btn, Color(0.65, 0.44, 0.10, 0.95), Color(0.95, 0.72, 0.22, 0.90))
+	_style_hud_btn(_tactic_button, pri_bg, pri_bd)
+	_style_hud_btn(_next_match_button, pri_bg, pri_bd)
+	_set_sim_speed(1.0)
 
 
 func _add_stat_bar(parent: VBoxContainer, title_text: String, initial_val: String) -> Array:
@@ -787,12 +830,21 @@ func _on_pause_btn_pressed() -> void:
 
 func _set_sim_speed(scale: float) -> void:
 	Engine.time_scale = scale
-	if _speed_1x_btn:
-		_speed_1x_btn.disabled = is_equal_approx(scale, 1.0)
-	if _speed_2x_btn:
-		_speed_2x_btn.disabled = is_equal_approx(scale, 2.0)
-	if _speed_4x_btn:
-		_speed_4x_btn.disabled = is_equal_approx(scale, 4.0)
+	var pairs: Array = [[_speed_1x_btn, 1.0], [_speed_2x_btn, 2.0], [_speed_4x_btn, 4.0]]
+	for pair in pairs:
+		var btn: Button = pair[0]
+		var target_scale: float = pair[1]
+		if btn:
+			var active: bool = is_equal_approx(scale, target_scale)
+			btn.disabled = active
+			_style_hud_btn(
+				btn,
+				Color(0.08, 0.35, 0.22, 0.95) if active else Color(0.07, 0.12, 0.20, 0.95),
+				Color(0.18, 0.95, 0.58, 0.95) if active else Color(0.18, 0.30, 0.48, 0.85),
+				Color(0.35, 1.0, 0.70) if active else Color.WHITE
+			)
+			if active:
+				btn.add_theme_color_override("font_disabled_color", Color(0.35, 1.0, 0.70))
 
 func refresh_all() -> void:
 	if not is_instance_valid(match_engine):
