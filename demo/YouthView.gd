@@ -36,10 +36,10 @@ func _ensure_ui_built() -> void:
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg := StyleBoxFlat.new()
 	bg.bg_color = Color(0.024, 0.035, 0.055, 1.0)
-	bg.content_margin_left = 22
-	bg.content_margin_right = 22
-	bg.content_margin_top = 18
-	bg.content_margin_bottom = 18
+	bg.content_margin_left = 20
+	bg.content_margin_right = 20
+	bg.content_margin_top = 16
+	bg.content_margin_bottom = 16
 	root.add_theme_stylebox_override("panel", bg)
 	add_child(root)
 
@@ -337,8 +337,10 @@ func _style_btn(btn: Button, bg: Color, border: Color) -> void:
 	h.bg_color = bg.lightened(0.10)
 	var d := n.duplicate()
 	d.bg_color = Color(0.05, 0.07, 0.11, 0.60)
+	d.border_color = Color(0.12, 0.16, 0.24, 0.50)
 	btn.add_theme_stylebox_override("normal", n)
 	btn.add_theme_stylebox_override("hover", h)
 	btn.add_theme_stylebox_override("pressed", h)
 	btn.add_theme_stylebox_override("disabled", d)
 	btn.add_theme_color_override("font_color", Color.WHITE)
+	btn.add_theme_color_override("font_disabled_color", Color(0.45, 0.52, 0.62))
