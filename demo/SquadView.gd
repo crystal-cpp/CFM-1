@@ -177,7 +177,7 @@ func _ensure_ui_built() -> void:
 	_header_title = Label.new()
 	_header_title.text = "SQUAD MANAGEMENT"
 	_header_title.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
-	_header_title.add_theme_font_size_override("font_size", 17)
+	_header_title.add_theme_font_size_override("font_size", 20)
 	_header_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_header_title.clip_text = true
 	top_hbox.add_child(_header_title)
@@ -557,7 +557,7 @@ func _on_player_clicked(player_id: int) -> void:
 			return
 	career_state.swap_squad_players(club_id, _selected_player_id, player_id)
 	_selected_player_id = -1
-	refresh_squad
+	refresh_squad()
 
 func _format_injury_tier(days_left: int, raw_severity: String) -> String:
 	var severity: String = raw_severity.strip_edges()
