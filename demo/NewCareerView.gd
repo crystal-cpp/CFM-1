@@ -12,7 +12,10 @@ var _manager_input: LineEdit
 var _slot_input: LineEdit
 var _error_lbl: Label
 
+const MIN_PLAYABLE_LEAGUE_CLUBS := 8
+
 var _clubs_by_league: Dictionary = {}
+var _all_registry_entries: Array[Dictionary] = []
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -20,25 +23,86 @@ func _ready() -> void:
 	_build_ui()
 	refresh_clubs()
 
+static func _normalize_league_name(raw_league: String) -> String:
+	var trimmed := raw_league.strip_edges()
+	if trimmed.to_lower() == "tuesday league" or trimmed.to_lower() == "premier league":
+		return "Premier League"
+	return trimmed
+
+func get_all_registered_entries() -> Array[Dictionary]:
+	return _all_registry_entries.duplicate(true)
+
+func get_registered_league_club_count(league_name: String) -> int:
+	var target := _normalize_league_name(league_name)
+	var seen: Dictionary = {}
+	for entry in _all_registry_entries:
+		if String(entry.get("league", "")) != target:
+			continue
+		var cid := int(entry.get("club_id", 0))
+		var cname := String(entry.get("club_name", "")).strip_edges().to_lower()
+		var key := "id:%d" % cid if cid > 0 else "name:%s" % cname
+		seen[key] = true
+	return seen.size()
+
 func refresh_clubs() -> void:
 	_clubs_by_league.clear()
+	_all_registry_entries.clear()
+
+	var raw_entries: Array = []
 	if is_instance_valid(career_state) and career_state.has_method("get_leagues_and_clubs"):
-		var entries: Array = career_state.call("get_leagues_and_clubs")
-		for item in entries:
-			if item is Dictionary and not bool(item.get("is_locked", false)):
-				var league := String(item.get("league", "Independent League"))
-				if not _clubs_by_league.has(league):
-					_clubs_by_league[league] = []
-				_clubs_by_league[league].append(item)
+		raw_entries = career_state.call("get_leagues_and_clubs")
 	else:
-		var default_clubs: Array = []
 		for cid in range(1, 17):
 			var info: Dictionary = career_state.get_club_info(cid) if is_instance_valid(career_state) else {}
 			var cname := String(info.get("club_name", "Club %d" % cid))
-			default_clubs.append({ "club_id": cid, "club_name": cname, "league": "Premier League" })
-		_clubs_by_league["Premier League"] = default_clubs
+			raw_entries.append({ "club_id": cid, "club_name": cname, "league": "Premier League" })
 
-	print("NewCareerView: loaded %d playable leagues: %s" % [_clubs_by_league.size(), ", ".join(PackedStringArray(_clubs_by_league.keys()))])
+	# 1. Normalize league names and count distinct valid registered clubs per league
+	#    while keeping small (< 8 club) leagues intact in _all_registry_entries.
+	var seen_keys_by_league: Dictionary = {}
+	var unlocked_by_league: Dictionary = {}
+
+	for item in raw_entries:
+		if not (item is Dictionary):
+			continue
+		var cid := int(item.get("club_id", item.get("id", 0)))
+		var cname := String(item.get("club_name", item.get("club", item.get("name", "")))).strip_edges()
+		var league := _normalize_league_name(String(item.get("league", "")))
+		if (cid <= 0 and cname.is_empty()) or league.is_empty():
+			continue
+
+		var normalized_item: Dictionary = item.duplicate(true)
+		normalized_item["club_id"] = cid
+		normalized_item["club_name"] = cname if not cname.is_empty() else ("Club %d" % cid)
+		normalized_item["league"] = league
+
+		var dedup_key := "id:%d" % cid if cid > 0 else "name:%s" % cname.to_lower()
+		if not seen_keys_by_league.has(league):
+			seen_keys_by_league[league] = {}
+			unlocked_by_league[league] = []
+		if seen_keys_by_league[league].has(dedup_key):
+			continue
+
+		seen_keys_by_league[league][dedup_key] = true
+		_all_registry_entries.append(normalized_item)
+
+		if not bool(normalized_item.get("is_locked", false)):
+			unlocked_by_league[league].append(normalized_item)
+
+	# 2. Only expose leagues with >= 8 distinct valid registered clubs in the selector
+	for league_key in seen_keys_by_league.keys():
+		var valid_count: int = seen_keys_by_league[league_key].size()
+		var selectable_clubs: Array = unlocked_by_league.get(league_key, [])
+		if valid_count >= MIN_PLAYABLE_LEAGUE_CLUBS and not selectable_clubs.is_empty():
+			_clubs_by_league[league_key] = selectable_clubs
+
+	print("NewCareerView: loaded %d playable leagues (>= %d clubs) from %d total leagues: %s" % [
+		_clubs_by_league.size(),
+		MIN_PLAYABLE_LEAGUE_CLUBS,
+		seen_keys_by_league.size(),
+		", ".join(PackedStringArray(_clubs_by_league.keys()))
+	])
+
 	for league_key in _clubs_by_league.keys():
 		var club_list: Array = _clubs_by_league[league_key]
 		club_list.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
@@ -50,6 +114,7 @@ func refresh_clubs() -> void:
 		)
 
 	_league_option.clear()
+	_club_option.clear()
 	var league_names: Array = _clubs_by_league.keys()
 	league_names.sort()
 	for league_name in league_names:

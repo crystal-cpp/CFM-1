@@ -72,7 +72,10 @@ func _build_ui() -> void:
 	root_vbox.add_child(top_bar)
 
 	var back_btn := Button.new()
-	back_btn.text = "← Back to Hub"
+	back_btn.text = "Back"
+	back_btn.custom_minimum_size = Vector2(130, 34)
+	back_btn.focus_mode = Control.FOCUS_NONE
+	_style_prematch_button(back_btn, false)
 	back_btn.pressed.connect(func() -> void: back_requested.emit())
 	top_bar.add_child(back_btn)
 
@@ -86,6 +89,7 @@ func _build_ui() -> void:
 
 	# Matchup & Kits Banner
 	var matchup_panel := PanelContainer.new()
+	_style_prematch_card(matchup_panel)
 	root_vbox.add_child(matchup_panel)
 
 	var match_vbox := VBoxContainer.new()
@@ -146,6 +150,8 @@ func _build_ui() -> void:
 
 	_swap_kit_btn = Button.new()
 	_swap_kit_btn.text = "Toggle Away Kit"
+	_swap_kit_btn.focus_mode = Control.FOCUS_NONE
+	_style_prematch_button(_swap_kit_btn, false)
 	_swap_kit_btn.pressed.connect(_on_toggle_away_kit)
 	kit_row.add_child(_swap_kit_btn)
 
@@ -163,6 +169,7 @@ func _build_ui() -> void:
 	var user_panel := PanelContainer.new()
 	user_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	user_panel.size_flags_stretch_ratio = 1.15
+	_style_prematch_card(user_panel)
 	body_hbox.add_child(user_panel)
 
 	var user_scroll := ScrollContainer.new()
@@ -237,6 +244,7 @@ func _build_ui() -> void:
 	var opponent_panel := PanelContainer.new()
 	opponent_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	opponent_panel.size_flags_stretch_ratio = 0.85
+	_style_prematch_card(opponent_panel)
 	body_hbox.add_child(opponent_panel)
 
 	var opponent_scroll := ScrollContainer.new()
@@ -278,8 +286,10 @@ func _build_ui() -> void:
 	footer.add_child(_warning_lbl)
 
 	var kickoff_btn := Button.new()
-	kickoff_btn.text = "KICK OFF MATCH →"
+	kickoff_btn.text = "PLAY"
 	kickoff_btn.custom_minimum_size = Vector2(220, 44)
+	kickoff_btn.focus_mode = Control.FOCUS_NONE
+	_style_prematch_button(kickoff_btn, true)
 	kickoff_btn.pressed.connect(_on_kickoff_pressed)
 	footer.add_child(kickoff_btn)
 
@@ -685,11 +695,11 @@ func _refresh_view() -> void:
 	if clash_detected:
 		use_alternate_away_kit = true
 	_swap_kit_btn.disabled = clash_detected
-	_swap_kit_btn.text = "Alternate Kit Required" if clash_detected else "Toggle Away Kit"
+	_swap_kit_btn.text = "Alternate Kit Required" if clash_detected else "Switch to Away Kit"
 	var active_away: Color = kits.get("away_primary", Color.BLUE) if use_alternate_away_kit else kits.get("away_default_primary", Color.BLUE)
 	_away_kit_swatch.color = active_away
 	kits["active_away_primary"] = active_away
-	_kit_status_lbl.text = "Kit Clash Auto-Resolved (Alternate Away Kit Active)" if clash_detected else ("Alternate Away Kit Active" if use_alternate_away_kit else "No Kit Clash Detected")
+	_kit_status_lbl.text = "" if clash_detected else ("" if use_alternate_away_kit else "")
 
 	var tactics: Dictionary = match_context.get("tactics", {})
 	var active_fmt: String = String(tactics.get("formation", "4-3-3"))
@@ -836,3 +846,42 @@ func _on_kickoff_pressed() -> void:
 			_warning_lbl.text = "Cannot kick off with injured starter %s (%dd remaining) — replace them first." % [String(p.get("name", "Player")), int(p.get("injury_days_remaining", 1))]
 			return
 	start_match_requested.emit(match_context)
+
+func _style_prematch_card(panel: PanelContainer) -> void:
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.085, 0.115, 0.17, 0.96)
+	st.border_color = Color(0.18, 0.25, 0.36, 0.85)
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(8)
+	st.content_margin_left = 16
+	st.content_margin_right = 16
+	st.content_margin_top = 12
+	st.content_margin_bottom = 12
+	panel.add_theme_stylebox_override("panel", st)
+
+
+func _style_prematch_button(btn: Button, primary: bool) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.08, 0.36, 0.26, 0.95) if primary else Color(0.095, 0.13, 0.195, 0.95)
+	normal.border_color = Color(0.11, 0.82, 0.63, 0.95) if primary else Color(0.20, 0.28, 0.40, 0.90)
+	normal.set_border_width_all(1)
+	normal.set_corner_radius_all(8)
+	normal.content_margin_left = 12
+	normal.content_margin_right = 12
+	normal.content_margin_top = 6
+	normal.content_margin_bottom = 6
+
+	var hover := normal.duplicate()
+	hover.bg_color = normal.bg_color.lightened(0.10)
+	hover.border_color = normal.border_color.lightened(0.12)
+
+	var disabled := normal.duplicate()
+	disabled.bg_color = Color(0.065, 0.088, 0.132, 0.70)
+	disabled.border_color = Color(0.14, 0.19, 0.28, 0.55)
+
+	btn.add_theme_stylebox_override("normal", normal)
+	btn.add_theme_stylebox_override("hover", hover)
+	btn.add_theme_stylebox_override("disabled", disabled)
+	btn.add_theme_color_override("font_color", Color(0.35, 0.95, 0.55) if primary else Color.WHITE)
+	btn.add_theme_color_override("font_hover_color", Color.WHITE)
+	btn.add_theme_color_override("font_disabled_color", Color(0.48, 0.56, 0.68))

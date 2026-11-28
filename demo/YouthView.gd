@@ -291,7 +291,7 @@ func refresh_youth() -> void:
 		hb.add_child(info_lbl)
 
 		var inspect_btn := Button.new()
-		inspect_btn.text = "Inspect"
+		inspect_btn.text = "Detail"
 		inspect_btn.focus_mode = Control.FOCUS_NONE
 		_style_btn(inspect_btn, Color(0.09, 0.15, 0.25, 0.95), Color(0.22, 0.35, 0.55, 0.85))
 		inspect_btn.pressed.connect(func() -> void:
@@ -300,7 +300,7 @@ func refresh_youth() -> void:
 		hb.add_child(inspect_btn)
 
 		var prom_btn := Button.new()
-		prom_btn.text = "⬆ Promote"
+		prom_btn.text = "Promote"
 		prom_btn.focus_mode = Control.FOCUS_NONE
 		_style_btn(prom_btn, Color(0.06, 0.48, 0.34, 0.95), Color(0.11, 0.85, 0.63, 0.95))
 		prom_btn.pressed.connect(func() -> void:

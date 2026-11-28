@@ -115,7 +115,7 @@ func _load_clubs_csv() -> void:
 				if not (item is Dictionary):
 					continue
 				var club_name := String(item.get("club_name", item.get("club", item.get("name", "")))).strip_edges()
-				var league_name := String(item.get("league", "")).strip_edges()
+				var league_name := _normalize_league_name(String(item.get("league", "")))
 				if club_name.is_empty() or league_name.is_empty():
 					continue
 				var club_dict: Dictionary = {
@@ -175,7 +175,7 @@ func _load_clubs_csv() -> void:
 		if row.size() <= max(idx_club, idx_league):
 			continue
 		var club_name := row[idx_club].strip_edges()
-		var league_name := row[idx_league].strip_edges()
+		var league_name := _normalize_league_name(row[idx_league])
 		if club_name.is_empty() or league_name.is_empty():
 			continue
 		var club_dict: Dictionary = {
@@ -193,9 +193,22 @@ func _load_clubs_csv() -> void:
 	_csv_loaded = true
 	print("CompetitionsView: loaded %d clubs across %d leagues from %s." % [_csv_clubs.size(), _leagues_map.size(), found_path])
 
+static func _normalize_league_name(raw_league: String) -> String:
+	var trimmed := raw_league.strip_edges()
+	var low := trimmed.to_lower()
+	if low == "tuesday league" or low == "premier league":
+		return "Premier League"
+	return trimmed
+
 func _add_competition_club(club_dict: Dictionary) -> void:
+	var cid := int(club_dict.get("id", 0))
+	var cname_low := String(club_dict.get("name", "")).to_lower()
+	for existing in _csv_clubs:
+		if (cid > 0 and int(existing.get("id", 0)) == cid) or String(existing.get("name", "")).to_lower() == cname_low:
+			return
 	_csv_clubs.append(club_dict)
-	var league_name := String(club_dict.get("league", ""))
+	var league_name := _normalize_league_name(String(club_dict.get("league", "")))
+	club_dict["league"] = league_name
 	if not _leagues_map.has(league_name):
 		_leagues_map[league_name] = []
 	_leagues_map[league_name].append(club_dict)
@@ -228,7 +241,7 @@ func _get_managed_club_league() -> String:
 		var summary: Dictionary = career_state.get_header_summary()
 		var managed_id := int(summary.get("managed_club_id", -1))
 		var club_info: Dictionary = career_state.get_club_info(managed_id)
-		var live_league := String(club_info.get("league", "")).strip_edges()
+		var live_league := _normalize_league_name(String(club_info.get("league", "")))
 		if not live_league.is_empty():
 			return live_league
 
@@ -236,7 +249,7 @@ func _get_managed_club_league() -> String:
 	if not managed_name.is_empty():
 		for c in _csv_clubs:
 			if String(c.get("name", "")).to_lower() == managed_name.to_lower():
-				return String(c.get("league", ""))
+				return _normalize_league_name(String(c.get("league", "")))
 	if not _leagues_map.is_empty():
 		var league_names: Array = _leagues_map.keys()
 		league_names.sort()
@@ -762,7 +775,7 @@ func _build_ucl_tab(parent: Control) -> void:
 	next_btn.focus_mode = Control.FOCUS_NONE
 	_style_btn(next_btn, Color(0.08, 0.14, 0.24, 0.9), Color(0.22, 0.42, 0.72, 0.8))
 	next_btn.pressed.connect(func() -> void:
-		_selected_ucl_md = min(8, _selected_ucl_md + 1)
+		_selected_ucl_md = min(_get_ucl_total_matchdays(), _selected_ucl_md + 1)
 		_refresh_ucl_fixtures_only()
 	)
 	fx_hdr.add_child(next_btn)
@@ -779,28 +792,110 @@ func _build_ucl_tab(parent: Control) -> void:
 	_ucl_fixtures_vbox.add_theme_constant_override("separation", 6)
 	fx_scroll.add_child(_ucl_fixtures_vbox)
 
-func _get_ucl_clubs() -> Array[Dictionary]:
-	# 1. Check live CareerState UCL standings
-	if is_instance_valid(career_state) and career_state.has_method("get_ucl_standings"):
-		var live_ucl: Variant = career_state.call("get_ucl_standings")
-		if live_ucl is Array and not live_ucl.is_empty():
-			var typed: Array[Dictionary] = []
-			for item in live_ucl:
-				if item is Dictionary:
-					typed.append(item)
-			return typed
+func _get_ucl_total_matchdays() -> int:
+	if is_instance_valid(career_state) and career_state.is_career_active() and career_state.has_method("get_total_matchdays"):
+		var total_md := int(career_state.call("get_total_matchdays", "UEFA Champions League"))
+		if total_md > 0:
+			return total_md
+	return 8
 
-	# 2. Seed top 36 European clubs by reputation from clubs.csv
+func _get_ucl_clubs() -> Array[Dictionary]:
+	# 1. Query authoritative UCL participants (including 11A7 / ClubID 1098) & fixtures from CareerState
+	if is_instance_valid(career_state) and career_state.is_career_active() and career_state.has_method("get_ucl_participants"):
+		var participants: Variant = career_state.call("get_ucl_participants")
+		if participants is Array and not participants.is_empty():
+			var table_by_id: Dictionary = {}
+			var seen_ids: Dictionary = {}
+			for item in participants:
+				if not (item is Dictionary):
+					continue
+				var cid := int(item.get("club_id", item.get("id", 0)))
+				if cid <= 0 or seen_ids.has(cid):
+					continue
+				seen_ids[cid] = true
+				table_by_id[cid] = {
+					"id": cid,
+					"name": String(item.get("club_name", item.get("club", "Club"))),
+					"league": _normalize_league_name(String(item.get("league", "Premier League"))),
+					"reputation": int(item.get("reputation", 50)),
+					"kit_color": _parse_kit_color(String(item.get("primary_color", "#22c55e"))),
+					"mp": 0, "w": 0, "d": 0, "l": 0,
+					"gf": 0, "ga": 0, "pts": 0
+				}
+
+			if career_state.has_method("get_fixtures"):
+				var all_ucl_fx: Variant = career_state.call("get_fixtures", "UEFA Champions League")
+				if all_ucl_fx is Array:
+					for fx in all_ucl_fx:
+						if not (fx is Dictionary) or not bool(fx.get("played", false)):
+							continue
+						var hid := int(fx.get("home_club_id", 0))
+						var aid := int(fx.get("away_club_id", 0))
+						var hg := int(fx.get("home_goals", 0))
+						var ag := int(fx.get("away_goals", 0))
+						if table_by_id.has(hid):
+							var hrow: Dictionary = table_by_id[hid]
+							hrow["mp"] += 1
+							hrow["gf"] += hg
+							hrow["ga"] += ag
+							if hg > ag:
+								hrow["w"] += 1
+								hrow["pts"] += 3
+							elif hg == ag:
+								hrow["d"] += 1
+								hrow["pts"] += 1
+							else:
+								hrow["l"] += 1
+						if table_by_id.has(aid):
+							var arow: Dictionary = table_by_id[aid]
+							arow["mp"] += 1
+							arow["gf"] += ag
+							arow["ga"] += hg
+							if ag > hg:
+								arow["w"] += 1
+								arow["pts"] += 3
+							elif ag == hg:
+								arow["d"] += 1
+								arow["pts"] += 1
+							else:
+								arow["l"] += 1
+
+			var live_rows: Array[Dictionary] = []
+			for cid in table_by_id.keys():
+				live_rows.append(table_by_id[cid])
+			live_rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+				if int(a["pts"]) != int(b["pts"]):
+					return int(a["pts"]) > int(b["pts"])
+				var gd_a := int(a["gf"]) - int(a["ga"])
+				var gd_b := int(b["gf"]) - int(b["ga"])
+				if gd_a != gd_b:
+					return gd_a > gd_b
+				if int(a["gf"]) != int(b["gf"]):
+					return int(a["gf"]) > int(b["gf"])
+				if int(a["reputation"]) != int(b["reputation"]):
+					return int(a["reputation"]) > int(b["reputation"])
+				return String(a["name"]) < String(b["name"])
+			)
+			return live_rows
+
+	# 2. Pre-career fallback: seed European clubs + explicitly include 11A7 (ClubID 1098)
 	var non_europe: Array[String] = ["argentina", "brazil", "usa", "united states", "saudi arabia", "japan", "south korea", "australia", "mexico", "vietnam"]
 	var candidates: Array[Dictionary] = []
+	var seen_fallback: Dictionary = {}
 	for c in _csv_clubs:
+		var cid := int(c.get("id", 0))
+		var cname := String(c.get("name", ""))
+		var is_11a7 := (cid == 1098 or cname.to_lower() == "11a7")
 		var country: String = String(c.get("country", "")).to_lower()
-		if country in non_europe:
+		if not is_11a7 and country in non_europe:
 			continue
+		if seen_fallback.has(cid):
+			continue
+		seen_fallback[cid] = true
 		candidates.append({
-			"id": c["id"],
-			"name": c["name"],
-			"league": c["league"],
+			"id": cid,
+			"name": cname,
+			"league": _normalize_league_name(String(c.get("league", "Premier League"))),
 			"reputation": c["reputation"],
 			"kit_color": c["kit_color"],
 			"mp": 0, "w": 0, "d": 0, "l": 0,
@@ -816,7 +911,18 @@ func _get_ucl_clubs() -> Array[Dictionary]:
 	)
 
 	if candidates.size() > 36:
-		return candidates.slice(0, 36)
+		var top36 := candidates.slice(0, 36)
+		var has_11a7 := false
+		for entry in top36:
+			if int(entry.get("id", 0)) == 1098:
+				has_11a7 = true
+				break
+		if not has_11a7:
+			for entry in candidates:
+				if int(entry.get("id", 0)) == 1098:
+					top36[35] = entry
+					break
+		return top36
 	return candidates
 
 func _refresh_ucl_view() -> void:
@@ -900,6 +1006,7 @@ func _refresh_ucl_view() -> void:
 	_refresh_ucl_fixtures_only()
 
 func _refresh_ucl_fixtures_only() -> void:
+	_selected_ucl_md = clampi(_selected_ucl_md, 1, _get_ucl_total_matchdays())
 	_ucl_md_label.text = "Matchday %d" % _selected_ucl_md
 	for child in _ucl_fixtures_vbox.get_children():
 		child.queue_free()
@@ -980,17 +1087,27 @@ func _refresh_ucl_fixtures_only() -> void:
 		match_row.add_child(away_lbl)
 
 func _get_ucl_fixtures_for_md(md: int) -> Array[Dictionary]:
-	# 1. Check live CareerState UCL fixtures
-	if is_instance_valid(career_state) and career_state.has_method("get_ucl_fixtures"):
-		var live_fx: Variant = career_state.call("get_ucl_fixtures", md)
+	# 1. Query authoritative CareerState UCL fixtures for this matchday
+	if is_instance_valid(career_state) and career_state.is_career_active() and career_state.has_method("get_fixtures"):
+		var live_fx: Variant = career_state.call("get_fixtures", "UEFA Champions League", md)
 		if live_fx is Array and not live_fx.is_empty():
 			var typed: Array[Dictionary] = []
 			for item in live_fx:
-				if item is Dictionary:
-					typed.append(item)
+				if not (item is Dictionary):
+					continue
+				typed.append({
+					"fixture_id": int(item.get("fixture_id", 0)),
+					"matchday": int(item.get("matchday", md)),
+					"date": String(item.get("date_iso", item.get("date", "2006-09-13"))),
+					"home": String(item.get("home_club_name", item.get("home", "Home FC"))),
+					"away": String(item.get("away_club_name", item.get("away", "Away FC"))),
+					"played": bool(item.get("played", false)),
+					"home_goals": int(item.get("home_goals", 0)),
+					"away_goals": int(item.get("away_goals", 0))
+				})
 			return typed
 
-	# 2. Deterministic Swiss-style rotation pairings from the 36 UCL clubs in clubs.csv
+	# 2. Pre-career fallback pairings from the UCL clubs in clubs.csv
 	var clubs: Array[Dictionary] = _get_ucl_clubs()
 	var n: int = clubs.size()
 	if n < 2:

@@ -67,7 +67,7 @@ func show_error(msg: String) -> void:
 func _build_ui() -> void:
 	var bg := ColorRect.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(0.024, 0.035, 0.055, 1.0)
+	bg.color = Color(0.06, 0.08, 0.12, 1.0)
 	add_child(bg)
 
 	var center := CenterContainer.new()
@@ -77,10 +77,10 @@ func _build_ui() -> void:
 	var card := PanelContainer.new()
 	card.custom_minimum_size = Vector2(460, 0)
 	var card_style := StyleBoxFlat.new()
-	card_style.bg_color = Color(0.043, 0.063, 0.106, 0.98)
-	card_style.border_color = Color(0.11, 0.16, 0.25, 1.0)
+	card_style.bg_color = Color(0.085, 0.115, 0.17, 0.98)
+	card_style.border_color = Color(0.18, 0.25, 0.36, 0.90)
 	card_style.set_border_width_all(1)
-	card_style.set_corner_radius_all(6)
+	card_style.set_corner_radius_all(8)
 	card_style.set_content_margin_all(28)
 	card.add_theme_stylebox_override("panel", card_style)
 	center.add_child(card)
@@ -106,12 +106,12 @@ func _build_ui() -> void:
 	_status_banner.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var err_style := StyleBoxFlat.new()
 	err_style.bg_color = Color(0.32, 0.10, 0.12, 0.95)
-	err_style.border_color = Color(0.95, 0.35, 0.38, 0.9)
+	err_style.border_color = Color(1.0, 0.35, 0.38, 0.92)
 	err_style.set_border_width_all(1)
-	err_style.set_corner_radius_all(4)
+	err_style.set_corner_radius_all(6)
 	err_style.set_content_margin_all(8)
 	_status_banner.add_theme_stylebox_override("normal", err_style)
-	_status_banner.add_theme_color_override("font_color", Color(1.0, 0.82, 0.82))
+	_status_banner.add_theme_color_override("font_color", Color(1.0, 0.85, 0.86))
 	_status_banner.add_theme_font_size_override("font_size", 12)
 	vbox.add_child(_status_banner)
 
@@ -126,7 +126,7 @@ func _build_ui() -> void:
 
 	_continue_hint_lbl = Label.new()
 	_continue_hint_lbl.text = "Checking saved careers..."
-	_continue_hint_lbl.add_theme_color_override("font_color", Color(0.58, 0.68, 0.82))
+	_continue_hint_lbl.add_theme_color_override("font_color", Color(0.65, 0.72, 0.82))
 	_continue_hint_lbl.add_theme_font_size_override("font_size", 11)
 	vbox.add_child(_continue_hint_lbl)
 
@@ -156,24 +156,25 @@ func _make_menu_button(text_label: String, primary: bool) -> Button:
 	btn.focus_mode = Control.FOCUS_NONE
 
 	var normal := StyleBoxFlat.new()
-	normal.bg_color = Color(0.06, 0.42, 0.32, 0.95) if primary else Color(0.07, 0.10, 0.16, 0.95)
-	normal.border_color = Color(0.11, 0.82, 0.63, 0.95) if primary else Color(0.16, 0.23, 0.35, 0.9)
+	normal.bg_color = Color(0.08, 0.36, 0.26, 0.95) if primary else Color(0.095, 0.13, 0.195, 0.95)
+	normal.border_color = Color(0.11, 0.82, 0.63, 0.95) if primary else Color(0.20, 0.28, 0.40, 0.90)
 	normal.set_border_width_all(1)
-	normal.set_corner_radius_all(6)
+	normal.set_corner_radius_all(8)
 
 	var hover := normal.duplicate()
 	hover.bg_color = normal.bg_color.lightened(0.10)
+	hover.border_color = normal.border_color.lightened(0.12)
 
 	var disabled := normal.duplicate()
-	disabled.bg_color = Color(0.05, 0.07, 0.11, 0.65)
-	disabled.border_color = Color(0.12, 0.16, 0.24, 0.5)
+	disabled.bg_color = Color(0.065, 0.088, 0.132, 0.70)
+	disabled.border_color = Color(0.14, 0.19, 0.28, 0.55)
 
 	btn.add_theme_stylebox_override("normal", normal)
 	btn.add_theme_stylebox_override("hover", hover)
 	btn.add_theme_stylebox_override("disabled", disabled)
-	btn.add_theme_color_override("font_color", Color.WHITE)
-	btn.add_theme_color_override("font_disabled_color", Color(0.42, 0.50, 0.62))
-	btn.add_theme_font_size_override("font_size", 14)
+	btn.add_theme_color_override("font_color", Color(0.35, 0.95, 0.55) if primary else Color.WHITE)
+	btn.add_theme_color_override("font_hover_color", Color.WHITE)
+	btn.add_theme_color_override("font_disabled_color", Color(0.48, 0.56, 0.68))
 	return btn
 
 func _build_load_modal() -> void:
@@ -262,9 +263,9 @@ func _build_settings_modal() -> void:
 	vb.add_child(fullscreen_chk)
 
 	var note := Label.new()
-	note.text = "Audio mixer controls will activate in Phase 5G."
+	note.text = ""
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.add_theme_color_override("font_color", Color(0.58, 0.68, 0.82))
+	note.add_theme_color_override("font_color", Color(0.65, 0.72, 0.82))
 	note.add_theme_font_size_override("font_size", 12)
 	vb.add_child(note)
 
@@ -293,10 +294,10 @@ func _create_centered_modal(w: float, h: float) -> PanelContainer:
 	modal.visible = false
 
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.035, 0.052, 0.088, 0.99)
+	style.bg_color = Color(0.072, 0.098, 0.148, 0.99)
 	style.border_color = Color(0.11, 0.82, 0.63, 0.95)
 	style.set_border_width_all(2)
-	style.set_corner_radius_all(6)
-	style.set_content_margin_all(20)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(22)
 	modal.add_theme_stylebox_override("panel", style)
 	return modal

@@ -202,7 +202,7 @@ func _style_shell_button(btn: Button, bg: Color, border: Color, text_col: Color 
 func _build_ui() -> void:
 	var bg := ColorRect.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(0.024, 0.035, 0.055, 1.0)
+	bg.color = Color(0.06, 0.08, 0.12, 1.0)
 	add_child(bg)
 
 	var main_vbox := VBoxContainer.new()
@@ -231,8 +231,8 @@ func _build_header(parent: Control) -> void:
 	_header_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var hdr_style := StyleBoxFlat.new()
-	hdr_style.bg_color = Color(0.045, 0.065, 0.105, 0.98)
-	hdr_style.border_color = Color(0.12, 0.18, 0.28, 0.85)
+	hdr_style.bg_color = Color(0.072, 0.098, 0.148, 0.98)
+	hdr_style.border_color = Color(0.18, 0.25, 0.36, 0.90)
 	hdr_style.set_border_width_all(1)
 	hdr_style.content_margin_left = 10
 	hdr_style.content_margin_right = 10
@@ -249,21 +249,21 @@ func _build_header(parent: Control) -> void:
 	_menu_toggle_btn.text = "☰"
 	_menu_toggle_btn.custom_minimum_size = Vector2(32, 32)
 	_menu_toggle_btn.focus_mode = Control.FOCUS_NONE
-	_style_shell_button(_menu_toggle_btn, Color(0.07, 0.10, 0.17, 0.9), Color(0.16, 0.24, 0.38, 0.8))
+	_style_shell_button(_menu_toggle_btn, Color(0.095, 0.13, 0.195, 0.92), Color(0.20, 0.28, 0.40, 0.85))
 	_menu_toggle_btn.pressed.connect(_toggle_sidebar)
 	hbox.add_child(_menu_toggle_btn)
 
 	var badge_panel := PanelContainer.new()
 	var b_style := StyleBoxFlat.new()
-	b_style.bg_color = Color(0.08, 0.65, 0.38, 0.25)
-	b_style.border_color = Color(0.12, 0.88, 0.52, 0.9)
+	b_style.bg_color = Color(0.08, 0.36, 0.26, 0.45)
+	b_style.border_color = Color(0.11, 0.82, 0.63, 0.92)
 	b_style.set_border_width_all(1)
 	b_style.set_corner_radius_all(6)
 	b_style.set_content_margin_all(4)
 	badge_panel.add_theme_stylebox_override("panel", b_style)
 	_club_badge_lbl = Label.new()
 	_club_badge_lbl.text = "ARS"
-	_club_badge_lbl.add_theme_color_override("font_color", Color(0.15, 0.95, 0.60))
+	_club_badge_lbl.add_theme_color_override("font_color", Color(0.35, 0.95, 0.55))
 	_club_badge_lbl.add_theme_font_size_override("font_size", 11)
 	badge_panel.add_child(_club_badge_lbl)
 	hbox.add_child(badge_panel)
@@ -323,7 +323,7 @@ func _build_header(parent: Control) -> void:
 	_inbox_btn.text = "Inbox"
 	_inbox_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_inbox_btn.focus_mode = Control.FOCUS_NONE
-	_style_shell_button(_inbox_btn, Color(0.07, 0.11, 0.18, 0.9), Color(0.18, 0.26, 0.40, 0.85))
+	_style_shell_button(_inbox_btn, Color(0.095, 0.13, 0.195, 0.92), Color(0.20, 0.28, 0.40, 0.85))
 	_inbox_btn.pressed.connect(func() -> void: navigate_to("inbox"))
 	inbox_container.add_child(_inbox_btn)
 
@@ -350,7 +350,7 @@ func _build_header(parent: Control) -> void:
 	_manager_btn.custom_minimum_size = Vector2(92, 32)
 	_manager_btn.clip_text = true
 	_manager_btn.focus_mode = Control.FOCUS_NONE
-	_style_shell_button(_manager_btn, Color(0.07, 0.11, 0.18, 0.9), Color(0.18, 0.26, 0.40, 0.85))
+	_style_shell_button(_manager_btn, Color(0.095, 0.13, 0.195, 0.92), Color(0.20, 0.28, 0.40, 0.85))
 	_manager_btn.pressed.connect(_open_manager_profile)
 	hbox.add_child(_manager_btn)
 
@@ -385,8 +385,8 @@ func _build_sidebar(parent: Control) -> void:
 	_sidebar_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
 	var sb_style := StyleBoxFlat.new()
-	sb_style.bg_color = Color(0.035, 0.050, 0.080, 0.98)
-	sb_style.border_color = Color(0.10, 0.15, 0.24, 0.85)
+	sb_style.bg_color = Color(0.068, 0.092, 0.138, 0.98)
+	sb_style.border_color = Color(0.18, 0.25, 0.36, 0.85)
 	sb_style.border_width_right = 1
 	sb_style.content_margin_left = 10
 	sb_style.content_margin_right = 10
@@ -407,7 +407,7 @@ func _build_sidebar(parent: Control) -> void:
 
 	var nav_label := Label.new()
 	nav_label.text = "NAVIGATION"
-	nav_label.add_theme_color_override("font_color", Color(0.40, 0.50, 0.65))
+	nav_label.add_theme_color_override("font_color", Color(0.65, 0.72, 0.82))
 	nav_label.add_theme_font_size_override("font_size", 11)
 	_sidebar_vbox.add_child(nav_label)
 
@@ -417,11 +417,11 @@ func _build_sidebar(parent: Control) -> void:
 		var r_icon: String = route["icon"]
 
 		var btn := Button.new()
-		btn.text = " %s  %s" % [r_icon, r_label]
+		btn.text = ("  %s" % r_label) if r_icon.is_empty() else (" %s  %s" % [r_icon, r_label])
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		btn.custom_minimum_size = Vector2(190, 40)
 		btn.focus_mode = Control.FOCUS_NONE
-		_style_shell_button(btn, Color(0.06, 0.08, 0.13, 0.70), Color(0.12, 0.18, 0.28, 0.60), Color(0.85, 0.90, 0.96))
+		_style_shell_button(btn, Color(0.085, 0.115, 0.175, 0.85), Color(0.17, 0.24, 0.35, 0.75), Color(0.85, 0.90, 0.96))
 
 		btn.pressed.connect(func() -> void: navigate_to(r_id))
 		_sidebar_vbox.add_child(btn)
@@ -506,11 +506,11 @@ func _create_placeholder_panel(route_id: String, route_title: String) -> Control
 	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
 	var p_style := StyleBoxFlat.new()
-	p_style.bg_color = Color(0.030, 0.042, 0.068, 0.95)
-	p_style.content_margin_left = 24
-	p_style.content_margin_right = 24
-	p_style.content_margin_top = 20
-	p_style.content_margin_bottom = 20
+	p_style.bg_color = Color(0.06, 0.08, 0.12, 0.96)
+	p_style.content_margin_left = 28
+	p_style.content_margin_right = 28
+	p_style.content_margin_top = 22
+	p_style.content_margin_bottom = 22
 	panel.add_theme_stylebox_override("panel", p_style)
 
 	var scroll := ScrollContainer.new()
@@ -520,12 +520,12 @@ func _create_placeholder_panel(route_id: String, route_title: String) -> Control
 
 	var vbox := VBoxContainer.new()
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	vbox.add_theme_constant_override("separation", 16)
+	vbox.add_theme_constant_override("separation", 14)
 	scroll.add_child(vbox)
 
 	var title_lbl := Label.new()
 	title_lbl.text = route_title.to_upper()
-	title_lbl.add_theme_color_override("font_color", Color(0.15, 0.92, 0.58))
+	title_lbl.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	title_lbl.add_theme_font_size_override("font_size", 20)
 	vbox.add_child(title_lbl)
 
@@ -540,28 +540,26 @@ func _build_route_specific_content(route_id: String) -> Control:
 	container.add_theme_constant_override("separation", 12)
 
 	match route_id:
-		"competitions":
-			container.add_child(_create_info_card("COMPETITIONS CENTER (PHASE 5B)", "League Table standings, Top Scorers, Top Assists, and competition prize structures."))
 		"transfers":
-			container.add_child(_create_info_card("DYNAMIC TRANSFER MARKET (PHASE 7)", "Player valuation engine, multi-round transfer fee & wage negotiations, and scout lists."))
+			container.add_child(_create_info_card("SCOUTING & TRANSFER DESK", "Player market valuations, shortlist tracking, and transfer window negotiations."))
 		"club":
-			container.add_child(_create_info_card("CLUB MANAGEMENT & OBJECTIVES (PHASE 6)", "Board objectives progress, stadium capacity, facilities upgrades, and manager job security."))
+			container.add_child(_create_info_card("BOARDROOM & CLUB OPERATIONS", "Season board objectives, stadium infrastructure, training facilities, and job confidence."))
 		"finances":
-			container.add_child(_create_info_card("FINANCES & LEDGERS (PHASE 6)", "Separated Total Club Balance, Transfer Budget, Wage Budget, and weekly wage outlay."))
+			container.add_child(_create_info_card("CLUB FINANCIAL LEDGER", "Total club balance, transfer budget allocation, wage structure, and matchday revenue."))
 
 	return container
 
 func _create_info_card(header: String, body: String) -> PanelContainer:
 	var pc := PanelContainer.new()
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.045, 0.065, 0.10, 0.90)
-	style.border_color = Color(0.14, 0.20, 0.32, 0.70)
+	style.bg_color = Color(0.085, 0.115, 0.17, 0.96)
+	style.border_color = Color(0.18, 0.25, 0.36, 0.85)
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(8)
 	style.content_margin_left = 16
 	style.content_margin_right = 16
-	style.content_margin_top = 12
-	style.content_margin_bottom = 12
+	style.content_margin_top = 14
+	style.content_margin_bottom = 14
 	pc.add_theme_stylebox_override("panel", style)
 
 	var vb := VBoxContainer.new()
@@ -570,14 +568,14 @@ func _create_info_card(header: String, body: String) -> PanelContainer:
 
 	var h := Label.new()
 	h.text = header
-	h.add_theme_color_override("font_color", Color(0.20, 0.90, 0.55))
+	h.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	h.add_theme_font_size_override("font_size", 14)
 	vb.add_child(h)
 
 	var b := Label.new()
 	b.text = body
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	b.add_theme_color_override("font_color", Color(0.70, 0.80, 0.92))
+	b.add_theme_color_override("font_color", Color(0.72, 0.80, 0.90))
 	b.add_theme_font_size_override("font_size", 12)
 	vb.add_child(b)
 
@@ -599,11 +597,11 @@ func _build_manager_modal() -> void:
 	_manager_profile_modal.visible = false
 
 	var modal_style := StyleBoxFlat.new()
-	modal_style.bg_color = Color(0.040, 0.058, 0.092, 0.99)
-	modal_style.border_color = Color(0.15, 0.88, 0.52, 0.95)
+	modal_style.bg_color = Color(0.072, 0.098, 0.148, 0.99)
+	modal_style.border_color = Color(0.11, 0.82, 0.63, 0.95)
 	modal_style.set_border_width_all(2)
-	modal_style.set_corner_radius_all(10)
-	modal_style.set_content_margin_all(20)
+	modal_style.set_corner_radius_all(8)
+	modal_style.set_content_margin_all(22)
 	_manager_profile_modal.add_theme_stylebox_override("panel", modal_style)
 	add_child(_manager_profile_modal)
 
@@ -613,7 +611,7 @@ func _build_manager_modal() -> void:
 
 	var title := Label.new()
 	title.text = "MANAGER PROFILE"
-	title.add_theme_color_override("font_color", Color(0.15, 0.92, 0.58))
+	title.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	title.add_theme_font_size_override("font_size", 16)
 	vb.add_child(title)
 
@@ -732,12 +730,12 @@ func _build_toast() -> void:
 	_toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
 	var t_style := StyleBoxFlat.new()
-	t_style.bg_color = Color(0.06, 0.11, 0.19, 0.96)
-	t_style.border_color = Color(0.18, 0.88, 0.52, 0.90)
+	t_style.bg_color = Color(0.072, 0.098, 0.148, 0.97)
+	t_style.border_color = Color(0.11, 0.82, 0.63, 0.92)
 	t_style.set_border_width_all(1)
 	t_style.set_corner_radius_all(8)
 	_toast_label.add_theme_stylebox_override("normal", t_style)
-	_toast_label.add_theme_color_override("font_color", Color(0.30, 0.98, 0.65))
+	_toast_label.add_theme_color_override("font_color", Color(0.35, 0.95, 0.55))
 	_toast_label.add_theme_font_size_override("font_size", 13)
 	_toast_label.visible = false
 	add_child(_toast_label)
@@ -791,9 +789,9 @@ func navigate_to(route_id: String) -> void:
 		var btn: Button = _route_buttons[r_id]
 		var is_active: bool = (r_id == normalized)
 		if is_active:
-			_style_shell_button(btn, Color(0.08, 0.35, 0.22, 0.90), Color(0.18, 0.95, 0.58, 0.95), Color(0.35, 1.0, 0.70))
+			_style_shell_button(btn, Color(0.08, 0.36, 0.26, 0.95), Color(0.11, 0.82, 0.63, 0.95), Color(0.35, 0.95, 0.55))
 		else:
-			_style_shell_button(btn, Color(0.06, 0.08, 0.13, 0.70), Color(0.12, 0.18, 0.28, 0.60), Color(0.85, 0.90, 0.96))
+			_style_shell_button(btn, Color(0.085, 0.115, 0.175, 0.85), Color(0.17, 0.24, 0.35, 0.75), Color(0.85, 0.90, 0.96))
 
 	route_changed.emit(normalized)
 

@@ -26,10 +26,10 @@ func open_modal() -> void:
 
 	if is_instance_valid(_status_lbl):
 		if already_unlocked:
-			_status_lbl.text = "Code NHHA72528 is active! Tuesday League & club 11A7 are unlocked."
+			_status_lbl.text = "11A7 is unlocked"
 			_status_lbl.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 		else:
-			_status_lbl.text = "Enter a special promo code to unlock Tuesday League & 11A7."
+			_status_lbl.text = "Enter a code to unlock hidden club"
 			_status_lbl.add_theme_color_override("font_color", Color(0.68, 0.78, 0.90))
 
 	if is_instance_valid(_code_input):
@@ -48,6 +48,15 @@ func _resolve_career_state() -> CareerState:
 	if is_instance_valid(parent_cs):
 		career_state = parent_cs
 		return career_state
+	if is_inside_tree():
+		var app_cs := get_tree().root.get_node_or_null("AppRoot/CareerState") as CareerState
+		if is_instance_valid(app_cs):
+			career_state = app_cs
+			return career_state
+		var group_cs := get_tree().get_first_node_in_group("career_state") as CareerState
+		if is_instance_valid(group_cs):
+			career_state = group_cs
+			return career_state
 	if not is_instance_valid(_temp_career_state):
 		_temp_career_state = CareerState.new()
 		_temp_career_state.name = "TempCareerState"
@@ -57,7 +66,7 @@ func _resolve_career_state() -> CareerState:
 func _on_redeem_pressed() -> void:
 	var raw := _code_input.text.strip_edges().to_upper()
 	if raw.is_empty():
-		_status_lbl.text = "Please enter a promo code first."
+		_status_lbl.text = "Please enter a promo code"
 		_status_lbl.add_theme_color_override("font_color", Color(1.0, 0.45, 0.45))
 		return
 
@@ -108,13 +117,13 @@ func _build_ui() -> void:
 	panel.add_child(vb)
 
 	var title := Label.new()
-	title.text = "🎟️ REDEEM PROMO CODE"
+	title.text = "REDEEM PROMO CODE"
 	title.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	title.add_theme_font_size_override("font_size", 18)
 	vb.add_child(title)
 
 	_reward_lbl = Label.new()
-	_reward_lbl.text = "Unlocks hidden Tuesday League (11A7) + active career budget & token rewards."
+	_reward_lbl.text = "Unlocks hidden club"
 	_reward_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_reward_lbl.add_theme_color_override("font_color", Color(0.62, 0.72, 0.86))
 	_reward_lbl.add_theme_font_size_override("font_size", 12)

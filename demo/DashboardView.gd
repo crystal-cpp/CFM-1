@@ -49,8 +49,11 @@ func _ensure_ui_built() -> void:
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 
 	var root_style := StyleBoxFlat.new()
-	root_style.bg_color = Color(0.028, 0.040, 0.065, 0.98)
-	root_style.set_content_margin_all(20)
+	root_style.bg_color = Color(0.024, 0.035, 0.055, 1.0)
+	root_style.content_margin_left = 20
+	root_style.content_margin_right = 20
+	root_style.content_margin_top = 16
+	root_style.content_margin_bottom = 16
 	add_theme_stylebox_override("panel", root_style)
 
 	var scroll := ScrollContainer.new()
@@ -61,9 +64,14 @@ func _ensure_ui_built() -> void:
 
 	var main_vbox := VBoxContainer.new()
 	main_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	main_vbox.add_theme_constant_override("separation", 16)
+	main_vbox.add_theme_constant_override("separation", 14)
 	scroll.add_child(main_vbox)
 
+	var page_title := Label.new()
+	page_title.text = "CLUB DASHBOARD"
+	page_title.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
+	page_title.add_theme_font_size_override("font_size", 20)
+	main_vbox.add_child(page_title)
 	# 1. NEXT MATCH HERO CARD
 	_build_next_match_hero(main_vbox)
 
@@ -121,9 +129,9 @@ func _build_next_match_hero(parent: Control) -> void:
 	_next_match_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var card_style := StyleBoxFlat.new()
-	card_style.bg_color = Color(0.045, 0.070, 0.12, 0.95)
-	card_style.border_color = Color(0.15, 0.88, 0.52, 0.85)
-	card_style.set_border_width_all(1)
+	card_style.bg_color = Color(0.043, 0.063, 0.106, 0.95)
+	card_style.border_color = Color(0.18, 0.95, 0.58, 0.95)
+	card_style.set_border_width_all(2)
 	card_style.set_corner_radius_all(10)
 	card_style.set_content_margin_all(16)
 	_next_match_card.add_theme_stylebox_override("panel", card_style)
@@ -160,7 +168,7 @@ func _build_next_match_hero(parent: Control) -> void:
 
 	var title_lbl := Label.new()
 	title_lbl.text = "UPCOMING MATCHDAY FIXTURE"
-	title_lbl.add_theme_color_override("font_color", Color(0.20, 0.90, 0.55))
+	title_lbl.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	title_lbl.add_theme_font_size_override("font_size", 11)
 	info_vbox.add_child(title_lbl)
 
@@ -206,7 +214,7 @@ func _build_next_match_hero(parent: Control) -> void:
 	_pre_match_btn.text = "PRE-MATCH"
 	_pre_match_btn.custom_minimum_size = Vector2(148, 44)
 	_pre_match_btn.focus_mode = Control.FOCUS_NONE
-	_apply_button_theme(_pre_match_btn, Color(0.10, 0.58, 0.34, 0.95), Color(0.20, 0.95, 0.58, 0.95))
+	_apply_button_theme(_pre_match_btn, Color(0.06, 0.45, 0.32, 0.95), Color(0.15, 0.92, 0.58, 0.90))
 	_pre_match_btn.add_theme_font_size_override("font_size", 13)
 	_pre_match_btn.pressed.connect(func() -> void: match_launch_requested.emit())
 	hbox.add_child(_pre_match_btn)
