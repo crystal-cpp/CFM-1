@@ -39,10 +39,10 @@ func _ensure_ui_built() -> void:
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg := StyleBoxFlat.new()
 	bg.bg_color = Color(0.024, 0.035, 0.055, 1.0)
-	bg.content_margin_left = 24
-	bg.content_margin_right = 24
-	bg.content_margin_top = 18
-	bg.content_margin_bottom = 18
+	bg.content_margin_left = 20
+	bg.content_margin_right = 20
+	bg.content_margin_top = 16
+	bg.content_margin_bottom = 16
 	root.add_theme_stylebox_override("panel", bg)
 	add_child(root)
 
@@ -120,7 +120,7 @@ func _ensure_ui_built() -> void:
 	save_btn.text = "Apply"
 	save_btn.custom_minimum_size = Vector2(180, 38)
 	save_btn.focus_mode = Control.FOCUS_NONE
-	_style_btn(save_btn, Color(0.06, 0.55, 0.38, 0.95), Color(0.11, 0.88, 0.65, 0.95))
+	_style_btn(save_btn, Color(0.06, 0.45, 0.32, 0.95), Color(0.15, 0.92, 0.58, 0.90))
 	save_btn.pressed.connect(_on_apply_pressed)
 	btn_hbox.add_child(save_btn)
 
@@ -128,7 +128,7 @@ func _ensure_ui_built() -> void:
 	reset_btn.text = "Reset"
 	reset_btn.custom_minimum_size = Vector2(150, 38)
 	reset_btn.focus_mode = Control.FOCUS_NONE
-	_style_btn(reset_btn, Color(0.09, 0.13, 0.21, 0.90), Color(0.20, 0.28, 0.42, 0.85))
+	_style_btn(reset_btn, Color(0.07, 0.12, 0.20, 0.95), Color(0.18, 0.30, 0.48, 0.85))
 	reset_btn.pressed.connect(_on_reset_pressed)
 	btn_hbox.add_child(reset_btn)
 
@@ -150,6 +150,7 @@ func _add_tactic_row(grid: GridContainer, label_text: String, items: Array[Strin
 	var opt := OptionButton.new()
 	opt.custom_minimum_size = Vector2(260, 34)
 	opt.focus_mode = Control.FOCUS_NONE
+	_style_btn(opt, Color(0.07, 0.12, 0.20, 0.95), Color(0.18, 0.30, 0.48, 0.85))
 	for item in items:
 		opt.add_item(item)
 	opt.item_selected.connect(func(_idx: int) -> void: _update_impact_preview())
@@ -228,9 +229,26 @@ func _style_btn(btn: Button, bg: Color, border: Color) -> void:
 	n.border_color = border
 	n.set_border_width_all(1)
 	n.set_corner_radius_all(6)
+	n.content_margin_left = 12
+	n.content_margin_right = 12
+	n.content_margin_top = 6
+	n.content_margin_bottom = 6
+
 	var h := n.duplicate()
 	h.bg_color = bg.lightened(0.10)
+	h.border_color = border.lightened(0.12)
+
+	var p := n.duplicate()
+	p.bg_color = bg.darkened(0.10)
+
+	var d := n.duplicate()
+	d.bg_color = Color(0.05, 0.07, 0.11, 0.60)
+	d.border_color = Color(0.12, 0.16, 0.24, 0.50)
+
 	btn.add_theme_stylebox_override("normal", n)
 	btn.add_theme_stylebox_override("hover", h)
-	btn.add_theme_stylebox_override("pressed", h)
+	btn.add_theme_stylebox_override("pressed", p)
+	btn.add_theme_stylebox_override("disabled", d)
 	btn.add_theme_color_override("font_color", Color.WHITE)
+	btn.add_theme_color_override("font_hover_color", Color.WHITE)
+	btn.add_theme_color_override("font_disabled_color", Color(0.45, 0.52, 0.62))
