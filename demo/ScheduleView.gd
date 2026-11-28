@@ -86,11 +86,17 @@ func _style_btn(btn: Button, bg: Color, border: Color, text_col: Color = Color.W
 	var pressed := normal.duplicate()
 	pressed.bg_color = bg.darkened(0.10)
 
+	var disabled := normal.duplicate()
+	disabled.bg_color = Color(0.05, 0.07, 0.11, 0.60)
+	disabled.border_color = Color(0.12, 0.16, 0.24, 0.50)
+
 	btn.add_theme_stylebox_override("normal", normal)
 	btn.add_theme_stylebox_override("hover", hover)
 	btn.add_theme_stylebox_override("pressed", pressed)
+	btn.add_theme_stylebox_override("disabled", disabled)
 	btn.add_theme_color_override("font_color", text_col)
 	btn.add_theme_color_override("font_hover_color", Color.WHITE)
+	btn.add_theme_color_override("font_disabled_color", Color(0.45, 0.52, 0.62))
 
 func _create_badge(text: String, bg_color: Color, text_color: Color) -> Label:
 	var lbl := Label.new()
@@ -299,6 +305,7 @@ func _build_league_matchdays_tab(parent: Control) -> void:
 		_selected_round_key = _md_option.get_item_id(idx)
 		_refresh_league_matchdays_tab()
 	)
+	_style_btn(_md_option, Color(0.07, 0.12, 0.20, 0.95), Color(0.18, 0.30, 0.48, 0.85))
 	nav_hbox.add_child(_md_option)
 
 	_md_next_btn = Button.new()
