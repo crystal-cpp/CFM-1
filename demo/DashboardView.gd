@@ -254,10 +254,10 @@ func _build_league_overview(parent: Control) -> void:
 	pc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.040, 0.060, 0.095, 0.92)
-	style.border_color = Color(0.12, 0.18, 0.28, 0.78)
+	style.bg_color = Color(0.043, 0.063, 0.106, 0.95)
+	style.border_color = Color(0.12, 0.20, 0.32, 0.85)
 	style.set_border_width_all(1)
-	style.set_corner_radius_all(8)
+	style.set_corner_radius_all(10)
 	style.set_content_margin_all(14)
 	pc.add_theme_stylebox_override("panel", style)
 	parent.add_child(pc)
@@ -269,8 +269,8 @@ func _build_league_overview(parent: Control) -> void:
 	# Your Club Snapshot Header
 	var club_hdr := Label.new()
 	club_hdr.text = "CLUB OVERVIEW"
-	club_hdr.add_theme_color_override("font_color", Color(0.15, 0.90, 0.55))
-	club_hdr.add_theme_font_size_override("font_size", 13)
+	club_hdr.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
+	club_hdr.add_theme_font_size_override("font_size", 14)
 	vbox.add_child(club_hdr)
 
 	var stats_strip := HBoxContainer.new()
@@ -306,8 +306,8 @@ func _build_league_overview(parent: Control) -> void:
 
 	var title := Label.new()
 	title.text = "LEAGUE STANDINGS (TOP 5)"
-	title.add_theme_color_override("font_color", Color(0.15, 0.90, 0.55))
-	title.add_theme_font_size_override("font_size", 13)
+	title.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
+	title.add_theme_font_size_override("font_size", 14)
 	vbox.add_child(title)
 
 	# Compact Table Headers
@@ -332,8 +332,8 @@ func _build_league_overview(parent: Control) -> void:
 	# Fitness & Morale Overview Snippet
 	var fit_title := Label.new()
 	fit_title.text = "SQUAD CONDITION & FITNESS"
-	fit_title.add_theme_color_override("font_color", Color(0.15, 0.90, 0.55))
-	fit_title.add_theme_font_size_override("font_size", 13)
+	fit_title.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
+	fit_title.add_theme_font_size_override("font_size", 14)
 	vbox.add_child(fit_title)
 
 	_fitness_summary_lbl = Label.new()
@@ -362,8 +362,8 @@ func _build_board_and_news(parent: Control) -> void:
 
 	var obj_title := Label.new()
 	obj_title.text = "BOARD OBJECTIVES PROGRESS"
-	obj_title.add_theme_color_override("font_color", Color(0.15, 0.90, 0.55))
-	obj_title.add_theme_font_size_override("font_size", 13)
+	obj_title.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
+	obj_title.add_theme_font_size_override("font_size", 14)
 	vbox.add_child(obj_title)
 
 	vbox.add_child(HSeparator.new())
@@ -376,8 +376,8 @@ func _build_board_and_news(parent: Control) -> void:
 
 	var news_title := Label.new()
 	news_title.text = "LATEST CLUB INBOX ALERTS"
-	news_title.add_theme_color_override("font_color", Color(0.15, 0.90, 0.55))
-	news_title.add_theme_font_size_override("font_size", 13)
+	news_title.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
+	news_title.add_theme_font_size_override("font_size", 14)
 	vbox.add_child(news_title)
 
 	_news_vbox = VBoxContainer.new()
@@ -514,7 +514,7 @@ func _refresh_objectives() -> void:
 
 		var row := HBoxContainer.new()
 		var t_lbl := Label.new()
-		t_lbl.text = ("" if completed else "") + title
+		t_lbl.text = ("✓ " if completed else "• ") + title
 		t_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		t_lbl.clip_text = true
 		t_lbl.add_theme_font_size_override("font_size", 12)
