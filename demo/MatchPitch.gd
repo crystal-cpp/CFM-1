@@ -1157,7 +1157,7 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 					_atk_phase = AttackPhase.EXECUTING_SHOT
 					_atk_phase_timer = 0.0
 				else:
-					_show_hud_toast("Shot unavailable (no ball possession)")
+					_show_hud_toast("")
 					_sync_engine_pause_state()
 			else:
 				var tb_info: Dictionary = _compute_smart_through_ball(ctrl_idx, carrier_pos, start_pitch, end_pitch)
@@ -1166,20 +1166,20 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 				if match_engine.command_through_ball(lead_target):
 					var engine_runner: int = match_engine.get_pass_target_index() if match_engine.has_method("get_pass_target_index") else runner_idx
 					_atk_expected_receiver = engine_runner if engine_runner >= 0 else runner_idx
-					_show_marker(lead_target, Color(0.25, 0.85, 1.0), "THROUGH BALL!")
+					_show_marker(lead_target, Color(0.25, 0.85, 1.0), "")
 					_set_attack_decision_paused(false)
 					_atk_phase = AttackPhase.EXECUTING_PASS
 					_atk_phase_timer = 0.0
 				elif runner_idx >= 0 and match_engine.command_pass(runner_idx):
 					_atk_expected_receiver = runner_idx
-					_show_marker(Vector2(positions[runner_idx]), Color(0.30, 0.95, 0.55), "PASS!")
+					_show_marker(Vector2(positions[runner_idx]), Color(0.30, 0.95, 0.55), "")
 					_set_attack_decision_paused(false)
 					_atk_phase = AttackPhase.EXECUTING_PASS
 					_atk_phase_timer = 0.0
 				else:
-					_show_hud_toast("No valid through-ball target!")
+					_show_hud_toast("")
 					_sync_engine_pause_state()
-			_gesture_mode = "NONE"
+			_gesture_mode = ""
 			_preview_through_runner = -1
 			return
 
@@ -1197,15 +1197,15 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 
 		if clicked_tm != -1:
 			if match_engine.command_pass(clicked_tm):
-				_show_marker(Vector2(positions[clicked_tm]), Color(0.30, 0.95, 0.55), "PASS!")
+				_show_marker(Vector2(positions[clicked_tm]), Color(0.30, 0.95, 0.55), "")
 				_atk_expected_receiver = clicked_tm
 				_set_attack_decision_paused(false)
 				_atk_phase = AttackPhase.EXECUTING_PASS
 				_atk_phase_timer = 0.0
 			else:
-				_show_hud_toast("Pass lane blocked!")
+				_show_hud_toast("")
 				_sync_engine_pause_state()
-			_gesture_mode = "NONE"
+			_gesture_mode = ""
 			_preview_through_runner = -1
 			return
 
@@ -1214,20 +1214,20 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 			move_dest = Vector2(clampf(carrier_pos.x + 76.0 * _user_attack_dir(), 24.0, match_engine.get_field_size().x - 24.0), carrier_pos.y)
 
 		if match_engine.command_move_player(move_dest):
-			_show_marker(move_dest, Color(0.95, 0.88, 0.30), "DRIBBLE")
+			_show_marker(move_dest, Color(0.95, 0.88, 0.30), "")
 			_atk_dribble_start = carrier_pos
 			_atk_dribble_target = move_dest
 			_set_attack_decision_paused(false)
 			_atk_phase = AttackPhase.EXECUTING_DRIBBLE
 			_atk_phase_timer = 0.0
 		else:
-			_show_hud_toast("Cannot dribble right now")
+			_show_hud_toast("")
 			_sync_engine_pause_state()
 
 	# MODE B: DEFEND CHANCE — CONTINUOUS REAL-TIME GAMEPLAY
 	elif chance_state == _user_defend_chance():
 		var gk_idx: int = _user_gk_idx()
-		if drag_dist_screen >= 24.0 or _gesture_mode == "SLIDE_TACKLE":
+		if drag_dist_screen >= 24.0 or _gesture_mode == "":
 			_cancel_gk_rush_if_active()
 			var carrier_idx: int = match_engine.get_ball_carrier_index()
 			var target_pt: Vector2 = Vector2(positions[carrier_idx]) if (_is_opp_idx(carrier_idx) and carrier_idx < positions.size()) else match_engine.get_ball_position()
@@ -1241,7 +1241,7 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 				_slide_tackle_timer = 0.45
 				match_engine.command_move_player(target_pt)
 				match_engine.command_tackle()
-				_show_marker(target_pt, Color(1.0, 0.38, 0.30), "TACKLE!")
+				_show_marker(target_pt, Color(1.0, 0.38, 0.30), "")
 			_gesture_mode = "NONE"
 			return
 
@@ -1254,7 +1254,7 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 		if clicked_def != -1:
 			_cancel_gk_rush_if_active()
 			match_engine.set_controlled_player(clicked_def)
-			_show_marker(Vector2(positions[clicked_def]), Color(0.35, 0.82, 1.0), "SWITCH")
+			_show_marker(Vector2(positions[clicked_def]), Color(0.35, 0.82, 1.0), "")
 			_gesture_mode = "NONE"
 			return
 
@@ -1269,16 +1269,16 @@ func _on_pointer_released(screen_pos: Vector2) -> void:
 				if _is_user_outfield_idx(ctrl_d) and ctrl_d < positions.size():
 					if Vector2(positions[ctrl_d]).distance_to(opp_pos) <= 38.0:
 						match_engine.command_tackle()
-						_show_marker(opp_pos, Color(1.0, 0.38, 0.35), "TACKLE!")
+						_show_marker(opp_pos, Color(1.0, 0.38, 0.35), "")
 					else:
 						match_engine.command_move_player(opp_pos)
-						_show_marker(opp_pos, Color(0.35, 0.82, 1.0), "PRESS")
+						_show_marker(opp_pos, Color(0.35, 0.82, 1.0), "")
 					_gesture_mode = "NONE"
 					return
 
 		_cancel_gk_rush_if_active()
 		if match_engine.command_move_player(end_pitch):
-			_show_marker(end_pitch, Color(0.35, 0.80, 1.0), "COVER")
+			_show_marker(end_pitch, Color(0.35, 0.80, 1.0), "")
 
 	_gesture_mode = "NONE"
 	_preview_through_runner = -1

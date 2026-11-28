@@ -117,7 +117,7 @@ func _build_ui() -> void:
 
 	vbox.add_child(HSeparator.new())
 
-	_continue_btn = _make_menu_button("Continue Career", true)
+	_continue_btn = _make_menu_button("Continue", true)
 	_continue_btn.pressed.connect(func() -> void:
 		if not _latest_valid_slot.is_empty():
 			continue_career_requested.emit(_latest_valid_slot)
@@ -130,11 +130,11 @@ func _build_ui() -> void:
 	_continue_hint_lbl.add_theme_font_size_override("font_size", 11)
 	vbox.add_child(_continue_hint_lbl)
 
-	var new_btn := _make_menu_button("New Career", false)
+	var new_btn := _make_menu_button("New", false)
 	new_btn.pressed.connect(func() -> void: new_career_requested.emit())
 	vbox.add_child(new_btn)
 
-	var load_btn := _make_menu_button("Load Career", false)
+	var load_btn := _make_menu_button("Load", false)
 	load_btn.pressed.connect(_open_load_modal)
 	vbox.add_child(load_btn)
 

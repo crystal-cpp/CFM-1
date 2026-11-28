@@ -187,30 +187,30 @@ func _build_ui() -> void:
 	card.add_child(vb)
 
 	var title := Label.new()
-	title.text = "NEW CAREER SETUP"
+	title.text = "NEW CAREER"
 	title.add_theme_color_override("font_color", Color(0.11, 0.82, 0.63))
 	title.add_theme_font_size_override("font_size", 20)
 	vb.add_child(title)
 
-	vb.add_child(_make_field_label("1. SELECT LEAGUE"))
+	vb.add_child(_make_field_label("LEAGUE"))
 	_league_option = OptionButton.new()
 	_league_option.custom_minimum_size = Vector2(0, 38)
 	_league_option.item_selected.connect(_on_league_selected)
 	vb.add_child(_league_option)
 
-	vb.add_child(_make_field_label("2. SELECT CLUB"))
+	vb.add_child(_make_field_label("CLUB"))
 	_club_option = OptionButton.new()
 	_club_option.custom_minimum_size = Vector2(0, 38)
 	vb.add_child(_club_option)
 
-	vb.add_child(_make_field_label("3. MANAGER NAME"))
+	vb.add_child(_make_field_label("NAME"))
 	_manager_input = LineEdit.new()
 	_manager_input.placeholder_text = "Enter Manager Name"
 	_manager_input.text = "Manager"
 	_manager_input.custom_minimum_size = Vector2(0, 38)
 	vb.add_child(_manager_input)
 
-	vb.add_child(_make_field_label("4. SAVE SLOT NAME"))
+	vb.add_child(_make_field_label("SAVE SLOT NAME"))
 	_slot_input = LineEdit.new()
 	_slot_input.placeholder_text = "career_slot_1"
 	_slot_input.text = "career_slot_1"

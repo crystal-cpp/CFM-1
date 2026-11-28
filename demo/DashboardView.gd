@@ -2,6 +2,7 @@ class_name DashboardView
 extends PanelContainer
 
 signal route_requested(route_name: String)
+@warning_ignore("unused_signal")
 signal player_profile_requested(player_id: int, context_mode: String)
 signal match_launch_requested
 
@@ -499,6 +500,7 @@ func _refresh_standings_snippet() -> void:
 			total_cond += c
 			if c < 75:
 				fatigued_count += 1
+		@warning_ignore("integer_division")
 		var avg_cond: int = total_cond / squad.size()
 		_fitness_summary_lbl.text = "Average Squad Fitness: %d%% · %d Player(s) Fatigued" % [avg_cond, fatigued_count]
 

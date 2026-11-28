@@ -188,6 +188,11 @@ void MatchEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_gk_stats", "is_home"), &MatchEngine::get_gk_stats);
     ClassDB::bind_method(D_METHOD("evaluate_chance_trigger_prob", "is_home_attacking"), &MatchEngine::evaluate_chance_trigger_prob);
 
+    ClassDB::bind_method(
+    D_METHOD("record_manual_match_completed"),
+    &MatchEngine::record_manual_match_completed
+    );
+
     // Inspector Properties
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "home_formation"), "set_home_formation", "get_home_formation");
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "away_formation"), "set_away_formation", "get_away_formation");

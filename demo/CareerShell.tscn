@@ -1,8 +1,8 @@
-[gd_scene format=3 uid="uid://c7x9m4p2kq10w"]
+[gd_scene format=3 uid="uid://c7yam4p2kq10w"]
 
-[ext_resource type="Script" path="res://CareerShell.gd" id="1_shell"]
+[ext_resource type="Script" uid="uid://b5oyblua5vost" path="res://CareerShell.gd" id="1_shell"]
 
-[node name="CareerShell" type="Control"]
+[node name="CareerShell" type="Control" unique_id=823928172]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0

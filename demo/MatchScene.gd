@@ -501,7 +501,7 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 
 	match_engine.start_match()
 	if not match_engine.is_match_active() or match_engine.is_user_home() != authoritative_user_is_home:
-		push_error("MatchScene: MatchEngine failed to retain the managed HOME/AWAY side at kickoff.")
+		push_error("")
 		return
 
 	if is_instance_valid(match_pitch):
@@ -519,7 +519,7 @@ func launch_career_match(p_career_state: CareerState, context: Dictionary) -> vo
 		if hud.has_method("refresh_all"):
 			hud.refresh_all()
 		if hud.has_method("show_toast"):
-			hud.show_toast("KICK OFF! Career Match Started", 2.0)
+			hud.show_toast("", 2.0)
 
 
 func _on_post_match_continue(_summary: Dictionary) -> void:
@@ -544,7 +544,7 @@ func _request_skip_match() -> void:
 		var played: int = match_engine.get_manual_matches_played()
 		var remaining: int = 5 - (played % 5)
 		if hud and hud.has_method("show_toast"):
-			hud.show_toast("No Skip Tokens! Play %d more manual match(es) to earn 1 token." % remaining, 3.0)
+			hud.show_toast("" % remaining, 3.0)
 
 func _request_next_match() -> void:
 	if not is_instance_valid(match_engine) or match_engine.is_match_active():
